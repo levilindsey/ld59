@@ -10,8 +10,9 @@
 radius = 3.0
 height = 13.0
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_web_sensor"]
-radius = 4.0
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_jiejy"]
+radius = 2.5
+height = 12.0
 
 [node name="Player" type="CharacterBody2D" unique_id=217645704 node_paths=PackedStringArray("collision_shape", "animator")]
 collision_layer = 8
@@ -31,17 +32,17 @@ shape = SubResource("CapsuleShape2D_5f2sf")
 metadata/_edit_lock_ = true
 
 [node name="BugRegionProbe" parent="." unique_id=2011799926 instance=ExtResource("4_probe")]
-position = Vector2(0, -6)
+position = Vector2(0, -6.5)
 
-[node name="WebSensor" type="Area2D" parent="."]
+[node name="WebSensor" type="Area2D" parent="." unique_id=315784456]
 unique_name_in_owner = true
 collision_layer = 0
 collision_mask = 512
-monitoring = true
 monitorable = false
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="WebSensor"]
-shape = SubResource("CircleShape2D_web_sensor")
+[node name="CollisionShape2D" type="CollisionShape2D" parent="WebSensor" unique_id=314154039]
+position = Vector2(0, -6.5)
+shape = SubResource("CapsuleShape2D_jiejy")
 
 [node name="PlayerHealth" type="Node" parent="." unique_id=510139991]
 unique_name_in_owner = true
