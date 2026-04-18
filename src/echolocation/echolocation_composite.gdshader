@@ -21,9 +21,21 @@ uniform vec2 player_uv = vec2(0.5, 0.5);
 uniform vec2 screen_size_px = vec2(1152.0, 648.0);
 
 // Backbuffer of the layer-0 content (tiles, player, bugs, enemies,
-// props). Pixel art — sample nearest.
+// props). Pixel art — sample nearest. Used only for the near-field
+// visual reveal (textured_rgb fallback = c0). Type classification
+// and gradient sampling now use `tag_tex` instead, so player and
+// parallax pixels don't contaminate those signals.
 uniform sampler2D screen_tex : hint_screen_texture,
 		repeat_disable, filter_nearest;
+
+// Frequency-tag viewport texture. A parallel SubViewport that
+// shares World2D with the scene but is rendered by a camera with
+// canvas_cull_mask = 2, so it only sees visibility-layer-2 items
+// (terrain is on layer 1|2; bugs/enemies/props can join later).
+// Every pixel is either transparent (no tagged content) or the
+// exact palette color of the tile/sprite sitting there — giving
+// the shader an unambiguous per-pixel type map.
+uniform sampler2D tag_tex : repeat_disable, filter_nearest;
 
 // Offset in UV to use when taking gradient taps. A wider tap gives
 // a thicker "surface band" that fades into the interior, so pulse
@@ -149,6 +161,11 @@ uniform float perpendicular_strength : hint_range(0.0, 1.0) = 0.5;
 // Debug: bypass effects and draw a crosshair at player_uv so the
 // world→screen transform can be verified at a glance.
 uniform bool debug_show_anchor = false;
+// Debug: render the raw tag_tex contents so you can confirm the
+// frequency-tag SubViewport is rendering the terrain correctly.
+// Tile pixels should appear in their flat palette color; everything
+// else should be black/transparent.
+uniform bool debug_show_tag = false;
 
 // --- Procedural tile texturing (near-field only) ---------------------------
 // Tiles in the scene render as flat palette color (the simplest
@@ -273,9 +290,18 @@ void fragment() {
 		// If they see black, it isn't.
 		vec3 dbg_scene = texture(screen_tex, SCREEN_UV).rgb;
 		COLOR = vec4(dbg_scene * vec3(0.3, 1.5, 0.3), 1.0);
+	} else if (debug_show_tag) {
+		vec4 tag_pixel = texture(tag_tex, SCREEN_UV);
+		COLOR = vec4(tag_pixel.rgb, 1.0);
 	} else {
-		// Sample scene color at center.
+		// Sample scene color at center (for visual reveal).
 		vec3 c0 = texture(screen_tex, SCREEN_UV).rgb;
+		// Sample tag-viewport color at center (for type
+		// classification + gradient). Tag viewport only contains
+		// terrain (and later bug/enemy tags), so palette-matching
+		// and gradient sampling here are clean — no player or
+		// parallax contamination.
+		vec3 tag0 = texture(tag_tex, SCREEN_UV).rgb;
 		const vec3 luma = vec3(0.299, 0.587, 0.114);
 		float l0 = dot(c0, luma);
 
@@ -290,6 +316,9 @@ void fragment() {
 		// far scale = weak contribution from pixels several cells
 		// deep; in the deepest interior every scale returns zero
 		// and stippling drops to nothing.
+		// All gradient taps sample `tag_tex` so sprites and parallax
+		// can't skew the gradient direction or magnitude (which was
+		// the cause of the "gap under the player" artifact).
 		vec2 tap_close_uv = vec2(gradient_tap_px * 0.33,
 				gradient_tap_px * 0.33) / screen_size_px;
 		vec2 tap_mid_uv = vec2(gradient_tap_px, gradient_tap_px)
@@ -297,31 +326,31 @@ void fragment() {
 		vec2 tap_far_uv = vec2(gradient_tap_px * 3.0,
 				gradient_tap_px * 3.0) / screen_size_px;
 
-		vec3 cL_s = texture(screen_tex,
+		vec3 cL_s = texture(tag_tex,
 				SCREEN_UV - vec2(tap_close_uv.x, 0.0)).rgb;
-		vec3 cR_s = texture(screen_tex,
+		vec3 cR_s = texture(tag_tex,
 				SCREEN_UV + vec2(tap_close_uv.x, 0.0)).rgb;
-		vec3 cU_s = texture(screen_tex,
+		vec3 cU_s = texture(tag_tex,
 				SCREEN_UV - vec2(0.0, tap_close_uv.y)).rgb;
-		vec3 cD_s = texture(screen_tex,
+		vec3 cD_s = texture(tag_tex,
 				SCREEN_UV + vec2(0.0, tap_close_uv.y)).rgb;
 
-		vec3 cL_m = texture(screen_tex,
+		vec3 cL_m = texture(tag_tex,
 				SCREEN_UV - vec2(tap_mid_uv.x, 0.0)).rgb;
-		vec3 cR_m = texture(screen_tex,
+		vec3 cR_m = texture(tag_tex,
 				SCREEN_UV + vec2(tap_mid_uv.x, 0.0)).rgb;
-		vec3 cU_m = texture(screen_tex,
+		vec3 cU_m = texture(tag_tex,
 				SCREEN_UV - vec2(0.0, tap_mid_uv.y)).rgb;
-		vec3 cD_m = texture(screen_tex,
+		vec3 cD_m = texture(tag_tex,
 				SCREEN_UV + vec2(0.0, tap_mid_uv.y)).rgb;
 
-		vec3 cL_l = texture(screen_tex,
+		vec3 cL_l = texture(tag_tex,
 				SCREEN_UV - vec2(tap_far_uv.x, 0.0)).rgb;
-		vec3 cR_l = texture(screen_tex,
+		vec3 cR_l = texture(tag_tex,
 				SCREEN_UV + vec2(tap_far_uv.x, 0.0)).rgb;
-		vec3 cU_l = texture(screen_tex,
+		vec3 cU_l = texture(tag_tex,
 				SCREEN_UV - vec2(0.0, tap_far_uv.y)).rgb;
-		vec3 cD_l = texture(screen_tex,
+		vec3 cD_l = texture(tag_tex,
 				SCREEN_UV + vec2(0.0, tap_far_uv.y)).rgb;
 
 		vec2 grad_close = vec2(
@@ -430,7 +459,7 @@ void fragment() {
 		int bg_type_id = 0;
 		vec3 bg_type_color = vec3(0.0);
 		bool is_bg_tile = detect_frequency(
-				c0, bg_type_id, bg_type_color);
+				tag0, bg_type_id, bg_type_color);
 
 		int tag_type_id = 0;
 		bool is_sprite_tag = false;

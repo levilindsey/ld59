@@ -46,9 +46,17 @@ const _BUG_TAG_RADIUS_PX := 20.0
 ## Use to verify world→screen conversion.
 @export var debug_show_anchor := false
 
+## If true, the composite shader displays the raw tag-viewport
+## texture instead of the normal output. Tile pixels should appear
+## in their flat palette color; everything else should be black.
+## Use to verify the frequency-tag SubViewport is rendering.
+@export var debug_show_tag := false
+
 var _pool: Array[EchoPulse] = []
 var _shader_mat: ShaderMaterial
 var _debug_frames_remaining: int = 10
+var _tag_viewport: SubViewport
+var _tag_camera: Camera2D
 
 
 func _enter_tree() -> void:
@@ -69,6 +77,21 @@ func _ready() -> void:
 
 	_shader_mat = %Mask.material as ShaderMaterial
 	G.ensure_valid(_shader_mat, "EcholocationRenderer: Mask missing ShaderMaterial")
+
+	# Resolve the frequency-tag viewport + its camera (both live under
+	# Main, see main.tscn). Tag viewport's texture is fed into the
+	# composite shader as `tag_tex` so the shader can do gradient
+	# sampling and palette matching on terrain-only pixels, with no
+	# player / parallax / sprite contamination.
+	_tag_viewport = get_tree().root.find_child(
+			"TagViewport", true, false) as SubViewport
+	if is_instance_valid(_tag_viewport):
+		_tag_camera = _tag_viewport.find_child(
+				"TagCamera2D", true, false) as Camera2D
+		_shader_mat.set_shader_parameter(
+				"tag_tex", _tag_viewport.get_texture())
+	else:
+		G.warning("EcholocationRenderer: TagViewport not found")
 
 	_shader_mat.set_shader_parameter("bayer_tex", _build_bayer_texture())
 	# Per-type interior + surface atlases. The scene renders tiles as
@@ -95,6 +118,8 @@ func _ready() -> void:
 	_shader_mat.set_shader_parameter("bayer_tile_px", bayer_tile_px)
 	_shader_mat.set_shader_parameter(
 			"debug_show_anchor", debug_show_anchor)
+	_shader_mat.set_shader_parameter(
+			"debug_show_tag", debug_show_tag)
 
 	# Populate the frequency palette used by per-pixel type detection.
 	# The shader palette-matches each scene pixel to identify tiles
@@ -149,6 +174,19 @@ func _process(delta: float) -> void:
 		var cam_world: Vector2 = cam.global_position
 		var world_origin: Vector2 = (cam_world
 				- viewport_size * world_per_screen_px * 0.5)
+		# Keep the tag-viewport camera locked to the scene camera so
+		# both viewports render the same region. Both share World2D,
+		# so world coordinates line up; syncing pixel-scale zoom +
+		# global position is all the tag viewport needs.
+		if is_instance_valid(_tag_camera):
+			_tag_camera.global_position = cam_world
+			_tag_camera.zoom = cam.zoom
+			if not _tag_camera.is_current():
+				_tag_camera.make_current()
+		if is_instance_valid(_tag_viewport):
+			var tag_size := Vector2i(viewport_size)
+			if _tag_viewport.size != tag_size:
+				_tag_viewport.size = tag_size
 		_shader_mat.set_shader_parameter(
 				"world_origin", world_origin)
 		_shader_mat.set_shader_parameter(
