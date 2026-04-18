@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+	<title>ld59 — Browser not supported</title>
+	<style>
+		body {
+			margin: 0;
+			background: #111;
+			color: #e6e6e6;
+			font-family: system-ui, sans-serif;
+			display: flex;
+			min-height: 100vh;
+			align-items: center;
+			justify-content: center;
+			padding: 2rem;
+		}
+		.card {
+			max-width: 36rem;
+			background: #1a1a1e;
+			border: 1px solid #2e2e34;
+			border-radius: 6px;
+			padding: 2rem;
+			line-height: 1.5;
+		}
+		h1 {
+			margin-top: 0;
+			color: #ffc857;
+		}
+		a {
+			color: #7dd3fc;
+		}
+		ul {
+			padding-left: 1.25rem;
+		}
+	</style>
+	<script>
+		// If the browser is already cross-origin-isolated and supports
+		// SharedArrayBuffer, redirect to the game. Otherwise leave the
+		// fallback visible.
+		(function () {
+			const supported =
+				typeof SharedArrayBuffer === "function" &&
+				self.crossOriginIsolated === true;
+			if (supported) {
+				window.location.replace("/game.html");
+			}
+		})();
+	</script>
+</head>
+<body>
+	<div class="card">
+		<h1>This browser can't run ld59</h1>
+		<p>
+			ld59 uses Godot 4.6's multi-threaded web build, which requires
+			<code>SharedArrayBuffer</code> and cross-origin isolation.
+			Your current browser either blocks those features or hasn't
+			shipped them.
+		</p>
+		<p>Please open this page in one of:</p>
+		<ul>
+			<li><a href="https://www.google.com/chrome/">Google Chrome</a></li>
+			<li><a href="https://www.mozilla.org/firefox/">Mozilla Firefox</a></li>
+			<li><a href="https://www.microsoft.com/edge">Microsoft Edge</a></li>
+		</ul>
+		<p>
+			Safari currently doesn't implement the <code>credentialless</code>
+			embedder policy that our threaded build needs, so the game
+			won't load there until upstream Safari ships support.
+		</p>
+	</div>
+</body>
+</html>
