@@ -17,10 +17,13 @@ signal pulse_completed(pulse: EchoPulse)
 
 const _MAX_PULSES := 8
 const _MAX_TAGGED_SPRITES := 32
-## Halo radius in screen pixels for a bug's frequency tag. A little
-## larger than the bug's visible body so pulse stipples have room
-## to land inside the halo even when the bug is tiny or fading.
-const _BUG_TAG_RADIUS_PX := 20.0
+## Halo radius for a bug's frequency tag, in WORLD pixels (the
+## renderer scales this by canvas_scale before passing to the
+## shader, so it tracks camera zoom). 6 = the radius of the bug's
+## Glow sprite (12-px scale, half-extent 6), so the tag halo
+## visually matches the bug's brightest visible area instead of
+## extending past the collision shape into surrounding empty space.
+const _BUG_TAG_RADIUS_PX := 6.0
 
 ## Player's visibility anchor. If null at _ready, falls back to
 ## G.level.player once available.

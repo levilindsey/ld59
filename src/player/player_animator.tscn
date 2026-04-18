@@ -1,4 +1,4 @@
-[gd_scene load_steps=123 format=3 uid="uid://br1b7cse0hxmt"]
+[gd_scene format=3 uid="uid://br1b7cse0hxmt"]
 
 [ext_resource type="Script" path="res://src/player/player_animator.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://rihqreb0nh5o" path="res://assets/images/scratch/kittenbaticorn.png" id="2_tex"]
@@ -6,6 +6,102 @@
 [sub_resource type="AtlasTexture" id="Frame000"]
 atlas = ExtResource("2_tex")
 region = Rect2(0, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame096"]
+atlas = ExtResource("2_tex")
+region = Rect2(3264, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame097"]
+atlas = ExtResource("2_tex")
+region = Rect2(3298, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame098"]
+atlas = ExtResource("2_tex")
+region = Rect2(3332, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame099"]
+atlas = ExtResource("2_tex")
+region = Rect2(3366, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame100"]
+atlas = ExtResource("2_tex")
+region = Rect2(3400, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame101"]
+atlas = ExtResource("2_tex")
+region = Rect2(3434, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame102"]
+atlas = ExtResource("2_tex")
+region = Rect2(3468, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame103"]
+atlas = ExtResource("2_tex")
+region = Rect2(3502, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame104"]
+atlas = ExtResource("2_tex")
+region = Rect2(3536, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame105"]
+atlas = ExtResource("2_tex")
+region = Rect2(3570, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame106"]
+atlas = ExtResource("2_tex")
+region = Rect2(3604, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame107"]
+atlas = ExtResource("2_tex")
+region = Rect2(3638, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame108"]
+atlas = ExtResource("2_tex")
+region = Rect2(3672, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame109"]
+atlas = ExtResource("2_tex")
+region = Rect2(3706, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame110"]
+atlas = ExtResource("2_tex")
+region = Rect2(3740, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame111"]
+atlas = ExtResource("2_tex")
+region = Rect2(3774, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame112"]
+atlas = ExtResource("2_tex")
+region = Rect2(3808, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame113"]
+atlas = ExtResource("2_tex")
+region = Rect2(3842, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame114"]
+atlas = ExtResource("2_tex")
+region = Rect2(3876, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame115"]
+atlas = ExtResource("2_tex")
+region = Rect2(3910, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame116"]
+atlas = ExtResource("2_tex")
+region = Rect2(3944, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame117"]
+atlas = ExtResource("2_tex")
+region = Rect2(3978, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame118"]
+atlas = ExtResource("2_tex")
+region = Rect2(4012, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame119"]
+atlas = ExtResource("2_tex")
+region = Rect2(4046, 0, 34, 36)
 
 [sub_resource type="AtlasTexture" id="Frame001"]
 atlas = ExtResource("2_tex")
@@ -387,104 +483,93 @@ region = Rect2(3196, 0, 34, 36)
 atlas = ExtResource("2_tex")
 region = Rect2(3230, 0, 34, 36)
 
-[sub_resource type="AtlasTexture" id="Frame096"]
-atlas = ExtResource("2_tex")
-region = Rect2(3264, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame097"]
-atlas = ExtResource("2_tex")
-region = Rect2(3298, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame098"]
-atlas = ExtResource("2_tex")
-region = Rect2(3332, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame099"]
-atlas = ExtResource("2_tex")
-region = Rect2(3366, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame100"]
-atlas = ExtResource("2_tex")
-region = Rect2(3400, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame101"]
-atlas = ExtResource("2_tex")
-region = Rect2(3434, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame102"]
-atlas = ExtResource("2_tex")
-region = Rect2(3468, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame103"]
-atlas = ExtResource("2_tex")
-region = Rect2(3502, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame104"]
-atlas = ExtResource("2_tex")
-region = Rect2(3536, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame105"]
-atlas = ExtResource("2_tex")
-region = Rect2(3570, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame106"]
-atlas = ExtResource("2_tex")
-region = Rect2(3604, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame107"]
-atlas = ExtResource("2_tex")
-region = Rect2(3638, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame108"]
-atlas = ExtResource("2_tex")
-region = Rect2(3672, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame109"]
-atlas = ExtResource("2_tex")
-region = Rect2(3706, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame110"]
-atlas = ExtResource("2_tex")
-region = Rect2(3740, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame111"]
-atlas = ExtResource("2_tex")
-region = Rect2(3774, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame112"]
-atlas = ExtResource("2_tex")
-region = Rect2(3808, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame113"]
-atlas = ExtResource("2_tex")
-region = Rect2(3842, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame114"]
-atlas = ExtResource("2_tex")
-region = Rect2(3876, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame115"]
-atlas = ExtResource("2_tex")
-region = Rect2(3910, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame116"]
-atlas = ExtResource("2_tex")
-region = Rect2(3944, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame117"]
-atlas = ExtResource("2_tex")
-region = Rect2(3978, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame118"]
-atlas = ExtResource("2_tex")
-region = Rect2(4012, 0, 34, 36)
-
-[sub_resource type="AtlasTexture" id="Frame119"]
-atlas = ExtResource("2_tex")
-region = Rect2(4046, 0, 34, 36)
-
 [sub_resource type="SpriteFrames" id="SpriteFrames_main"]
 animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("Frame000")
+}],
+"loop": true,
+"name": &"ceiling_rest",
+"speed": 16.0
+}, {
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("Frame096")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame097")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame098")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame099")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame100")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame101")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame102")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame103")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame104")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame105")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame106")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame107")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame108")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame109")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame110")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame111")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame112")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame113")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame114")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame115")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame116")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame117")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame118")
+}, {
+"duration": 1.0,
+"texture": SubResource("Frame119")
+}],
+"loop": true,
+"name": &"fly",
+"speed": 24.0
+}, {
 "frames": [{
 "duration": 1.0,
 "texture": SubResource("Frame000")
@@ -787,98 +872,14 @@ animations = [{
 "loop": true,
 "name": &"walk",
 "speed": 20.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("Frame096")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame097")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame098")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame099")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame100")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame101")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame102")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame103")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame104")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame105")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame106")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame107")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame108")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame109")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame110")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame111")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame112")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame113")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame114")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame115")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame116")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame117")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame118")
-}, {
-"duration": 1.0,
-"texture": SubResource("Frame119")
-}],
-"loop": true,
-"name": &"fly",
-"speed": 24.0
-}, {
-"frames": [{
-"duration": 1.0,
-"texture": SubResource("Frame000")
-}],
-"loop": true,
-"name": &"ceiling_rest",
-"speed": 16.0
 }]
 
-[node name="PlayerAnimator" type="Node2D" node_paths=PackedStringArray("animated_sprite")]
+[node name="PlayerAnimator" type="Node2D" unique_id=1500209327 node_paths=PackedStringArray("animated_sprite")]
 script = ExtResource("1_script")
 animated_sprite = NodePath("AnimatedSprite2D")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1025595397]
+position = Vector2(-9, -5)
 sprite_frames = SubResource("SpriteFrames_main")
 animation = &"idle_floor"
 autoplay = "idle_floor"
