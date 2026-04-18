@@ -1,6 +1,8 @@
 #include "terrain_world.h"
 
+#include "connected_components.h"
 #include "density_splat.h"
+#include "douglas_peucker.h"
 #include "marching_squares.h"
 
 #include <godot_cpp/classes/engine.hpp>
@@ -20,6 +22,9 @@ namespace godot {
 
 using terrain::Chunk;
 using terrain::ChunkManager;
+using terrain::ConnectedComponents;
+using terrain::DetachedIsland;
+using terrain::FlowStep;
 using terrain::MeshResult;
 using terrain::RemeshJob;
 using terrain::RemeshResult;
@@ -28,6 +33,7 @@ using terrain::WorkerPool;
 TerrainWorld::TerrainWorld() {
 	_manager = std::make_unique<ChunkManager>();
 	_worker = std::make_unique<WorkerPool>();
+	_flow_step = std::make_unique<FlowStep>();
 	_type_to_rgba_lut.assign(256, 0);
 }
 
@@ -85,6 +91,8 @@ void TerrainWorld::_bind_methods() {
 			&TerrainWorld::get_surface_height);
 	ClassDB::bind_method(D_METHOD("get_stats"),
 			&TerrainWorld::get_stats);
+	ClassDB::bind_method(D_METHOD("sample_fluid_velocity", "world_pos"),
+			&TerrainWorld::sample_fluid_velocity);
 	ClassDB::bind_method(D_METHOD("clear_all"),
 			&TerrainWorld::clear_all);
 
@@ -93,6 +101,15 @@ void TerrainWorld::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("tile_destroyed",
 			PropertyInfo(Variant::VECTOR2, "world_pos"),
 			PropertyInfo(Variant::INT, "type")));
+	// Fragment detachment signal: fires once per detached island.
+	// GDScript constructs a TerrainChunkFragment RigidBody2D from
+	// the pre-baked mesh + collision data.
+	ADD_SIGNAL(MethodInfo("fragment_detached",
+			PropertyInfo(Variant::VECTOR2, "origin_world"),
+			PropertyInfo(Variant::PACKED_VECTOR2_ARRAY, "mesh_verts"),
+			PropertyInfo(Variant::PACKED_INT32_ARRAY, "mesh_indices"),
+			PropertyInfo(Variant::PACKED_COLOR_ARRAY, "mesh_colors"),
+			PropertyInfo(Variant::PACKED_VECTOR2_ARRAY, "collision_segments")));
 }
 
 void TerrainWorld::_notification(int what) {
@@ -368,6 +385,11 @@ void TerrainWorld::_free_chunk_rids(Chunk *chunk) {
 
 void TerrainWorld::_on_process() {
 	_integrate_results();
+	_flow_tick_counter++;
+	if (_flow_tick_counter >= FLOW_STEP_INTERVAL) {
+		_flow_tick_counter = 0;
+		_step_flow();
+	}
 }
 
 // ---- Gameplay API -----------------------------------------------------------
@@ -414,39 +436,47 @@ void TerrainWorld::fill(Vector2 world_pos, float radius_px, float strength) {
 	}
 }
 
-void TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
-		int dmg, int frequency_mask, Vector2 world_pos) {
+bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
+		int dmg, int frequency_mask, Vector2 world_pos,
+		int32_t *out_world_cx, int32_t *out_world_cy) {
 	if (cx < 0 || cy < 0 || cx >= chunk->cells || cy >= chunk->cells) {
-		return;
+		return false;
 	}
 	const int idx = chunk->cell_index(cx, cy);
 	const uint8_t type = chunk->type_per_cell[idx];
 	if (type == TerrainSettings::TYPE_NONE) {
-		return;
+		return false;
 	}
 	if (type == TerrainSettings::TYPE_INDESTRUCTIBLE) {
-		return;
+		return false;
 	}
 	if (frequency_mask != 0) {
 		const int type_bit = _frequency_to_bit(type);
 		if ((frequency_mask & type_bit) == 0) {
-			return;
+			return false;
 		}
 	}
 	int hp = chunk->health_per_cell[idx] - dmg;
 	if (hp <= 0) {
 		chunk->health_per_cell[idx] = 0;
 		chunk->type_per_cell[idx] = TerrainSettings::TYPE_NONE;
-		// Clear the density at all 4 surrounding samples.
 		const int s = chunk->cells + 1;
 		chunk->density[cy * s + cx] = 0;
 		chunk->density[cy * s + cx + 1] = 0;
 		chunk->density[(cy + 1) * s + cx] = 0;
 		chunk->density[(cy + 1) * s + cx + 1] = 0;
 		emit_signal("tile_destroyed", world_pos, type);
+		if (out_world_cx) {
+			*out_world_cx = chunk->coords.x * chunk->cells + cx;
+		}
+		if (out_world_cy) {
+			*out_world_cy = chunk->coords.y * chunk->cells + cy;
+		}
+		return true;
 	} else {
 		chunk->health_per_cell[idx] = static_cast<uint8_t>(hp);
 	}
+	return false;
 }
 
 void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
@@ -455,6 +485,12 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 	const float reach = radius_px;
 	auto coords = _manager->chunks_affected_by_splat(
 			world_pos, reach, _cells_cached, _cell_size_px_cached);
+
+	// Collect world-cell coords of destroyed cells. Fed to CC pass
+	// after the full damage query runs so islands are detected once
+	// per damage call rather than per-cell.
+	std::vector<int32_t> destroyed_flat;
+
 	for (const Vector2i &c : coords) {
 		Chunk *chunk = _manager->get(c);
 		if (chunk == nullptr) {
@@ -466,7 +502,6 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 				chunk->cells, origin, _cell_size_px_cached,
 				world_pos, radius_px, 0.0f,
 				min_x, min_y, max_x, max_y);
-		// Cell-index clamp for the type/health grids (cells, not +1).
 		if (max_x >= chunk->cells) {
 			max_x = chunk->cells - 1;
 		}
@@ -489,11 +524,13 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 				if (dx * dx + dy * dy > r_sq) {
 					continue;
 				}
-				const int idx_before = chunk->cell_index(cx, cy);
-				const uint8_t type_before = chunk->type_per_cell[idx_before];
-				_apply_damage_to_cell(chunk, cx, cy, dmg,
-						frequency_mask, cell_center);
-				if (chunk->type_per_cell[idx_before] != type_before) {
+				int32_t w_cx = 0, w_cy = 0;
+				const bool destroyed = _apply_damage_to_cell(
+						chunk, cx, cy, dmg, frequency_mask,
+						cell_center, &w_cx, &w_cy);
+				if (destroyed) {
+					destroyed_flat.push_back(w_cx);
+					destroyed_flat.push_back(w_cy);
 					any_change = true;
 				}
 			}
@@ -504,6 +541,120 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 			_queue_remesh(chunk);
 		}
 	}
+
+	if (!destroyed_flat.empty()) {
+		_detach_islands_from_seeds(destroyed_flat);
+	}
+}
+
+void TerrainWorld::_detach_islands_from_seeds(
+		const std::vector<int32_t> &seed_world_cells_flat) {
+	std::vector<Vector2i> affected;
+	auto islands = ConnectedComponents::detach_islands(
+			*_manager,
+			_cells_cached,
+			_cell_size_px_cached,
+			seed_world_cells_flat,
+			MAX_DETACH_FLOOD,
+			affected);
+	// Queue remeshes for chunks whose cells got removed.
+	for (const Vector2i &c : affected) {
+		Chunk *chunk = _manager->get(c);
+		if (chunk == nullptr) {
+			continue;
+		}
+		_queue_remesh(chunk);
+	}
+	// For each island: mesh locally, DP-simplify, emit signal.
+	for (DetachedIsland &island : islands) {
+		const int32_t w = island.width_cells();
+		const int32_t h = island.height_cells();
+		(void)h;
+		MeshResult mesh;
+		terrain::mesh_chunk(
+				island.local_density.data(),
+				w,
+				_cell_size_px_cached,
+				Vector2(0, 0),
+				static_cast<uint8_t>(_iso_cached),
+				0u,
+				island.local_type.data(),
+				_type_to_rgba_lut.data(),
+				mesh);
+		if (mesh.indices.empty()) {
+			continue;
+		}
+		const float weld_eps_sq =
+				(_cell_size_px_cached * 0.01f) *
+				(_cell_size_px_cached * 0.01f);
+		std::vector<Vector2> collision = terrain::simplify_line_soup(
+				mesh.boundary_segments,
+				_simplify_eps_cached,
+				weld_eps_sq);
+
+		PackedVector2Array verts;
+		verts.resize(mesh.verts.size());
+		for (size_t i = 0; i < mesh.verts.size(); i++) {
+			verts[i] = mesh.verts[i];
+		}
+		PackedInt32Array indices;
+		indices.resize(mesh.indices.size());
+		for (size_t i = 0; i < mesh.indices.size(); i++) {
+			indices[i] = mesh.indices[i];
+		}
+		PackedColorArray colors;
+		colors.resize(mesh.colors_rgba.size());
+		for (size_t i = 0; i < mesh.colors_rgba.size(); i++) {
+			const uint32_t c = mesh.colors_rgba[i];
+			colors[i] = Color(
+					static_cast<uint8_t>((c >> 24) & 0xFF) / 255.0f,
+					static_cast<uint8_t>((c >> 16) & 0xFF) / 255.0f,
+					static_cast<uint8_t>((c >> 8) & 0xFF) / 255.0f,
+					static_cast<uint8_t>(c & 0xFF) / 255.0f);
+		}
+		PackedVector2Array seg_array;
+		seg_array.resize(collision.size());
+		for (size_t i = 0; i < collision.size(); i++) {
+			seg_array[i] = collision[i];
+		}
+		emit_signal("fragment_detached",
+				island.origin_px,
+				verts,
+				indices,
+				colors,
+				seg_array);
+	}
+}
+
+void TerrainWorld::_step_flow() {
+	if (!_flow_step || _editor_mode) {
+		return;
+	}
+	std::vector<Vector2i> dirty_flow;
+	const bool any = _flow_step->step_world(
+			*_manager,
+			_cells_cached,
+			static_cast<uint8_t>(_iso_cached),
+			dirty_flow);
+	if (!any) {
+		return;
+	}
+	for (const Vector2i &c : dirty_flow) {
+		Chunk *chunk = _manager->get(c);
+		if (chunk == nullptr) {
+			continue;
+		}
+		_queue_remesh(chunk);
+	}
+}
+
+Vector2 TerrainWorld::sample_fluid_velocity(Vector2 world_pos) const {
+	if (!_flow_step || !_manager) {
+		return Vector2();
+	}
+	return _flow_step->sample_fluid_velocity(
+			*_manager, world_pos,
+			_cells_cached, _cell_size_px_cached);
 }
 
 void TerrainWorld::damage_with_falloff(
@@ -653,6 +804,9 @@ void TerrainWorld::clear_all() {
 	}
 	_manager->all_mut().clear();
 	_dirty_chunks.clear();
+	if (_flow_step) {
+		_flow_step->reset_velocity_cache();
+	}
 }
 
 
