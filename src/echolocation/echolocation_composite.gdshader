@@ -145,18 +145,21 @@ uniform vec4 stipple_color : source_color = vec4(1.0, 0.0, 1.0, 0.0);
 
 // Facing ramp (piecewise):
 // - `facing_threshold_lo`: how far behind the normal can point
-//   before it's fully invisible. A surface with dot(normal,
-//   to_player) == -facing_threshold_lo produces facing=0.
+//   before it bottoms out at `back_facing_visibility` (the floor —
+//   no longer 0). A surface with dot(normal, to_player) <=
+//   -facing_threshold_lo produces facing=back_facing_visibility.
 // - `facing_threshold_hi`: how directly the normal must face the
 //   player to reach full visibility. dot >= facing_threshold_hi
 //   produces facing=1.
 // - `perpendicular_strength`: visibility at exactly perpendicular
-//   (dot=0). Gives surfaces seen edge-on partial visibility, so
-//   the player sees all surfaces around a wall, just less
-//   prominently than directly-facing ones.
+//   (dot=0). Gives surfaces seen edge-on partial visibility.
+// - `back_facing_visibility`: visibility for surfaces whose normal
+//   points away from the player. Small but non-zero so back walls
+//   stipple faintly under a pulse instead of vanishing.
 uniform float facing_threshold_lo : hint_range(0.0, 1.0) = 0.3;
 uniform float facing_threshold_hi : hint_range(0.0, 1.0) = 0.8;
 uniform float perpendicular_strength : hint_range(0.0, 1.0) = 0.5;
+uniform float back_facing_visibility : hint_range(0.0, 1.0) = 0.18;
 
 // Debug: bypass effects and draw a crosshair at player_uv so the
 // world→screen transform can be verified at a glance.
@@ -417,16 +420,23 @@ void fragment() {
 		vec2 outward_normal = (grad_mag > 0.001)
 				? (-normalize(grad)) : vec2(0.0);
 		float facing_raw = dot(outward_normal, to_player_dir);
-		// Piecewise facing ramp. Back half (facing_raw < 0) rises
-		// from 0 at -facing_threshold_lo up to
-		// perpendicular_strength at 0. Front half rises from
-		// perpendicular_strength at 0 to 1 at facing_threshold_hi.
-		float back_t = smoothstep(
-				-facing_threshold_lo, 0.0, facing_raw);
-		float front_t = smoothstep(
-				0.0, facing_threshold_hi, facing_raw);
-		float facing = back_t * perpendicular_strength
-				+ front_t * (1.0 - perpendicular_strength);
+		// Piecewise facing ramp:
+		//   facing_raw ≤ -facing_threshold_lo   → back_facing_visibility
+		//   facing_raw == 0                     → perpendicular_strength
+		//   facing_raw ≥  facing_threshold_hi   → 1
+		// Smooth between these control points so back-facing surfaces
+		// stipple faintly (rather than vanishing entirely).
+		float facing;
+		if (facing_raw >= 0.0) {
+			float front_t = smoothstep(
+					0.0, facing_threshold_hi, facing_raw);
+			facing = mix(perpendicular_strength, 1.0, front_t);
+		} else {
+			float back_t = smoothstep(
+					-facing_threshold_lo, 0.0, facing_raw);
+			facing = mix(back_facing_visibility,
+					perpendicular_strength, back_t);
+		}
 
 		// Surface prominence combines "how edgy" with "how facing".
 		// When surface_prominence_strength is 0 we pass everything;
