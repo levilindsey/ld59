@@ -22,7 +22,19 @@ var remainder: Vector2
 var travel: Vector2
 
 
-func _init(original: KinematicCollision2D = null, index := -1) -> void:
+## `floor_max_angle` and `up_direction` should match what the
+## owning CharacterBody2D is configured with so our per-collision
+## side classification agrees with Godot's runtime is_on_floor() /
+## is_on_ceiling() / is_on_wall(). Without alignment, sharp
+## concave-polygon corners can flip Godot's predicate true on a
+## contact whose normal we'd classify differently — the resulting
+## "is_on_floor true but no FLOOR contact in surface_contacts" state
+## crashes downstream contact-deref code.
+func _init(
+		original: KinematicCollision2D = null,
+		index := -1,
+		floor_max_angle: float = MovementSettings._MAX_FLOOR_ANGLE,
+		up_direction: Vector2 = Vector2.UP) -> void:
 	if is_instance_valid(original):
 		self.angle = original.get_angle()
 		self.collider = original.get_collider()
@@ -43,11 +55,20 @@ func _init(original: KinematicCollision2D = null, index := -1) -> void:
 		self.is_tilemap_collision = true
 
 		if is_tilemap_collision:
-			if angle_to_within_plus_minus_pi(normal, Vector2.UP) <= MovementSettings._MAX_FLOOR_ANGLE:
+			# Mirror Godot's CharacterBody2D classification:
+			#   FLOOR if angle(normal, up) <= floor_max_angle
+			#   CEILING if angle(normal, -up) <= floor_max_angle
+			#   else WALL, side determined by normal.x sign
+			# (a wall on the player's right has its normal pointing
+			# left, i.e. normal.x < 0 → RIGHT_WALL).
+			var down := -up_direction
+			if angle_to_within_plus_minus_pi(normal, up_direction) \
+					<= floor_max_angle:
 				side = SurfaceSide.FLOOR
-			elif angle_to_within_plus_minus_pi(normal, Vector2.DOWN) <= MovementSettings._MAX_FLOOR_ANGLE:
+			elif angle_to_within_plus_minus_pi(normal, down) \
+					<= floor_max_angle:
 				side = SurfaceSide.CEILING
-			elif angle_to_within_plus_minus_pi(normal, Vector2.LEFT) <= PI / 2 - MovementSettings._MAX_FLOOR_ANGLE:
+			elif normal.x < 0.0:
 				side = SurfaceSide.RIGHT_WALL
 			else:
 				side = SurfaceSide.LEFT_WALL

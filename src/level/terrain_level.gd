@@ -142,14 +142,15 @@ func _connect_pulse_damage() -> void:
 
 ## Distance-attenuated pulse damage. Full-damage band is half the
 ## player's near-visible radius so the player has to be close to
-## reliably break tiles; max range still tracks the composite
-## shader's stipple_fade_end_px. All damage values halved from the
-## "kill in one shot up close" baseline, so cells take ~2 hits at
-## point-blank and ~12 at the edge of the visible range.
+## reliably break tiles; max range tracks the composite shader's
+## stipple_fade_end_px. Falloff is ease-out (quadratic) in C++:
+## damage drops fast just past the full radius, then asymptotes
+## slowly toward `_DAMAGE_MIN_AMOUNT` near the edge of the visible
+## range. Min halved again so the very edge takes ~24 hits.
 const _DAMAGE_FULL_RADIUS_PX := 40.0
 const _DAMAGE_MAX_RADIUS_PX := 420.0
 const _DAMAGE_FULL_AMOUNT := 128
-const _DAMAGE_MIN_AMOUNT := 22
+const _DAMAGE_MIN_AMOUNT := 11
 
 
 func _on_pulse_emitted(pulse: EchoPulse) -> void:

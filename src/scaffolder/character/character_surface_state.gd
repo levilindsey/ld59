@@ -190,10 +190,21 @@ func update_collisions() -> void:
 	collisions.clear()
 
 	var new_collision_count := character.get_slide_collision_count()
+	# Pass the character's actual floor_max_angle + up_direction
+	# into each Collision so per-contact side classification matches
+	# Godot's is_on_floor / is_on_ceiling / is_on_wall predicates.
+	# Without this the WALL_ANGLE_EPSILON (~0.01 rad) delta between
+	# Collision's old fixed PI/4 threshold and the character's
+	# (PI/4 + 0.01) lets sharp concave corners flip Godot's predicate
+	# without producing a same-side Collision.
+	var floor_max_angle := character.floor_max_angle
+	var up_direction := character.up_direction
 	for i in new_collision_count:
 		var collision := Collision.new(
 			character.get_slide_collision(i),
-			i)
+			i,
+			floor_max_angle,
+			up_direction)
 		collisions[collision.key] = collision
 
 	_update_contacts()

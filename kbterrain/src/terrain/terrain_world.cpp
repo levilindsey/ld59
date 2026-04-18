@@ -729,11 +729,18 @@ void TerrainWorld::damage_with_falloff(
 					if (t > 1.0f) {
 						t = 1.0f;
 					}
+					// Ease-out (quadratic): damage drops fast just
+					// past the full-damage radius, then asymptotes
+					// slowly toward `min_dmg` near the max range.
+					// 1 - (1-t)^2 maps [0,1] -> [0,1] with steep
+					// rise at t=0 and gentle slope at t=1.
+					const float inv = 1.0f - t;
+					const float ease_t = 1.0f - inv * inv;
 					cell_dmg = static_cast<int>(
 							std::round(static_cast<float>(full_dmg)
-									* (1.0f - t)
+									* (1.0f - ease_t)
 									+ static_cast<float>(min_dmg)
-											* t));
+											* ease_t));
 				}
 				if (cell_dmg <= 0) {
 					continue;
