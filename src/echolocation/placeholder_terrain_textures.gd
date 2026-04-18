@@ -1,95 +1,276 @@
 class_name PlaceholderTerrainTextures
 extends RefCounted
-## Generates tileable placeholder textures for terrain rendering
-## while real art is still a TODO. Produces:
-## - a tileable "dirt" interior texture (world-space wrapping).
-## - a tileable-horizontal "grass" surface strip (applied in a band
-##   along surface edges, rotated to align with the surface tangent).
+## Generates placeholder terrain texture atlases while authored art
+## is still a TODO. Produces two tileable atlases indexed by
+## Frequency.Type:
+## - `interior_atlas`: horizontal strip of N per-type interior tiles
+##   (each `TILE_PX` square). Sampled with world-space wrapping so
+##   the shader gets seamless tiling within a type's slot.
+## - `surface_atlas`: horizontal strip of N per-type surface bands
+##   (each `TILE_PX` × `SURFACE_HEIGHT_PX`). Sampled with rotated-
+##   tangent UVs so the accent band runs along the surface edge.
 ##
-## Replace the returned textures with authored art when it lands —
-## the composite shader consumes them as uniforms.
+## Slot convention: the atlas has `Frequency.ATLAS_SLOT_COUNT` slots
+## keyed by the Frequency.Type enum ordinal. Empty slots (NONE) are
+## transparent; types without surface art (INDESTRUCTIBLE, SAND)
+## leave their surface slot transparent so the shader's alpha-gated
+## blend falls back to interior only.
 
 
-const _DIRT_SIZE := 32
-const _DIRT_DARK := Color(0.32, 0.22, 0.15, 1.0)
-const _DIRT_MID := Color(0.45, 0.32, 0.20, 1.0)
-const _DIRT_LIGHT := Color(0.55, 0.40, 0.25, 1.0)
-const _DIRT_SHADOW := Color(0.25, 0.17, 0.11, 1.0)
-
-const _GRASS_WIDTH := 32
-const _GRASS_HEIGHT := 12
-const _GRASS_TOP := Color(0.40, 0.82, 0.32, 1.0)
-const _GRASS_MID := Color(0.25, 0.58, 0.22, 1.0)
-const _GRASS_DARK := Color(0.18, 0.40, 0.18, 1.0)
+const TILE_PX := 32
+const SURFACE_HEIGHT_PX := 12
 
 
-static func make_dirt_interior() -> ImageTexture:
-	var img := Image.create(
-			_DIRT_SIZE, _DIRT_SIZE, false, Image.FORMAT_RGBA8)
-	img.fill(_DIRT_MID)
+# ---- Per-type interior palettes (dark / mid / light) ---------------
 
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 42
-	# Scatter highlights and deep shadows to give the tile some
-	# texture without leaving visible seams. Symmetric wrap: any
-	# pixel placed near an edge is mirrored on the opposite side so
-	# tiling stays seamless.
-	for i in range(80):
-		var x := rng.randi() % _DIRT_SIZE
-		var y := rng.randi() % _DIRT_SIZE
-		var c := _DIRT_DARK
-		var roll := rng.randf()
-		if roll < 0.33:
-			c = _DIRT_LIGHT
-		elif roll < 0.50:
-			c = _DIRT_SHADOW
-		img.set_pixel(x, y, c)
+const _INTERIOR_PALETTES := {
+	# RED: pink-red rock. Dark to deep pink shading.
+	Frequency.Type.RED: [
+		Color(0.52, 0.16, 0.23, 1.0),
+		Color(0.86, 0.33, 0.44, 1.0),
+		Color(0.98, 0.58, 0.68, 1.0),
+	],
+	# GREEN: teal rock.
+	Frequency.Type.GREEN: [
+		Color(0.10, 0.40, 0.34, 1.0),
+		Color(0.22, 0.72, 0.58, 1.0),
+		Color(0.48, 0.95, 0.78, 1.0),
+	],
+	# BLUE: bright cyan-ish.
+	Frequency.Type.BLUE: [
+		Color(0.18, 0.45, 0.70, 1.0),
+		Color(0.42, 0.76, 0.96, 1.0),
+		Color(0.72, 0.92, 1.00, 1.0),
+	],
+	# YELLOW: warm amber/orange.
+	Frequency.Type.YELLOW: [
+		Color(0.60, 0.36, 0.08, 1.0),
+		Color(0.95, 0.66, 0.22, 1.0),
+		Color(1.00, 0.86, 0.42, 1.0),
+	],
+	# LIQUID: deep water blue.
+	Frequency.Type.LIQUID: [
+		Color(0.06, 0.15, 0.35, 1.0),
+		Color(0.14, 0.32, 0.62, 1.0),
+		Color(0.24, 0.48, 0.80, 1.0),
+	],
+	# SAND: greyish yellow.
+	Frequency.Type.SAND: [
+		Color(0.52, 0.46, 0.32, 1.0),
+		Color(0.74, 0.68, 0.48, 1.0),
+		Color(0.90, 0.86, 0.66, 1.0),
+	],
+	# INDESTRUCTIBLE: near-black charcoal.
+	Frequency.Type.INDESTRUCTIBLE: [
+		Color(0.05, 0.05, 0.06, 1.0),
+		Color(0.12, 0.12, 0.14, 1.0),
+		Color(0.22, 0.22, 0.25, 1.0),
+	],
+}
 
-	# Subtle small stones: 2x2 clusters.
-	for i in range(10):
-		var x := rng.randi() % (_DIRT_SIZE - 1)
-		var y := rng.randi() % (_DIRT_SIZE - 1)
-		img.set_pixel(x, y, _DIRT_LIGHT)
-		img.set_pixel(x + 1, y, _DIRT_MID)
-		img.set_pixel(x, y + 1, _DIRT_MID)
-		img.set_pixel(x + 1, y + 1, _DIRT_SHADOW)
+# ---- Per-type surface accent palettes (dark / mid / light) ---------
 
-	return ImageTexture.create_from_image(img)
+# Accent colors for the surface band. Not strictly "grass green" —
+# each type gets an accent that pairs with its interior. Types
+# missing from this dict get no surface art.
+const _SURFACE_ACCENTS := {
+	# RED: rusty moss / coral pink-orange.
+	Frequency.Type.RED: [
+		Color(0.38, 0.22, 0.14, 1.0),
+		Color(0.68, 0.40, 0.20, 1.0),
+		Color(0.94, 0.62, 0.32, 1.0),
+	],
+	# GREEN: classic yellow-green moss.
+	Frequency.Type.GREEN: [
+		Color(0.18, 0.40, 0.12, 1.0),
+		Color(0.42, 0.68, 0.22, 1.0),
+		Color(0.72, 0.92, 0.38, 1.0),
+	],
+	# BLUE: pale cyan-mint accent.
+	Frequency.Type.BLUE: [
+		Color(0.16, 0.52, 0.52, 1.0),
+		Color(0.42, 0.80, 0.76, 1.0),
+		Color(0.76, 0.98, 0.92, 1.0),
+	],
+	# YELLOW: deep ochre accent.
+	Frequency.Type.YELLOW: [
+		Color(0.42, 0.22, 0.06, 1.0),
+		Color(0.70, 0.44, 0.14, 1.0),
+		Color(0.94, 0.68, 0.28, 1.0),
+	],
+}
+
+# Water "shine" colors (highlights on the surface of liquid).
+const _LIQUID_SHINE := [
+	Color(0.35, 0.62, 0.96, 1.0),
+	Color(0.78, 0.92, 1.00, 1.0),
+	Color(1.00, 1.00, 1.00, 1.0),
+]
 
 
-static func make_grass_surface() -> ImageTexture:
-	# Horizontal strip: x tiles along the surface tangent, y goes
-	# from grass (y=0, just outside the surface) down into the tile
-	# (y=HEIGHT-1, deepest in the surface band).
-	var img := Image.create(
-			_GRASS_WIDTH, _GRASS_HEIGHT, false, Image.FORMAT_RGBA8)
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 17
-	# Per-column grass blade height: how far "down" the grass
-	# extends into the tile at each horizontal position.
-	var blade_heights: PackedInt32Array = PackedInt32Array()
-	blade_heights.resize(_GRASS_WIDTH)
-	for x in range(_GRASS_WIDTH):
-		blade_heights[x] = rng.randi_range(2, 5)
+static func make_interior_atlas() -> ImageTexture:
+	var width: int = TILE_PX * Frequency.ATLAS_SLOT_COUNT
+	var img := Image.create(width, TILE_PX, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
 
-	for y in range(_GRASS_HEIGHT):
-		for x in range(_GRASS_WIDTH):
-			var c: Color
-			var blade_depth: int = blade_heights[x]
-			if y <= 0:
-				c = _GRASS_TOP
-			elif y <= blade_depth:
-				# Blade body: interpolate from top to dark.
-				var t := float(y) / float(max(1, blade_depth))
-				c = _GRASS_TOP.lerp(_GRASS_DARK, t)
-			elif y <= blade_depth + 2:
-				# Transition band.
-				c = _GRASS_MID.lerp(_DIRT_MID, 0.3)
+	for type_id in _INTERIOR_PALETTES:
+		var palette: Array = _INTERIOR_PALETTES[type_id]
+		var tile_x_offset: int = int(type_id) * TILE_PX
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 0x1000 + int(type_id)
+
+		# Base fill uses the mid shade.
+		for y in range(TILE_PX):
+			for x in range(TILE_PX):
+				img.set_pixel(
+						tile_x_offset + x, y,
+						palette[1] as Color)
+
+		# Scatter ~60 accent pixels (dark + light shades) to give
+		# pattern without visible seams.
+		for i in range(60):
+			var x: int = rng.randi() % TILE_PX
+			var y: int = rng.randi() % TILE_PX
+			var shade: Color
+			var roll := rng.randf()
+			if roll < 0.5:
+				shade = palette[0]
 			else:
-				# Below the grass: fade into dirt color.
-				var t := float(y - (blade_depth + 2)) / float(
-						_GRASS_HEIGHT - (blade_depth + 2))
-				c = _GRASS_DARK.lerp(_DIRT_MID, clamp(t, 0.0, 1.0))
-			img.set_pixel(x, y, c)
+				shade = palette[2]
+			img.set_pixel(tile_x_offset + x, y, shade)
+
+		# A handful of 2x2 "stone" clusters for visual interest.
+		# Use wraparound modulo so the cluster doesn't cross the
+		# slot boundary.
+		for i in range(6):
+			var x: int = rng.randi() % TILE_PX
+			var y: int = rng.randi() % TILE_PX
+			var x1: int = (x + 1) % TILE_PX
+			var y1: int = (y + 1) % TILE_PX
+			img.set_pixel(tile_x_offset + x, y, palette[2] as Color)
+			img.set_pixel(tile_x_offset + x1, y, palette[1] as Color)
+			img.set_pixel(tile_x_offset + x, y1, palette[1] as Color)
+			img.set_pixel(tile_x_offset + x1, y1, palette[0] as Color)
 
 	return ImageTexture.create_from_image(img)
+
+
+static func make_surface_atlas() -> ImageTexture:
+	var width: int = TILE_PX * Frequency.ATLAS_SLOT_COUNT
+	var img := Image.create(
+			width, SURFACE_HEIGHT_PX, false, Image.FORMAT_RGBA8)
+	# Transparent background — slots without surface art stay empty,
+	# and the shader's alpha-gated blend will fall back to interior.
+	img.fill(Color(0, 0, 0, 0))
+
+	# Plant-like accent surfaces for the four destroyable types.
+	for type_id in _SURFACE_ACCENTS:
+		_draw_plant_accent_surface(
+				img, int(type_id), _SURFACE_ACCENTS[type_id])
+
+	# Water gets a "shine" treatment instead of moss.
+	_draw_liquid_shine_surface(img, int(Frequency.Type.LIQUID))
+
+	return ImageTexture.create_from_image(img)
+
+
+static func _draw_plant_accent_surface(
+		img: Image, type_id: int, palette: Array) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 0x2000 + type_id
+	var tile_x_offset: int = type_id * TILE_PX
+
+	# Per-column blade depths: how far the accent extends into the
+	# tile (y=0 outside, y=HEIGHT-1 deepest inside).
+	var blade_depths := PackedInt32Array()
+	blade_depths.resize(TILE_PX)
+	for x in range(TILE_PX):
+		blade_depths[x] = rng.randi_range(3, 7)
+
+	for x in range(TILE_PX):
+		var depth: int = blade_depths[x]
+		for y in range(SURFACE_HEIGHT_PX):
+			var c: Color
+			if y == 0:
+				c = palette[2] as Color
+			elif y < depth:
+				var t := float(y) / float(max(1, depth))
+				c = (palette[2] as Color).lerp(
+						palette[1] as Color, t)
+			elif y < depth + 2:
+				c = (palette[1] as Color).lerp(
+						palette[0] as Color, 0.5)
+			else:
+				# Past the blade band: transparent so the shader
+				# blends back to interior.
+				c = Color(0, 0, 0, 0)
+			img.set_pixel(tile_x_offset + x, y, c)
+
+
+static func _draw_liquid_shine_surface(
+		img: Image, type_id: int) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 0x3000
+	var tile_x_offset: int = type_id * TILE_PX
+
+	# A thin shine band at the top (y=0..1), then a soft fade.
+	for x in range(TILE_PX):
+		# Random per-column highlight offset for subtle motion.
+		var highlight_x := rng.randf()
+		for y in range(SURFACE_HEIGHT_PX):
+			var c: Color
+			if y == 0:
+				# Bright shine at the top.
+				c = _LIQUID_SHINE[2]
+			elif y == 1:
+				# Second row: slightly muted shine, breaks into dots.
+				if highlight_x > 0.6:
+					c = _LIQUID_SHINE[1]
+				else:
+					c = Color(
+							_LIQUID_SHINE[0].r,
+							_LIQUID_SHINE[0].g,
+							_LIQUID_SHINE[0].b,
+							0.6)
+			elif y == 2:
+				# Third row: sparse speckles.
+				if highlight_x > 0.8:
+					c = Color(
+							_LIQUID_SHINE[1].r,
+							_LIQUID_SHINE[1].g,
+							_LIQUID_SHINE[1].b,
+							0.4)
+				else:
+					c = Color(0, 0, 0, 0)
+			else:
+				c = Color(0, 0, 0, 0)
+			img.set_pixel(tile_x_offset + x, y, c)
+
+
+# ---- Shader uniform packing ----------------------------------------
+
+## Pack the type → mid-color dictionary into a flat `palette` uniform
+## + `palette_freqs` uniform for the composite shader's frequency
+## detector. Returns a Dictionary with `palette`, `palette_freqs`,
+## `palette_count` keys, ready for `set_shader_parameter`.
+static func build_palette_uniforms() -> Dictionary:
+	var palette := PackedVector4Array()
+	var palette_freqs := PackedInt32Array()
+	var order: Array = [
+		Frequency.Type.INDESTRUCTIBLE,
+		Frequency.Type.RED,
+		Frequency.Type.GREEN,
+		Frequency.Type.BLUE,
+		Frequency.Type.YELLOW,
+		Frequency.Type.LIQUID,
+		Frequency.Type.SAND,
+	]
+	for type_id in order:
+		var c: Color = Frequency.PALETTE[type_id]
+		palette.append(Vector4(c.r, c.g, c.b, c.a))
+		palette_freqs.append(int(type_id))
+	return {
+		"palette": palette,
+		"palette_freqs": palette_freqs,
+		"palette_count": palette.size(),
+	}

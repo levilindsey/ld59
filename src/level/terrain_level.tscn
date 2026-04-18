@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/level/terrain_level.gd" id="1_level"]
 [ext_resource type="Resource" path="res://src/level/default_terrain_settings.tres" id="2_settings"]
 [ext_resource type="TileSet" uid="uid://mtwu14d78k40" path="res://src/level/default_tile_set.tres" id="3_tileset"]
+[ext_resource type="PackedScene" path="res://src/level/parallax_background.tscn" id="4_bg"]
 
 [node name="TerrainLevel" type="Node2D"]
 script = ExtResource("1_level")
@@ -10,6 +11,8 @@ terrain_world_path = NodePath("TerrainWorld")
 terrain_settings = ExtResource("2_settings")
 tile_map_layer_path = NodePath("Tiles")
 test_rect_world_px = Rect2(-320, 32, 640, 256)
+
+[node name="ParallaxBackground" parent="." instance=ExtResource("4_bg")]
 
 [node name="TerrainWorld" type="TerrainWorld" parent="."]
 unique_name_in_owner = true

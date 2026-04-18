@@ -88,18 +88,22 @@ uniform float facing_threshold_hi : hint_range(0.0, 1.0) = 0.8;
 uniform bool debug_show_anchor = false;
 
 // --- Procedural tile rendering ---------------------------------------------
-// When enabled, revealed tile pixels are painted by blending two
-// tileable textures:
-//   - interior_tex sampled in world space (the tile's "body")
-//   - surface_tex sampled in a rotated frame aligned with the
-//     surface tangent (the tile's "edge band")
-// Placeholder textures currently: dirt + grass. Replace with
-// per-frequency authored art when palette is populated.
+// Per-type textures are packed into horizontal atlases — one tile
+// slot per Frequency.Type. The shader detects which type the
+// underlying scene pixel represents via palette-match, then samples
+// the matching slot of each atlas.
+//
+// Interior atlas: `atlas_slot_count` tiles wide, each `TILE_PX`
+// square. World-space wrap within each slot via fract().
+// Surface atlas: same width, `SURFACE_HEIGHT_PX` tall. Rotated-
+// tangent UV with surface alpha acting as the "has surface" gate
+// (alpha=0 slots fall back to interior only).
 uniform bool procedural_tile_rendering = true;
-uniform sampler2D interior_tex : source_color, repeat_enable,
+uniform sampler2D interior_atlas : source_color, repeat_disable,
 		filter_nearest;
-uniform sampler2D surface_tex : source_color, repeat_enable,
+uniform sampler2D surface_atlas : source_color, repeat_disable,
 		filter_nearest;
+uniform int atlas_slot_count = 8;
 uniform float interior_scale_px : hint_range(4.0, 128.0) = 32.0;
 uniform float surface_scale_along_px : hint_range(4.0, 128.0) = 32.0;
 uniform float surface_band_px : hint_range(1.0, 32.0) = 12.0;
@@ -315,40 +319,58 @@ void fragment() {
 				max(near_vis, dithered_pulse_reveal), 0.0, 1.0);
 
 		// Base color for this pixel. When procedural rendering is on
-		// and this pixel looks like a tile, synthesize the color
-		// from interior + surface textures (grass-on-top, dirt-
-		// below look). Otherwise fall back to the scene backbuffer.
+		// and this pixel is over a tile, sample the type's slot in
+		// the interior and surface atlases. The surface atlas's
+		// alpha channel serves as the "has surface" gate — slots
+		// without surface art (INDESTRUCTIBLE, SAND) are transparent
+		// there, so the blend falls back to interior only.
 		vec3 scene_rgb = c0;
 		vec3 tile_rgb = c0;
-		if (procedural_tile_rendering && has_content > 0.5) {
+		if (procedural_tile_rendering && has_content > 0.5
+				&& palette_count > 0) {
+			// Which type is this pixel? palette match on scene color.
+			int type_id = detect_frequency(c0);
+			float slot_count_f = max(float(atlas_slot_count), 1.0);
+			float u_base = float(type_id) / slot_count_f;
+			float u_width = 1.0 / slot_count_f;
+
 			vec2 world_pos = world_origin
 					+ UV * screen_size_px * world_per_screen_px;
-			// Interior: world-space wrap keeps texture continuous
-			// across tile boundaries.
-			vec2 interior_uv = world_pos / interior_scale_px;
-			vec3 interior_rgb = texture(interior_tex, interior_uv).rgb;
 
-			// Surface band: rotate the UV so the texture's "x" axis
-			// runs along the surface tangent, and its "y" axis runs
-			// from outside-the-tile (top of strip) into the tile
-			// interior (bottom of strip).
+			// Interior: wrap within the tile, shift into this type's
+			// atlas slot.
+			float interior_u_frac = fract(
+					world_pos.x / interior_scale_px);
+			float interior_v = fract(
+					world_pos.y / interior_scale_px);
+			vec2 interior_uv = vec2(
+					u_base + interior_u_frac * u_width,
+					interior_v);
+			vec3 interior_rgb = texture(
+					interior_atlas, interior_uv).rgb;
+
+			// Surface band: rotate the UV so the texture's x axis
+			// runs along the surface tangent, y goes from outside
+			// (top of strip) into the tile (deeper = closer to
+			// interior).
 			vec2 normal = (grad_mag > 0.001)
 					? (-normalize(grad)) : vec2(0.0, -1.0);
 			vec2 tangent = vec2(-normal.y, normal.x);
-			float along = dot(world_pos, tangent) / surface_scale_along_px;
-			// v=0 at the surface, v=1 at surface_band_px inside.
-			// The gradient gives us "how edgy" at THIS pixel; we
-			// interpret (1 - grad_mag) as a rough "depth into the
-			// surface" normalised to band width.
+			float along = fract(
+					dot(world_pos, tangent) / surface_scale_along_px);
 			float v = clamp(1.0 - grad_mag, 0.0, 1.0);
-			vec3 surface_rgb = texture(surface_tex,
-					vec2(along, v)).rgb;
+			vec2 surface_uv = vec2(
+					u_base + along * u_width, v);
+			vec4 surface_sample = texture(
+					surface_atlas, surface_uv);
 
-			// Mix: where the gradient is strong (near edge) we
-			// prefer the surface strip; where it's weak (interior)
-			// we prefer the interior texture.
-			float band_mix = smoothstep(0.2, 0.8, grad_mag);
-			tile_rgb = mix(interior_rgb, surface_rgb, band_mix);
+			// Blend surface over interior. band_mix fades in the
+			// surface as gradient magnitude grows (closer to edge);
+			// surface_sample.a gates slots without surface art.
+			float band_mix = smoothstep(0.2, 0.8, grad_mag)
+					* surface_sample.a;
+			tile_rgb = mix(
+					interior_rgb, surface_sample.rgb, band_mix);
 		}
 		// scene_rgb used for near-radius (real scene colors for the
 		// player's immediate surroundings).
@@ -359,13 +381,13 @@ void fragment() {
 			stipple_rgb = tile_rgb;
 		}
 
-		// Revealed = (near_vis OR dithered_pulse_reveal). Use the
-		// REAL scene color inside the near-radius (smooth "you can
-		// always see around you" reveal), and stipple_rgb where the
-		// pulse reveals. Add ring glow on top everywhere so the
+		// Revealed = (near_vis OR dithered_pulse_reveal). Near-field
+		// shows the procedural tile rendering (interior + surface
+		// atlases) so the player sees textured terrain around them
+		// always. Pulse-revealed pixels use stipple_rgb (magenta by
+		// default). Ring glow is added on top everywhere so the
 		// wave front stays readable in dark areas.
-		vec3 revealed_rgb = mix(
-				stipple_rgb, scene_rgb, near_vis);
+		vec3 revealed_rgb = mix(stipple_rgb, tile_rgb, near_vis);
 		vec3 out_rgb = mix(ring_rgb, revealed_rgb + ring_rgb, reveal);
 		float out_alpha = 1.0; // fully opaque overlay
 

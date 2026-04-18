@@ -66,13 +66,15 @@ func _ready() -> void:
 	G.ensure_valid(_shader_mat, "EcholocationRenderer: Mask missing ShaderMaterial")
 
 	_shader_mat.set_shader_parameter("bayer_tex", _build_bayer_texture())
-	# Placeholder terrain textures — replace with authored art later.
+	# Per-type interior + surface atlases (placeholder art).
 	_shader_mat.set_shader_parameter(
-			"interior_tex",
-			PlaceholderTerrainTextures.make_dirt_interior())
+			"interior_atlas",
+			PlaceholderTerrainTextures.make_interior_atlas())
 	_shader_mat.set_shader_parameter(
-			"surface_tex",
-			PlaceholderTerrainTextures.make_grass_surface())
+			"surface_atlas",
+			PlaceholderTerrainTextures.make_surface_atlas())
+	_shader_mat.set_shader_parameter(
+			"atlas_slot_count", Frequency.ATLAS_SLOT_COUNT)
 	_shader_mat.set_shader_parameter("near_radius_px", near_radius_px)
 	_shader_mat.set_shader_parameter("near_fade_px", near_fade_px)
 	_shader_mat.set_shader_parameter("edge_width_px", edge_width_px)
@@ -86,11 +88,17 @@ func _ready() -> void:
 	_shader_mat.set_shader_parameter(
 			"debug_show_anchor", debug_show_anchor)
 
-	# Frequency palette starts empty in Phase 1; populated in
-	# Phase 3 when per-frequency tile art lands. When empty, the
-	# shader skips frequency gating and every visible pixel matches.
+	# Populate the frequency palette + per-pixel type detection. The
+	# shader samples interior/surface atlases using the detected type
+	# as the x-axis slot index.
+	var palette_uniforms := (
+			PlaceholderTerrainTextures.build_palette_uniforms())
 	_shader_mat.set_shader_parameter(
-			"palette_count", 0)
+			"palette", palette_uniforms["palette"])
+	_shader_mat.set_shader_parameter(
+			"palette_freqs", palette_uniforms["palette_freqs"])
+	_shader_mat.set_shader_parameter(
+			"palette_count", palette_uniforms["palette_count"])
 	_shader_mat.set_shader_parameter(
 			"current_frequency", Frequency.Type.NONE)
 
