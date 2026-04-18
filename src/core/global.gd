@@ -71,9 +71,9 @@ func print(
 
 
 func verbose(
-		message = "",
-		category := ScaffolderLog.CATEGORY_DEFAULT,
-		force_enable := false,
+	message = "",
+	category := ScaffolderLog.CATEGORY_DEFAULT,
+	force_enable := false,
 ) -> void:
 	log.print(message, category, ScaffolderLog.Verbosity.VERBOSE, force_enable)
 

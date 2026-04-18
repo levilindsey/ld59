@@ -287,9 +287,18 @@ func _update_contacts() -> void:
 
 
 func _reuse_previous_surface_contact_if_missing(side: int) -> void:
-	if not surface_contacts.has(side):
-		assert(previous_surface_contacts.has(side))
-		surface_contacts[side] = previous_surface_contacts[side]
+	if surface_contacts.has(side):
+		return
+	# Godot's is_on_floor() / is_on_wall() / is_on_ceiling() can
+	# report a side this frame that none of our slide collisions
+	# classified the same way (different normal-angle thresholds
+	# vs MovementSettings._MAX_FLOOR_ANGLE, or contact at a sharp
+	# concave-polygon corner). Re-use the previous frame's contact
+	# if we have one; otherwise let it be — better than dropping
+	# the frame on a hard ensure.
+	if not previous_surface_contacts.has(side):
+		return
+	surface_contacts[side] = previous_surface_contacts[side]
 
 
 func _update_touch_state() -> void:
@@ -348,7 +357,7 @@ func _update_action_state() -> void:
 	_update_attachment_trigger_state()
 	_update_attachment_state()
 
-	assert(!is_attaching_to_surface or is_touching_surface)
+	G.ensure(!is_attaching_to_surface or is_touching_surface)
 
 	_update_attachment_contact()
 
@@ -673,7 +682,7 @@ func _update_attachment_contact() -> void:
 
 	if is_attaching_to_surface:
 		attachment_contact = _get_attachment_contact()
-		assert(is_instance_valid(attachment_contact))
+		G.ensure(is_instance_valid(attachment_contact))
 
 		var next_attachment_position := attachment_contact.position
 		var next_attachment_normal := attachment_contact.normal

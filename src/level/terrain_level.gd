@@ -109,16 +109,30 @@ func _connect_pulse_damage() -> void:
 			G.echo.pulse_emitted.connect(_on_pulse_emitted)
 
 
+## Distance-attenuated pulse damage. Full-damage band is half the
+## player's near-visible radius so the player has to be close to
+## reliably break tiles; max range still tracks the composite
+## shader's stipple_fade_end_px. All damage values halved from the
+## "kill in one shot up close" baseline, so cells take ~2 hits at
+## point-blank and ~12 at the edge of the visible range.
+const _DAMAGE_FULL_RADIUS_PX := 40.0
+const _DAMAGE_MAX_RADIUS_PX := 420.0
+const _DAMAGE_FULL_AMOUNT := 128
+const _DAMAGE_MIN_AMOUNT := 22
+
+
 func _on_pulse_emitted(pulse: EchoPulse) -> void:
 	if not is_instance_valid(G.terrain):
 		return
 	var mask: int = 0
 	if pulse.frequency > 0 and pulse.frequency <= 30:
 		mask = 1 << pulse.frequency
-	G.terrain.damage(
+	G.terrain.damage_with_falloff(
 			pulse.center,
-			pulse.max_radius_px,
-			pulse.damage,
+			_DAMAGE_MAX_RADIUS_PX,
+			_DAMAGE_FULL_RADIUS_PX,
+			_DAMAGE_FULL_AMOUNT,
+			_DAMAGE_MIN_AMOUNT,
 			mask)
 
 

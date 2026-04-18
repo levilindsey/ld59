@@ -112,7 +112,7 @@ static func compute_arc_points(
 		end_angle: float,
 		sector_arc_length := 4.0,
 ) -> PackedVector2Array:
-	assert(sector_arc_length > 0.0)
+	G.ensure(sector_arc_length > 0.0)
 
 	var angle_diff := end_angle - start_angle
 	var sector_count := floori(absf(angle_diff) * radius / sector_arc_length)
@@ -251,7 +251,7 @@ static func draw_ice_cream_cone(
 		border_width := 1.0,
 		sector_arc_length := 4.0,
 ) -> void:
-	assert(circle_radius >= 0.0)
+	G.ensure(circle_radius >= 0.0)
 
 	var distance_from_cone_end_point_to_circle_center := \
 	cone_end_point.distance_to(circle_center)

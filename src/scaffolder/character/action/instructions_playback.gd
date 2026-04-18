@@ -113,7 +113,7 @@ func get_elapsed_time_scaled() -> float:
 
 
 func _get_start_time_scaled_for_next_instruction() -> float:
-	assert(!is_finished)
+	G.ensure(!is_finished)
 
 	var duration_until_next_instruction: float
 	if is_on_last_instruction:
