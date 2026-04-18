@@ -1,0 +1,33 @@
+[gd_scene load_steps=4 format=3 uid="uid://dp2k8vxn3qr7m"]
+
+[ext_resource type="Script" path="res://src/enemies/spider.gd" id="1_spider"]
+[ext_resource type="Texture2D" uid="uid://g3ysr8be4but" path="res://assets/images/white_pixel.png" id="2_px"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_spider"]
+radius = 6.0
+
+[node name="Spider" type="Area2D"]
+collision_layer = 16
+collision_mask = 8
+script = ExtResource("1_spider")
+max_health = 40
+touch_damage = 8
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_spider")
+
+[node name="Body" type="Sprite2D" parent="."]
+texture = ExtResource("2_px")
+scale = Vector2(10, 7)
+
+[node name="LegsLeft" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.7)
+position = Vector2(-6, 2)
+texture = ExtResource("2_px")
+scale = Vector2(3, 6)
+
+[node name="LegsRight" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.7)
+position = Vector2(6, 2)
+texture = ExtResource("2_px")
+scale = Vector2(3, 6)
