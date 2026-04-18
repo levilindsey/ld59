@@ -22,6 +22,14 @@ Color TerrainSettings::color_for_type(int type) const {
 			return color_liquid;
 		case TYPE_SAND:
 			return color_sand;
+		case TYPE_WEB_RED:
+			return color_web_red;
+		case TYPE_WEB_GREEN:
+			return color_web_green;
+		case TYPE_WEB_BLUE:
+			return color_web_blue;
+		case TYPE_WEB_YELLOW:
+			return color_web_yellow;
 		default:
 			return Color(0, 0, 0, 0);
 	}
@@ -36,6 +44,10 @@ void TerrainSettings::_bind_methods() {
 	BIND_ENUM_CONSTANT(TYPE_LIQUID);
 	BIND_ENUM_CONSTANT(TYPE_SAND);
 	BIND_ENUM_CONSTANT(TYPE_YELLOW);
+	BIND_ENUM_CONSTANT(TYPE_WEB_RED);
+	BIND_ENUM_CONSTANT(TYPE_WEB_GREEN);
+	BIND_ENUM_CONSTANT(TYPE_WEB_BLUE);
+	BIND_ENUM_CONSTANT(TYPE_WEB_YELLOW);
 
 	ClassDB::bind_method(D_METHOD("get_chunk_cells"),
 			&TerrainSettings::get_chunk_cells);
@@ -94,6 +106,10 @@ void TerrainSettings::_bind_methods() {
 	BIND_COLOR(color_yellow);
 	BIND_COLOR(color_liquid);
 	BIND_COLOR(color_sand);
+	BIND_COLOR(color_web_red);
+	BIND_COLOR(color_web_green);
+	BIND_COLOR(color_web_blue);
+	BIND_COLOR(color_web_yellow);
 #undef BIND_COLOR
 
 	ClassDB::bind_method(D_METHOD("color_for_type", "type"),

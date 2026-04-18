@@ -31,10 +31,19 @@ const _CUSTOM_DATA_HEALTH := "initial_health"
 ## Bake every used cell in `tml` as a solid tile. Per-tile `type` and
 ## `initial_health` are read from the TileSet's custom data layers;
 ## tiles without values fall back to `default_type` / 255.
+##
+## Tiles whose `type` is one of the `Frequency.Type.WEB_*` markers
+## (WEB_RED / WEB_GREEN / WEB_BLUE / WEB_YELLOW) are special: they
+## do NOT become solid marching-squares cells. Instead, the loader
+## spawns a `web_tile_scene` instance under `spawn_parent`, centered
+## on the tile's world position, with its `frequency` set to the
+## base color encoded in the WEB_* suffix (e.g. WEB_RED → RED).
 static func bake_from_tile_map_layer(
 		terrain: Node,
 		tml: TileMapLayer,
-		default_type: int) -> void:
+		default_type: int,
+		spawn_parent: Node = null,
+		web_tile_scene: PackedScene = null) -> void:
 	if not is_instance_valid(terrain) or not is_instance_valid(tml):
 		return
 	var settings: TerrainSettings = terrain.settings
@@ -56,18 +65,27 @@ static func bake_from_tile_map_layer(
 		return
 
 	# Collect solid tiles + per-tile type/health into two dictionaries
-	# keyed by Vector2i tile-coord.
+	# keyed by Vector2i tile-coord. WEB-typed tiles are instead
+	# routed to WebTile instance spawning.
 	var tile_type: Dictionary = {}
 	var tile_health: Dictionary = {}
 	for tile_pos in tml.get_used_cells():
 		var type_from_data: int = _read_custom_data_int(
 				tml, tile_pos, _CUSTOM_DATA_TYPE, -1)
-		var health_from_data: int = _read_custom_data_int(
-				tml, tile_pos, _CUSTOM_DATA_HEALTH, -1)
-		tile_type[tile_pos] = (
+		var resolved_type: int = (
 				type_from_data
 				if type_from_data > 0
 				else default_type)
+
+		if Frequency.is_web_type(resolved_type):
+			_spawn_web_tile(
+					tml, tile_pos, resolved_type,
+					spawn_parent, web_tile_scene)
+			continue
+
+		var health_from_data: int = _read_custom_data_int(
+				tml, tile_pos, _CUSTOM_DATA_HEALTH, -1)
+		tile_type[tile_pos] = resolved_type
 		tile_health[tile_pos] = (
 				health_from_data
 				if health_from_data >= 0
@@ -75,6 +93,34 @@ static func bake_from_tile_map_layer(
 
 	_bake_from_solid_map(terrain, tile_type, tile_health,
 			cells, cell_size_px, cells_per_tile, settings)
+
+
+static func _spawn_web_tile(
+		tml: TileMapLayer,
+		tile_pos: Vector2i,
+		web_type: int,
+		spawn_parent: Node,
+		web_tile_scene: PackedScene) -> void:
+	if not is_instance_valid(spawn_parent):
+		G.warning(
+				"TerrainLevelLoader: WEB tile at %s has no spawn_parent"
+				% str(tile_pos))
+		return
+	if web_tile_scene == null:
+		G.warning(
+				("TerrainLevelLoader: WEB tile at %s but no "
+						+ "web_tile_scene was passed in")
+				% str(tile_pos))
+		return
+	var web: Node = web_tile_scene.instantiate()
+	spawn_parent.add_child(web)
+	# `map_to_local` returns the tile center in Godot 4, which is
+	# exactly where we want the WebTile positioned.
+	var local: Vector2 = tml.map_to_local(tile_pos)
+	if web is Node2D:
+		(web as Node2D).global_position = tml.to_global(local)
+	if "frequency" in web:
+		web.set("frequency", Frequency.web_type_to_frequency(web_type))
 
 
 ## Fill a world-space rectangle with a single type. Rectangle is in
