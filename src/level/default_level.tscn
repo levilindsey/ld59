@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" uid="uid://bqj50lqds4nhs" path="res://src/level/level.gd" id="1_n1ky5"]
 [ext_resource type="TileSet" uid="uid://mtwu14d78k40" path="res://src/level/default_tile_set.tres" id="3_es1ad"]
+[ext_resource type="Script" path="res://src/bugs/bug_spawner.gd" id="4_spawner"]
+[ext_resource type="PackedScene" uid="uid://dgk5b2n3lc8kr" path="res://src/bugs/bug.tscn" id="5_bug"]
 
 [node name="DefaultLevel" type="Node2D" unique_id=1949689228]
 script = ExtResource("1_n1ky5")
@@ -20,3 +22,7 @@ unique_name_in_owner = true
 
 [node name="Players" type="Node2D" parent="." unique_id=466391736]
 unique_name_in_owner = true
+
+[node name="BugSpawner" type="Node2D" parent="."]
+script = ExtResource("4_spawner")
+bug_scene = ExtResource("5_bug")
