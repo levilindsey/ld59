@@ -64,11 +64,30 @@ var _thresholds: Dictionary = {}
 var _alive_counts: Dictionary = {}
 
 
+func _enter_tree() -> void:
+	G.bugs = self
+
+
+func _exit_tree() -> void:
+	if G.bugs == self:
+		G.bugs = null
+
+
 func _ready() -> void:
 	for freq: int in _SPAWN_FREQUENCIES:
 		_phases[freq] = 0.0
 		_thresholds[freq] = _sample_exp_threshold()
 		_alive_counts[freq] = 0
+
+
+## Returns every Bug currently alive under this spawner. Used by the
+## echolocation renderer to push tag halos to the composite shader.
+func get_alive_bugs() -> Array[Bug]:
+	var result: Array[Bug] = []
+	for child in get_children():
+		if child is Bug:
+			result.append(child as Bug)
+	return result
 
 
 func _process(delta: float) -> void:

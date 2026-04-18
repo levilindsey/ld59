@@ -15,6 +15,7 @@ render_mode blend_mix, unshaded;
 
 const int MAX_PULSES = 8;
 const int MAX_PALETTE = 16;
+const int MAX_TAGGED_SPRITES = 32;
 
 uniform vec2 player_uv = vec2(0.5, 0.5);
 uniform vec2 screen_size_px = vec2(1152.0, 648.0);
@@ -24,9 +25,10 @@ uniform vec2 screen_size_px = vec2(1152.0, 648.0);
 uniform sampler2D screen_tex : hint_screen_texture,
 		repeat_disable, filter_nearest;
 
-// Offset in UV to use when taking gradient taps. 2 texels = 2/screen
-// is roughly correct; computed in-shader from screen_size_px.
-uniform float gradient_tap_px : hint_range(0.5, 32.0) = 8.0;
+// Offset in UV to use when taking gradient taps. A wider tap gives
+// a thicker "surface band" that fades into the interior, so pulse
+// stippling gets a spatial gradient instead of being a thin rim.
+uniform float gradient_tap_px : hint_range(0.5, 32.0) = 12.0;
 
 // Near-field: always-on circular reveal around the player.
 uniform float near_radius_px : hint_range(0.0, 512.0) = 80.0;
@@ -47,23 +49,65 @@ uniform float ring_width_px : hint_range(1.0, 16.0) = 4.0;
 uniform float ring_glow_strength : hint_range(0.0, 2.0) = 1.2;
 
 // Surface-prominence tuning.
-// 0 = no gradient influence, 1 = full gradient gating of pulse.
+// 0 = no gradient influence (uniform stipple density everywhere a
+// tile is); 1 = stipple density follows grad_mag × facing exactly,
+// so surfaces stipple strongly and deep interiors don't stipple
+// at all. Default 1.0 gives the pointillism-only-at-surfaces look.
 uniform float surface_prominence_strength : hint_range(0.0, 1.0)
-		= 0.9;
-// Minimum fraction of pulse intensity on flat interiors, so they
-// aren't completely invisible.
-uniform float interior_floor : hint_range(0.0, 1.0) = 0.12;
+		= 1.0;
+// Minimum fraction of pulse intensity on flat interiors. Default 0
+// so deep interiors stay black under a pulse — only the surface
+// band and its fade-in toward interior stipple.
+uniform float interior_floor : hint_range(0.0, 1.0) = 0.0;
+// Multiplier applied to raw luminance-gradient magnitude at each
+// scale before the per-scale weights kick in. Higher = surfaces
+// saturate to full prominence faster (stronger surface lines);
+// lower = longer, gentler gradient band from surface into interior.
+uniform float gradient_gain : hint_range(0.5, 12.0) = 3.0;
 
-// Bayer dither for pointillism (8x8 ordered).
+// Noise floor subtracted from combined grad magnitude, then the
+// remainder is rescaled to [0, 1]. Prevents faint multi-scale
+// signals in deep interiors (e.g., far-tap picking up a distant
+// wall across a gap) from producing sparse sub-threshold stipples.
+// Raise if you still see a few stipple dots in deep tile interior;
+// lower if the surface-to-interior fade feels too abrupt.
+// Default chosen aggressive because the far tap's binary
+// "detected-an-edge" response tends to plateau across the interior
+// band before dropping out; a high floor trims that plateau.
+uniform float grad_floor : hint_range(0.0, 0.7) = 0.4;
+
+// Bayer dither for pointillism (8x8 ordered). Smaller tile = finer
+// stipples. Shader cost is constant regardless of tile size — it's
+// one texture lookup + compare per pixel either way.
 uniform sampler2D bayer_tex : source_color, repeat_enable,
 		filter_nearest;
-uniform float bayer_tile_px : hint_range(1.0, 16.0) = 4.0;
+uniform float bayer_tile_px : hint_range(0.5, 16.0) = 2.0;
 
 // Frequency palette. Unused when palette_count == 0; in that mode
 // the shader treats every pixel as "matches." Populate in Phase 3.
 uniform vec4 palette[MAX_PALETTE];
 uniform int palette_freqs[MAX_PALETTE];
 uniform int palette_count = 0;
+// Maximum RGB distance a pixel's color can be from a palette entry
+// to still count as "matches that type." Terrain meshes emit exact
+// palette colors, so a tight threshold is correct; too-loose lets
+// anti-aliased sprite pixels (player outline, bug edges) false-
+// match and render as flat palette color, producing a "ghost of the
+// sprite" artifact on nearby tiles.
+uniform float palette_match_threshold : hint_range(0.0, 1.5) = 0.02;
+
+// Tagged sprites: per-frame array of bugs (and future enemies)
+// whose screen position + frequency we need the shader to know
+// about. Palette-match on the backbuffer alone can't reliably
+// identify small semi-transparent sprites; the tag halo gives each
+// sprite a shader-side bounding circle so pulse stipples reveal it
+// at its type color regardless of alpha/blending. Lightweight stand-
+// in for a full frequency-tag SubViewport until enemies with
+// irregular shapes need one.
+// Packing: xy = screen-pixel center, z = halo radius in pixels,
+// w = Frequency enum id.
+uniform vec4 tagged_sprites[MAX_TAGGED_SPRITES];
+uniform int tagged_sprite_count = 0;
 // Threshold for counting a pixel as "background" (low luminance /
 // transparent). In Phase 1 we use this to keep the shader from
 // sparkling the backdrop clear color.
@@ -72,33 +116,47 @@ uniform float background_luma_threshold : hint_range(0.0, 1.0) = 0.02;
 // Current frequency of the player (Frequency.Type enum value).
 uniform int current_frequency = 0;
 
-// Stipple color override. When alpha > 0, pulse-revealed pixels are
-// painted this color instead of the scene pixel underneath. Keeps
-// the visual language of echolocation separate from the underlying
-// tile art.
-uniform vec4 stipple_color : source_color = vec4(1.0, 0.0, 1.0, 1.0);
+// Brightness + saturation boost applied to stipples whose type
+// matches `current_frequency`. Non-matching tile/object types still
+// stipple in their own palette color — the boost just makes the
+// player's current frequency visually pop.
+uniform float matching_brightness_boost : hint_range(1.0, 2.5)
+		= 1.25;
+uniform float matching_saturation_boost : hint_range(1.0, 2.5)
+		= 1.35;
 
-// Facing threshold: below this, the surface is considered fully
-// back-facing and no pulse stipple appears. Higher = more strict.
+// Stipple color override. When alpha > 0, pulse-revealed pixels are
+// painted this color instead of the tile / scene pixel underneath.
+// Default alpha=0 so dots match the underlying tile-type color;
+// bump alpha to debug dot placement with a loud tint.
+uniform vec4 stipple_color : source_color = vec4(1.0, 0.0, 1.0, 0.0);
+
+// Facing ramp (piecewise):
+// - `facing_threshold_lo`: how far behind the normal can point
+//   before it's fully invisible. A surface with dot(normal,
+//   to_player) == -facing_threshold_lo produces facing=0.
+// - `facing_threshold_hi`: how directly the normal must face the
+//   player to reach full visibility. dot >= facing_threshold_hi
+//   produces facing=1.
+// - `perpendicular_strength`: visibility at exactly perpendicular
+//   (dot=0). Gives surfaces seen edge-on partial visibility, so
+//   the player sees all surfaces around a wall, just less
+//   prominently than directly-facing ones.
 uniform float facing_threshold_lo : hint_range(0.0, 1.0) = 0.3;
 uniform float facing_threshold_hi : hint_range(0.0, 1.0) = 0.8;
+uniform float perpendicular_strength : hint_range(0.0, 1.0) = 0.5;
 
 // Debug: bypass effects and draw a crosshair at player_uv so the
 // world→screen transform can be verified at a glance.
 uniform bool debug_show_anchor = false;
 
-// --- Procedural tile rendering ---------------------------------------------
-// Per-type textures are packed into horizontal atlases — one tile
-// slot per Frequency.Type. The shader detects which type the
-// underlying scene pixel represents via palette-match, then samples
-// the matching slot of each atlas.
-//
-// Interior atlas: `atlas_slot_count` tiles wide, each `TILE_PX`
-// square. World-space wrap within each slot via fract().
-// Surface atlas: same width, `SURFACE_HEIGHT_PX` tall. Rotated-
-// tangent UV with surface alpha acting as the "has surface" gate
-// (alpha=0 slots fall back to interior only).
-uniform bool procedural_tile_rendering = true;
+// --- Procedural tile texturing (near-field only) ---------------------------
+// Tiles in the scene render as flat palette color (the simplest
+// reliable source for the shader's palette-match classification). The
+// composite shader then overlays per-type interior + surface textures
+// inside the near-field so the close-by view has real art, not just a
+// flat wash. The stipple path outside near-field stays flat palette
+// color so echo dots read as one color per type.
 uniform sampler2D interior_atlas : source_color, repeat_disable,
 		filter_nearest;
 uniform sampler2D surface_atlas : source_color, repeat_disable,
@@ -106,7 +164,6 @@ uniform sampler2D surface_atlas : source_color, repeat_disable,
 uniform int atlas_slot_count = 8;
 uniform float interior_scale_px : hint_range(4.0, 128.0) = 32.0;
 uniform float surface_scale_along_px : hint_range(4.0, 128.0) = 32.0;
-uniform float surface_band_px : hint_range(1.0, 32.0) = 12.0;
 // Screen→world transform. Assumes DRAG_CENTER Camera2D; Y-down.
 uniform vec2 world_origin = vec2(0.0, 0.0);
 uniform float world_per_screen_px = 1.0;
@@ -170,11 +227,17 @@ float pulse_ring_glow(vec2 px, vec4 p, vec4 cone) {
 
 // ---- palette lookup -------------------------------------------------------
 
-// Returns the frequency id of the palette entry closest to `c`, or
-// 0 if palette_count is 0 (frequency gating disabled).
-int detect_frequency(vec3 c) {
+// Finds the palette entry closest to `c`. Writes the matched
+// frequency id into `type_id` and the palette color into
+// `type_color`, and returns true when the match is within
+// `palette_match_threshold`. Pixels outside the threshold
+// (sprites, HUD, mid-gradient edges) return false and the outputs
+// stay zeroed — the caller treats those as non-tile.
+bool detect_frequency(vec3 c, out int type_id, out vec3 type_color) {
+	type_id = 0;
+	type_color = vec3(0.0);
 	if (palette_count <= 0) {
-		return 0;
+		return false;
 	}
 	int best_i = 0;
 	float best_d = 1e9;
@@ -188,7 +251,12 @@ int detect_frequency(vec3 c) {
 			best_i = i;
 		}
 	}
-	return palette_freqs[best_i];
+	if (best_d > palette_match_threshold) {
+		return false;
+	}
+	type_id = palette_freqs[best_i];
+	type_color = palette[best_i].rgb;
+	return true;
 }
 
 
@@ -206,33 +274,107 @@ void fragment() {
 		vec3 dbg_scene = texture(screen_tex, SCREEN_UV).rgb;
 		COLOR = vec4(dbg_scene * vec3(0.3, 1.5, 0.3), 1.0);
 	} else {
-		// Sample scene color at center + 4 neighbors for a gradient.
-		vec2 tap_uv = vec2(gradient_tap_px, gradient_tap_px)
-				/ screen_size_px;
+		// Sample scene color at center.
 		vec3 c0 = texture(screen_tex, SCREEN_UV).rgb;
-		vec3 cL = texture(screen_tex,
-				SCREEN_UV - vec2(tap_uv.x, 0.0)).rgb;
-		vec3 cR = texture(screen_tex,
-				SCREEN_UV + vec2(tap_uv.x, 0.0)).rgb;
-		vec3 cU = texture(screen_tex,
-				SCREEN_UV - vec2(0.0, tap_uv.y)).rgb;
-		vec3 cD = texture(screen_tex,
-				SCREEN_UV + vec2(0.0, tap_uv.y)).rgb;
-
 		const vec3 luma = vec3(0.299, 0.587, 0.114);
 		float l0 = dot(c0, luma);
-		float lL = dot(cL, luma);
-		float lR = dot(cR, luma);
-		float lU = dot(cU, luma);
-		float lD = dot(cD, luma);
 
-		// Gradient: approximate surface-facing direction. Using a
-		// wider tap (gradient_tap_px) finds whole-tile boundaries
-		// rather than in-tile pixel-art detail.
-		vec2 grad = vec2(lR - lL, lD - lU);
-		float grad_mag = length(grad);
-		// Amplify: a modest luminance diff should be a strong edge.
-		grad_mag = clamp(grad_mag * 4.0, 0.0, 1.0);
+		// --- Multi-scale gradient ---------------------------------
+		// A single central-difference tap gives a binary edge/no-
+		// edge response at `gradient_tap_px`, which produces a
+		// hard-edged stipple rim. Sample at three scales instead so
+		// pixels at increasing depth inside a tile detect edges at
+		// wider and wider radii, with decreasing weight — the result
+		// is a smooth surface→interior fade over ~a few cells.
+		// Close scale = strong contribution near the true surface;
+		// far scale = weak contribution from pixels several cells
+		// deep; in the deepest interior every scale returns zero
+		// and stippling drops to nothing.
+		vec2 tap_close_uv = vec2(gradient_tap_px * 0.33,
+				gradient_tap_px * 0.33) / screen_size_px;
+		vec2 tap_mid_uv = vec2(gradient_tap_px, gradient_tap_px)
+				/ screen_size_px;
+		vec2 tap_far_uv = vec2(gradient_tap_px * 3.0,
+				gradient_tap_px * 3.0) / screen_size_px;
+
+		vec3 cL_s = texture(screen_tex,
+				SCREEN_UV - vec2(tap_close_uv.x, 0.0)).rgb;
+		vec3 cR_s = texture(screen_tex,
+				SCREEN_UV + vec2(tap_close_uv.x, 0.0)).rgb;
+		vec3 cU_s = texture(screen_tex,
+				SCREEN_UV - vec2(0.0, tap_close_uv.y)).rgb;
+		vec3 cD_s = texture(screen_tex,
+				SCREEN_UV + vec2(0.0, tap_close_uv.y)).rgb;
+
+		vec3 cL_m = texture(screen_tex,
+				SCREEN_UV - vec2(tap_mid_uv.x, 0.0)).rgb;
+		vec3 cR_m = texture(screen_tex,
+				SCREEN_UV + vec2(tap_mid_uv.x, 0.0)).rgb;
+		vec3 cU_m = texture(screen_tex,
+				SCREEN_UV - vec2(0.0, tap_mid_uv.y)).rgb;
+		vec3 cD_m = texture(screen_tex,
+				SCREEN_UV + vec2(0.0, tap_mid_uv.y)).rgb;
+
+		vec3 cL_l = texture(screen_tex,
+				SCREEN_UV - vec2(tap_far_uv.x, 0.0)).rgb;
+		vec3 cR_l = texture(screen_tex,
+				SCREEN_UV + vec2(tap_far_uv.x, 0.0)).rgb;
+		vec3 cU_l = texture(screen_tex,
+				SCREEN_UV - vec2(0.0, tap_far_uv.y)).rgb;
+		vec3 cD_l = texture(screen_tex,
+				SCREEN_UV + vec2(0.0, tap_far_uv.y)).rgb;
+
+		vec2 grad_close = vec2(
+				dot(cR_s, luma) - dot(cL_s, luma),
+				dot(cD_s, luma) - dot(cU_s, luma));
+		vec2 grad_mid = vec2(
+				dot(cR_m, luma) - dot(cL_m, luma),
+				dot(cD_m, luma) - dot(cU_m, luma));
+		vec2 grad_far = vec2(
+				dot(cR_l, luma) - dot(cL_l, luma),
+				dot(cD_l, luma) - dot(cU_l, luma));
+
+		// Per-scale weights: close scale saturates at the surface,
+		// mid and far contribute progressively weaker signals so the
+		// band fades smoothly from surface to interior.
+		float mag_close = length(grad_close) * gradient_gain * 1.0;
+		float mag_mid = length(grad_mid) * gradient_gain * 0.5;
+		float mag_far = length(grad_far) * gradient_gain * 0.25;
+		float grad_mag = clamp(
+				max(mag_close, max(mag_mid, mag_far)), 0.0, 1.0);
+		// Noise-floor subtract: anything below grad_floor falls to
+		// zero, so deep-interior pixels whose far tap faintly picks
+		// up an off-axis wall stop producing sub-threshold stipples.
+		// Remainder is rescaled so the surface peak stays at 1.
+		grad_mag = clamp(
+				(grad_mag - grad_floor) / max(1.0 - grad_floor, 1e-3),
+				0.0,
+				1.0);
+
+		// Surface-atlas-specific proximity signal. Uses only the
+		// close (4 px) scale so the surface accent texture stays a
+		// narrow rim at the actual tile edge instead of smearing
+		// down into what the multi-scale grad_mag now treats as the
+		// stipple fade band. Shrinking this scale also shrinks the
+		// halo of gradient contamination from the player sprite
+		// that sits on top of tiles (the "gap" artifact).
+		float surface_proximity = clamp(
+				length(grad_close) * gradient_gain * 1.5, 0.0, 1.0);
+		vec2 surface_normal = (length(grad_close) > 1e-4)
+				? (-normalize(grad_close)) : vec2(0.0, -1.0);
+
+		// Direction for the facing ramp. Mid scale is the most
+		// stable (close flickers at tile corners, far smears across
+		// gaps). Fall back to whichever scale has a non-trivial
+		// reading.
+		vec2 grad;
+		if (length(grad_mid) > 1e-4) {
+			grad = grad_mid;
+		} else if (length(grad_close) > 1e-4) {
+			grad = grad_close;
+		} else {
+			grad = grad_far;
+		}
 
 		// "To player" direction for the facing dot product.
 		vec2 to_player = player_px - px;
@@ -246,12 +388,16 @@ void fragment() {
 		vec2 outward_normal = (grad_mag > 0.001)
 				? (-normalize(grad)) : vec2(0.0);
 		float facing_raw = dot(outward_normal, to_player_dir);
-		// Sharper cutoff on back-facing / grazing surfaces so only
-		// clearly-toward-player edges stipple.
-		float facing = smoothstep(
-				facing_threshold_lo,
-				facing_threshold_hi,
-				facing_raw);
+		// Piecewise facing ramp. Back half (facing_raw < 0) rises
+		// from 0 at -facing_threshold_lo up to
+		// perpendicular_strength at 0. Front half rises from
+		// perpendicular_strength at 0 to 1 at facing_threshold_hi.
+		float back_t = smoothstep(
+				-facing_threshold_lo, 0.0, facing_raw);
+		float front_t = smoothstep(
+				0.0, facing_threshold_hi, facing_raw);
+		float facing = back_t * perpendicular_strength
+				+ front_t * (1.0 - perpendicular_strength);
 
 		// Surface prominence combines "how edgy" with "how facing".
 		// When surface_prominence_strength is 0 we pass everything;
@@ -263,19 +409,75 @@ void fragment() {
 				mix(interior_floor, 1.0, prominence_raw),
 				surface_prominence_strength);
 
-		// Don't light up the backdrop clear color. Test against the
-		// raw center luminance only; adding gradient padding here
-		// leaks "content" into backdrop pixels next to tile edges
-		// and creates stippling in the open space beyond walls.
-		float has_content = step(background_luma_threshold, l0);
+		// --- Classify this pixel ------------------------------------
+		// Two sources of "type" information:
+		//
+		//   1. Palette nearest-match on c0. Terrain tiles render as
+		//      exact palette color in the scene, so this identifies
+		//      them reliably. Sprites (player, HUD, parallax) fail
+		//      the tight threshold and are treated as non-tile.
+		//
+		//   2. Tagged-sprite halo. Bugs and (eventually) enemies push
+		//      their screen position + frequency into
+		//      `tagged_sprites`. Any pixel inside a halo inherits
+		//      that sprite's frequency. Handles small and semi-
+		//      transparent sprites whose pixels don't palette-match
+		//      reliably on their own.
+		//
+		// Sprite tags win where they overlap tiles — a bug sitting on
+		// a tile reports bug frequency so matching-pulse stipples
+		// reveal the bug, not the tile.
+		int bg_type_id = 0;
+		vec3 bg_type_color = vec3(0.0);
+		bool is_bg_tile = detect_frequency(
+				c0, bg_type_id, bg_type_color);
 
-		// Frequency gating via palette (skipped when empty).
-		float frequency_match = 1.0;
-		if (palette_count > 0) {
-			int detected = detect_frequency(c0);
-			frequency_match = (detected == current_frequency)
-					? 1.0 : 0.0;
+		int tag_type_id = 0;
+		bool is_sprite_tag = false;
+		for (int i = 0; i < MAX_TAGGED_SPRITES; i++) {
+			if (i >= tagged_sprite_count) {
+				break;
+			}
+			vec2 d = px - tagged_sprites[i].xy;
+			if (length(d) < tagged_sprites[i].z) {
+				is_sprite_tag = true;
+				tag_type_id = int(tagged_sprites[i].w);
+				break;
+			}
 		}
+		vec3 tag_type_color = vec3(0.0);
+		if (is_sprite_tag && palette_count > 0) {
+			for (int j = 0; j < MAX_PALETTE; j++) {
+				if (j >= palette_count) {
+					break;
+				}
+				if (palette_freqs[j] == tag_type_id) {
+					tag_type_color = palette[j].rgb;
+					break;
+				}
+			}
+		}
+
+		bool is_tagged = is_bg_tile || is_sprite_tag;
+		int type_id = is_sprite_tag ? tag_type_id : bg_type_id;
+		vec3 type_color = is_sprite_tag
+				? tag_type_color : bg_type_color;
+
+		// Don't light up the backdrop clear color. Tagged pixels
+		// (tiles or sprites) always count; other pixels only if
+		// they exceed the luma floor.
+		float has_content = is_tagged
+				? 1.0
+				: step(background_luma_threshold, l0);
+
+		// Tagged pixels always stipple under a pulse, regardless of
+		// type. `is_matching` separately marks pixels whose type
+		// equals the player's current frequency — those get a
+		// brightness + saturation boost below so the matching color
+		// reads more prominently than other types.
+		float frequency_match = is_tagged ? 1.0 : 0.0;
+		bool is_matching =
+				is_tagged && type_id == current_frequency;
 
 		// Near-field reveals EVERYTHING smoothly (background + tiles
 		// + player) with no dither, no frequency gating, no surface
@@ -318,27 +520,21 @@ void fragment() {
 		float reveal = clamp(
 				max(near_vis, dithered_pulse_reveal), 0.0, 1.0);
 
-		// Base color for this pixel. When procedural rendering is on
-		// and this pixel is over a tile, sample the type's slot in
-		// the interior and surface atlases. The surface atlas's
-		// alpha channel serves as the "has surface" gate — slots
-		// without surface art (INDESTRUCTIBLE, SAND) are transparent
-		// there, so the blend falls back to interior only.
-		vec3 scene_rgb = c0;
-		vec3 tile_rgb = c0;
-		if (procedural_tile_rendering && has_content > 0.5
-				&& palette_count > 0) {
-			// Which type is this pixel? palette match on scene color.
-			int type_id = detect_frequency(c0);
+		// --- Near-field color: textured tiles + raw scene ----------
+		// Only terrain tiles (is_bg_tile) get atlas texturing — bug
+		// sprites, player, HUD pass through c0 so they look like
+		// themselves under the near-field reveal.
+		vec3 textured_rgb = c0;
+		if (is_bg_tile) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
-			float u_base = float(type_id) / slot_count_f;
+			float u_base = float(bg_type_id) / slot_count_f;
 			float u_width = 1.0 / slot_count_f;
 
 			vec2 world_pos = world_origin
 					+ UV * screen_size_px * world_per_screen_px;
 
-			// Interior: wrap within the tile, shift into this type's
-			// atlas slot.
+			// Interior: wrap within a tile-sized cell, then shift
+			// into this type's atlas slot on the x axis.
 			float interior_u_frac = fract(
 					world_pos.x / interior_scale_px);
 			float interior_v = fract(
@@ -349,52 +545,78 @@ void fragment() {
 			vec3 interior_rgb = texture(
 					interior_atlas, interior_uv).rgb;
 
-			// Surface band: rotate the UV so the texture's x axis
-			// runs along the surface tangent, y goes from outside
-			// (top of strip) into the tile (deeper = closer to
-			// interior).
-			vec2 normal = (grad_mag > 0.001)
-					? (-normalize(grad)) : vec2(0.0, -1.0);
-			vec2 tangent = vec2(-normal.y, normal.x);
+			// Surface band: sample along the surface tangent, with
+			// depth v driven by surface_proximity (close-scale
+			// gradient). Using the close scale here — instead of the
+			// multi-scale grad_mag — keeps the surface accent texture
+			// as a narrow rim at the actual tile edge. grad_mag is
+			// reserved for stipple-density fade; reusing it here
+			// would smear the surface art deep into the interior
+			// (the stretched-color artifact).
+			vec2 tangent = vec2(-surface_normal.y, surface_normal.x);
 			float along = fract(
 					dot(world_pos, tangent) / surface_scale_along_px);
-			float v = clamp(1.0 - grad_mag, 0.0, 1.0);
+			float v = clamp(1.0 - surface_proximity, 0.0, 1.0);
 			vec2 surface_uv = vec2(
 					u_base + along * u_width, v);
 			vec4 surface_sample = texture(
 					surface_atlas, surface_uv);
 
-			// Blend surface over interior. band_mix fades in the
-			// surface as gradient magnitude grows (closer to edge);
-			// surface_sample.a gates slots without surface art.
-			float band_mix = smoothstep(0.2, 0.8, grad_mag)
+			float band_mix = smoothstep(0.2, 0.8, surface_proximity)
 					* surface_sample.a;
-			tile_rgb = mix(
+			textured_rgb = mix(
 					interior_rgb, surface_sample.rgb, band_mix);
 		}
-		// scene_rgb used for near-radius (real scene colors for the
-		// player's immediate surroundings).
-		vec3 stipple_rgb;
-		if (stipple_color.a > 0.0) {
-			stipple_rgb = stipple_color.rgb;
-		} else {
-			stipple_rgb = tile_rgb;
+
+		// --- Echo-pulse stipple color: flat palette per type -------
+		// Tagged pixels (tiles + bug/enemy halos) stipple with their
+		// flat palette color. Interiors and surfaces of a tile share
+		// the same dot color. Non-tagged pixels fall back to c0 but
+		// won't actually stipple — frequency_match is 0 for them.
+		vec3 stipple_rgb = is_tagged ? type_color : c0;
+		// Matching-type stipples get a brightness + saturation
+		// bump — same hue as the palette color, just pushed brighter
+		// and farther from its luminance midpoint. Non-matching
+		// types stay at their base palette color.
+		if (is_matching) {
+			float lum = dot(stipple_rgb, luma);
+			stipple_rgb = mix(
+					vec3(lum),
+					stipple_rgb,
+					matching_saturation_boost);
+			stipple_rgb *= matching_brightness_boost;
 		}
+		// Optional debug tint — author stipple_color with alpha > 0
+		// to repaint every dot a loud color for placement checks.
+		stipple_rgb = mix(stipple_rgb, stipple_color.rgb,
+				stipple_color.a);
 
-		// Revealed = (near_vis OR dithered_pulse_reveal). Near-field
-		// shows the procedural tile rendering (interior + surface
-		// atlases) so the player sees textured terrain around them
-		// always. Pulse-revealed pixels use stipple_rgb (magenta by
-		// default). Ring glow is added on top everywhere so the
-		// wave front stays readable in dark areas.
-		vec3 revealed_rgb = mix(stipple_rgb, tile_rgb, near_vis);
-		vec3 out_rgb = mix(ring_rgb, revealed_rgb + ring_rgb, reveal);
-		float out_alpha = 1.0; // fully opaque overlay
+		// --- Combine --------------------------------------------------
+		// Near-field reveal fades the textured view up by near_vis.
+		// Pulse reveal paints flat stipples where the dither matrix
+		// allows, gated by frequency_match + has_content (so no dots
+		// on sprites or empty backdrop) and attenuated by
+		// (1 - near_vis) so stippling disappears inside the close-by
+		// region — the textured near-field owns that visual space.
+		// Component-wise max keeps each contribution at its natural
+		// brightness; for non-tile pixels both contributions share
+		// c0, so max collapses to c0 * max(near_vis, stipple_term).
+		// Ring glow draws over anything not tagged — parallax,
+		// empty backdrop, player sprite — and is suppressed only
+		// where a tile or a tagged sprite (bug, future enemy) sits,
+		// so the expanding color ring passes visibly over the sky
+		// but not across tile / bug art.
+		vec3 near_contribution = textured_rgb * near_vis;
+		vec3 pulse_contribution = stipple_rgb * dithered_pulse_reveal
+				* (1.0 - near_vis);
+		float ring_mask = is_tagged ? 0.0 : 1.0;
+		vec3 out_rgb = max(near_contribution, pulse_contribution)
+				+ ring_rgb * ring_mask;
 
-		// Small dark floor so the ring never punches fully to
-		// base color on perfect black.
+		// Small dark floor so the ring never punches negative on
+		// pathological uniform values.
 		out_rgb = max(out_rgb, vec3(0.0));
 
-		COLOR = vec4(out_rgb, out_alpha);
+		COLOR = vec4(out_rgb, 1.0);
 	}
 }

@@ -6,7 +6,8 @@
 script = ExtResource("1_0lti3")
 max_jump_chain = 999999
 jump_boost = -320.0
-double_jump_boost_multiplier = 1.0
+double_jump_boost_multiplier = 0.9
+gravity_acceleration_multiplier = 0.7
 gravity_slow_rise_multiplier = 0.66
 walk_acceleration = 1200.0
 in_air_horizontal_acceleration = 1200.0
