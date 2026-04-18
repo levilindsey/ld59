@@ -65,6 +65,11 @@ void TerrainWorld::_bind_methods() {
 					"frequency_mask"),
 			&TerrainWorld::damage);
 	ClassDB::bind_method(
+			D_METHOD("damage_with_falloff", "world_pos", "radius_px",
+					"full_radius_px", "full_damage", "min_damage",
+					"frequency_mask"),
+			&TerrainWorld::damage_with_falloff);
+	ClassDB::bind_method(
 			D_METHOD("carve", "world_pos", "radius_px", "strength"),
 			&TerrainWorld::carve);
 	ClassDB::bind_method(
@@ -489,6 +494,101 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 				_apply_damage_to_cell(chunk, cx, cy, dmg,
 						frequency_mask, cell_center);
 				if (chunk->type_per_cell[idx_before] != type_before) {
+					any_change = true;
+				}
+			}
+		}
+
+		if (any_change) {
+			chunk->generation.fetch_add(1);
+			_queue_remesh(chunk);
+		}
+	}
+}
+
+void TerrainWorld::damage_with_falloff(
+		Vector2 world_pos, float radius_px, float full_radius_px,
+		int full_dmg, int min_dmg, int frequency_mask) {
+	_ensure_initialized();
+	if (radius_px <= 0.0f) {
+		return;
+	}
+	if (full_radius_px < 0.0f) {
+		full_radius_px = 0.0f;
+	}
+	if (full_radius_px > radius_px) {
+		full_radius_px = radius_px;
+	}
+	const float falloff_band = std::max(
+			radius_px - full_radius_px, 1e-3f);
+	auto coords = _manager->chunks_affected_by_splat(
+			world_pos, radius_px, _cells_cached,
+			_cell_size_px_cached);
+	for (const Vector2i &c : coords) {
+		Chunk *chunk = _manager->get(c);
+		if (chunk == nullptr) {
+			continue;
+		}
+		const Vector2 origin = chunk->origin_px(_cell_size_px_cached);
+		int min_x, min_y, max_x, max_y;
+		terrain::cells_affected_by_circle(
+				chunk->cells, origin, _cell_size_px_cached,
+				world_pos, radius_px, 0.0f,
+				min_x, min_y, max_x, max_y);
+		if (max_x >= chunk->cells) {
+			max_x = chunk->cells - 1;
+		}
+		if (max_y >= chunk->cells) {
+			max_y = chunk->cells - 1;
+		}
+		if (min_x > max_x || min_y > max_y) {
+			continue;
+		}
+
+		bool any_change = false;
+		const float r_sq = radius_px * radius_px;
+		for (int cy = min_y; cy <= max_y; cy++) {
+			for (int cx = min_x; cx <= max_x; cx++) {
+				const Vector2 cell_center = Vector2(
+						origin.x + (cx + 0.5f)
+								* _cell_size_px_cached,
+						origin.y + (cy + 0.5f)
+								* _cell_size_px_cached);
+				const float dx = cell_center.x - world_pos.x;
+				const float dy = cell_center.y - world_pos.y;
+				const float d_sq = dx * dx + dy * dy;
+				if (d_sq > r_sq) {
+					continue;
+				}
+				const float dist = std::sqrt(d_sq);
+				int cell_dmg;
+				if (dist <= full_radius_px) {
+					cell_dmg = full_dmg;
+				} else {
+					float t = (dist - full_radius_px)
+							/ falloff_band;
+					if (t < 0.0f) {
+						t = 0.0f;
+					}
+					if (t > 1.0f) {
+						t = 1.0f;
+					}
+					cell_dmg = static_cast<int>(
+							std::round(static_cast<float>(full_dmg)
+									* (1.0f - t)
+									+ static_cast<float>(min_dmg)
+											* t));
+				}
+				if (cell_dmg <= 0) {
+					continue;
+				}
+				const int idx_before = chunk->cell_index(cx, cy);
+				const uint8_t type_before =
+						chunk->type_per_cell[idx_before];
+				_apply_damage_to_cell(chunk, cx, cy, cell_dmg,
+						frequency_mask, cell_center);
+				if (chunk->type_per_cell[idx_before]
+						!= type_before) {
 					any_change = true;
 				}
 			}

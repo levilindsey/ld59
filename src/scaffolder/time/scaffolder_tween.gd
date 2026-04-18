@@ -215,7 +215,7 @@ class _SubTween extends RefCounted:
 			p_ease_name: String,
 			p_delay: float,
 			p_time_type: int) -> void:
-		assert(p_duration > 0)
+		G.ensure(p_duration > 0)
 		self.object = p_object
 		self.key = p_key
 		self.is_property = p_is_property

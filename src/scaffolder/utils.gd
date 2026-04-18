@@ -17,7 +17,7 @@ func _init() -> void:
 
 
 func ensure(condition: bool, message := "") -> bool:
-	assert(condition, message)
+	G.ensure(condition, message)
 	return condition
 
 
@@ -29,11 +29,11 @@ static func splice(
 	var old_count := result.size()
 	var items_to_insert_count := items_to_insert.size()
 
-	assert(start >= 0)
-	assert(start <= old_count)
-	assert(delete_count >= 0)
-	assert(delete_count <= old_count)
-	assert(start + delete_count <= old_count)
+	G.ensure(start >= 0)
+	G.ensure(start <= old_count)
+	G.ensure(delete_count >= 0)
+	G.ensure(delete_count <= old_count)
+	G.ensure(start + delete_count <= old_count)
 
 	var new_count := old_count - delete_count + items_to_insert_count
 	var is_growing := items_to_insert_count > delete_count
@@ -162,7 +162,7 @@ static func subtract_arrays(
 static func join(
 		array: Variant,
 		delimiter := ",") -> String:
-	assert(array is Array or array is PackedStringArray)
+	G.ensure(array is Array or array is PackedStringArray)
 	var count: int = array.size()
 	var result := ""
 	for index in array.size() - 1:
@@ -266,8 +266,8 @@ static func round_vector(v: Vector2) -> Vector2:
 static func mix(
 		values: Array,
 		weights: Array):
-	assert(values.size() == weights.size())
-	assert(!values.is_empty())
+	G.ensure(values.size() == weights.size())
+	G.ensure(!values.is_empty())
 
 	var count := values.size()
 
@@ -300,8 +300,8 @@ static func mix(
 static func mix_colors(
 		colors: Array,
 		weights: Array) -> Color:
-	assert(colors.size() == weights.size())
-	assert(!colors.is_empty())
+	G.ensure(colors.size() == weights.size())
+	G.ensure(!colors.is_empty())
 
 	var count := colors.size()
 
@@ -409,7 +409,7 @@ func get_vector_string(
 
 
 func get_spaces(count: int) -> String:
-	assert(count <= 60)
+	G.ensure(count <= 60)
 	return "															" \
 			.substr(0, count)
 
@@ -419,7 +419,7 @@ func pad_string(
 		length: int,
 		pads_on_right := true,
 		allows_longer_strings := false) -> String:
-	assert(allows_longer_strings or string.length() <= length)
+	G.ensure(allows_longer_strings or string.length() <= length)
 	var spaces_count := length - string.length()
 	if spaces_count <= 0:
 		return string
@@ -512,7 +512,7 @@ func get_all_nodes_in_group(group_name: String) -> Array:
 
 func get_node_in_group(group_name: String) -> Node:
 	var nodes := get_tree().get_nodes_in_group(group_name)
-	assert(nodes.size() == 1)
+	G.ensure(nodes.size() == 1)
 	return nodes[0]
 
 
@@ -525,7 +525,7 @@ func get_property_value_from_scene_state_node(
 		if state.get_node_property_name(node_index, property_index) == \
 				property_name:
 			return state.get_node_property_value(node_index, property_index)
-	assert(!expects_a_result)
+	G.ensure(!expects_a_result)
 
 
 func check_whether_sub_classes_are_tools(object: Object) -> bool:

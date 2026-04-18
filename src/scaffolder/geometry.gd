@@ -439,7 +439,7 @@ static func do_segment_and_polygon_intersect(
 		segment_a: Vector2,
 		segment_b: Vector2,
 		polygon: Array) -> bool:
-	assert(polygon[0] == polygon[polygon.size() - 1])
+	G.ensure(polygon[0] == polygon[polygon.size() - 1])
 
 	var segment_diff := segment_b - segment_a
 	var t_entering := 0.0
@@ -648,7 +648,7 @@ static func is_polygon_convex(
 		epsilon := 0.001) -> bool:
 	var vertex_count := vertices.size()
 
-	assert(vertices[0] != vertices[vertex_count - 1])
+	G.ensure(vertices[0] != vertices[vertex_count - 1])
 
 	if vertex_count < 3:
 		return true
@@ -764,7 +764,7 @@ static func do_point_and_segment_intersect(
 
 
 static func get_bounding_box_for_points(points: PackedVector2Array) -> Rect2:
-	assert(points.size() > 0)
+	G.ensure(points.size() > 0)
 	var bounding_box := Rect2(points[0], Vector2.ZERO)
 	for i in range(1, points.size()):
 		bounding_box = bounding_box.expand(points[i])

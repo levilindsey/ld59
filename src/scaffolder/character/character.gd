@@ -110,11 +110,11 @@ var is_sprite_visible: bool:
 
 func _ready() -> void:
 	if not collision_shape:
-		assert(false, "Character.collision_shape is not provided: %s" % name)
+		G.ensure(false, "Character.collision_shape is not provided: %s" % name)
 	if not animator:
-		assert(false, "Character.animator is not provided: %s" % name)
+		G.ensure(false, "Character.animator is not provided: %s" % name)
 	if not movement_settings:
-		assert(false, "Character.movement_settings is not provided: %s" % name)
+		G.ensure(false, "Character.movement_settings is not provided: %s" % name)
 
 	movement_settings.set_up()
 
@@ -139,7 +139,7 @@ func _ready() -> void:
 
 
 func _init_player_controller_action_source() -> void:
-	assert(!is_instance_valid(_character_action_source))
+	G.ensure(!is_instance_valid(_character_action_source))
 	self._character_action_source = PlayerActionSource.new(self, true)
 	_action_sources.push_back(_character_action_source)
 
@@ -249,7 +249,7 @@ func _process_actions() -> void:
 			_previous_actions_handlers_this_frame[action_handler.name] = \
 					executed
 
-	assert(!Geometry.is_point_partial_inf(velocity))
+	G.ensure(!Geometry.is_point_partial_inf(velocity))
 
 
 func _process_animation() -> void:

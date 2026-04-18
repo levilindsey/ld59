@@ -39,6 +39,14 @@ public:
 	// --- Gameplay API ----
 	void damage(Vector2 world_pos, float radius_px, int damage,
 			int frequency_mask);
+	// Distance-attenuated variant: cells inside `full_radius_px` take
+	// `full_dmg`; cells from `full_radius_px` out to `radius_px` linearly
+	// interpolate down to `min_dmg`. Cells past `radius_px` take 0.
+	// Used by the echo pulse so close cells are 1-shot-killed and far
+	// cells take many hits.
+	void damage_with_falloff(Vector2 world_pos, float radius_px,
+			float full_radius_px, int full_dmg, int min_dmg,
+			int frequency_mask);
 	void carve(Vector2 world_pos, float radius_px, float strength);
 	void fill(Vector2 world_pos, float radius_px, float strength);
 
