@@ -10,6 +10,13 @@
 ~*.dll
 ~*.TMP
 
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
 *DO_NOT_SUBMIT*
 
 build/*
@@ -24,6 +31,10 @@ ld59extension/**/*.o
 ld59extension/**/*.os
 ld59extension/**/*.obj
 
-# Allow committed addon binaries.
+# Allow committed addon binaries (only the runtime .dll/.wasm; MSVC
+# import libraries and export tables are build-only and stay out).
 !addons/ld59extension/bin/*.dll
 !addons/ld59extension/bin/*.wasm
+# ...but the tilde-prefixed copies Godot leaves behind during hot-
+# reload are still ignored.
+addons/ld59extension/bin/~*.dll
