@@ -1,47 +1,45 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene format=3 uid="uid://dcl7cm14y6u51"]
 
-[ext_resource type="Script" path="res://src/level/terrain_level.gd" id="1_level"]
-[ext_resource type="Resource" path="res://src/level/default_terrain_settings.tres" id="2_settings"]
+[ext_resource type="Script" uid="uid://c1i6bqftxsj4" path="res://src/level/terrain_level.gd" id="1_level"]
+[ext_resource type="TerrainSettings" path="res://src/level/default_terrain_settings.tres" id="2_settings"]
 [ext_resource type="TileSet" uid="uid://mtwu14d78k40" path="res://src/level/default_tile_set.tres" id="3_tileset"]
 [ext_resource type="PackedScene" path="res://src/level/parallax_background.tscn" id="4_bg"]
-[ext_resource type="Script" path="res://src/bugs/bug_spawner.gd" id="5_spawner"]
+[ext_resource type="Script" uid="uid://clr0cpiah02eh" path="res://src/bugs/bug_spawner.gd" id="5_spawner"]
 [ext_resource type="PackedScene" uid="uid://dgk5b2n3lc8kr" path="res://src/bugs/bug.tscn" id="6_bug"]
-[ext_resource type="Script" path="res://src/enemies/enemy_system.gd" id="7_enemy_sys"]
-[ext_resource type="PackedScene" uid="uid://cqx9m7b3nwf2p" path="res://src/level/terrain_chunk_fragment.tscn" id="8_fragment"]
+[ext_resource type="Script" uid="uid://o2i6tqdak3pe" path="res://src/enemies/enemy_system.gd" id="7_enemy_sys"]
+[ext_resource type="PackedScene" uid="uid://cqyam7b3nwf2p" path="res://src/level/terrain_chunk_fragment.tscn" id="8_fragment"]
 
-[node name="TerrainLevel" type="Node2D"]
+[node name="TerrainLevel" type="Node2D" unique_id=1888346517]
 script = ExtResource("1_level")
 terrain_world_path = NodePath("TerrainWorld")
 terrain_settings = ExtResource("2_settings")
 tile_map_layer_path = NodePath("Tiles")
-test_rect_world_px = Rect2(-320, 32, 640, 256)
 fragment_scene = ExtResource("8_fragment")
 
-[node name="ParallaxBackground" parent="." instance=ExtResource("4_bg")]
+[node name="ParallaxBackground" parent="." unique_id=482765648 instance=ExtResource("4_bg")]
 
-[node name="TerrainWorld" type="TerrainWorld" parent="."]
-visibility_layer = 3
+[node name="TerrainWorld" type="TerrainWorld" parent="." unique_id=1885247162]
+settings = ExtResource("2_settings")
 unique_name_in_owner = true
+visibility_layer = 3
 
-[node name="Tiles" type="TileMapLayer" parent="."]
+[node name="Tiles" type="TileMapLayer" parent="." unique_id=2007537257]
 unique_name_in_owner = true
 tile_set = ExtResource("3_tileset")
 
-[node name="PlayerSpawnPoint" type="Node2D" parent="."]
+[node name="PlayerSpawnPoint" type="Node2D" parent="." unique_id=2146902381]
 unique_name_in_owner = true
-position = Vector2(0, 0)
 
-[node name="Camera2D" type="Camera2D" parent="PlayerSpawnPoint"]
+[node name="Camera2D" type="Camera2D" parent="PlayerSpawnPoint" unique_id=937342632]
 unique_name_in_owner = true
-anchor_mode = 1
 zoom = Vector2(2, 2)
 
-[node name="Players" type="Node2D" parent="."]
+[node name="Players" type="Node2D" parent="." unique_id=1687508849]
 unique_name_in_owner = true
 
-[node name="BugSpawner" type="Node2D" parent="."]
+[node name="BugSpawner" type="Node2D" parent="." unique_id=1420602395]
 script = ExtResource("5_spawner")
 bug_scene = ExtResource("6_bug")
 
-[node name="EnemySystem" type="Node" parent="."]
+[node name="EnemySystem" type="Node" parent="." unique_id=259719197]
 script = ExtResource("7_enemy_sys")
