@@ -276,8 +276,8 @@ Indestructible.
 - [x] `G.terrain` autoload field registered in `global.gd`
 - [ ] `terrain_movement_settings.tres` with `floor_max_angle ≈ 60°`,
   `floor_snap_length = 4` (pending in-editor playtest)
-- [ ] Tile custom data layers on the TileSet (`type`,
-  `initial_health`) — deferred to Phase 3
+- [x] Tile custom data layers on the TileSet (`type`,
+  `initial_health`) — shipped in Phase 3 work below.
 
 ### Procedural terrain art
 
@@ -351,8 +351,12 @@ damages only matching tiles.
   at the detected type's slot (`u = type/slot_count + fract(world/
   interior_scale_px)/slot_count`). Surface alpha × gradient
   magnitude drives the band blend.
-- [ ] Tile custom data layers on the TileSet (`type`,
-  `initial_health`) — enables per-tile authoring in the TileMap.
+- [x] Tile custom data layers on the TileSet (`type`,
+  `initial_health`) — added to `default_tile_set.tres`;
+  `TerrainLevelLoader.bake_from_tile_map_layer` reads them per-tile,
+  falls back to `default_type`/255 if unset. Authors paint with
+  Godot's TileMap editor and set the two values on each atlas tile
+  in the TileSet inspector.
 - [ ] Playtest: verify 4 destroyable types read distinctly; moss/
   shine accents look good; frequency gating feels right.
 - [ ] Pick up other deferred shader work from

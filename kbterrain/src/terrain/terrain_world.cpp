@@ -764,12 +764,9 @@ void TerrainWorld::damage_with_falloff(
 		}
 	}
 
-	// Note: deliberately NOT calling _detach_islands_from_seeds here.
-	// Until levels include an INDESTRUCTIBLE border, CC flood would
-	// classify the entire test rect as one unanchored island and
-	// remove every cell after the first destroy. Re-enable when
-	// level authoring includes anchor cells.
-	(void)destroyed_flat;
+	if (!destroyed_flat.empty()) {
+		_detach_islands_from_seeds(destroyed_flat);
+	}
 }
 
 // ---- Queries ---------------------------------------------------------------
