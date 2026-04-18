@@ -19,14 +19,16 @@ when its exit criteria are checked.
 **Before starting a track:**
 
 1. Skim "Parallelization tracks" below; pick an unclaimed track.
-2. Check the "Shared files" table for collisions with in-flight
-   tracks on other branches.
-3. Work on a branch named `track/<slug>` (e.g. `track/shader`).
-4. Merge to `main` when your track's exit criteria are met.
+2. Check the "Shared files" table for collisions with work that's
+   already in flight on another machine/session.
+3. Work directly on `main`. No feature branches. `git pull --rebase`
+   before you start; push small, focused commits often so other
+   sessions see your changes.
 
-**Parallel sessions rule**: only one session should edit any file
-at a time. Coordinate via branches. Shared files (listed below)
-need serialized edits — the last merger rebases.
+**Parallel sessions rule**: all work lands on `main`. Only one
+session should edit any single file at a time. Shared files (listed
+below) need serialized edits — pull, edit, commit, push before the
+next session picks them up.
 
 ---
 
@@ -78,8 +80,9 @@ machine.
 
 ## Parallelization tracks
 
-These are designed to proceed **in parallel on separate branches**
-with minimal shared-file collisions.
+These are designed to proceed **in parallel on `main`** across
+multiple machines/sessions. No feature branches — the tracks are a
+planning aid for who works on what, not a branching scheme.
 
 | Track | Slug | Primary files | Depends on | Parallel-safe? |
 |---|---|---|---|---|
@@ -93,13 +96,16 @@ with minimal shared-file collisions.
 | Audio pipeline | `audio` | `src/echolocation/echo_audio_player.gd`, audio assets | Nothing | ✅ |
 | Web hosting | `web` | `web/*`, `ld59extension/web-template-setup.md` | Nothing | ✅ |
 
-Claim a track by grepping branches for `track/<slug>`; if none
-exists, check it out and begin.
+Claim a track informally: glance at recent commits touching its
+primary files and at the checklist below. If nothing's in flight,
+start working on `main`.
 
 ### Shared files (serialize edits)
 
-These files are touched by multiple tracks and must be merged with
-care. If you modify any of them, rebase onto `main` before merging.
+These files are touched by multiple tracks. Since everyone works on
+`main`, serialize edits: `git pull --rebase` before touching one,
+commit and push in a tight loop, and avoid holding local changes on
+these files overnight.
 
 | File | Touched by |
 |---|---|
@@ -266,13 +272,14 @@ damages only matching tiles.
 
 ### Bug system (GDScript)
 
-- [ ] `Bug` scene + script (typed, TTL, drift, opacity fade)
-- [ ] `BugSpawner` + `BugRegionProbe` (Area2D on player)
-- [ ] `BugSpawnRegion : Area2D` with `frequency` + `rate_delta`
-- [ ] Rate stacking (additive, clamped ≥ 0 per frequency)
-- [ ] Annulus-sampled spawn positions, reject-on-solid up to 8 tries
-- [ ] Bug consumption: heal + set player frequency
-- [ ] Minimum-rate-floor per frequency (avoid soft-lock)
+- [x] `Bug` scene + script (typed, TTL, drift, opacity fade)
+- [x] `BugSpawner` + `BugRegionProbe` (Area2D on player)
+- [x] `BugSpawnRegion : Area2D` with `frequency` + `rate_delta`
+- [x] Rate stacking (additive, clamped ≥ 0 per frequency)
+- [x] Annulus-sampled spawn positions, reject-on-solid up to 8 tries
+- [x] Bug consumption: set player frequency
+- [ ] Bug consumption: heal (wiring pending `hud`/PlayerHealth)
+- [x] Minimum-rate-floor per frequency (avoid soft-lock)
 
 ### Player visuals
 
