@@ -1,0 +1,163 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Godot
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            Godot_v4.5.1-stable_linux.x86_64
+          key: godot-4.5.1-stable-linux-x86_64
+
+      - name: Download Godot
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          wget https://github.com/godotengine/godot/releases/download/4.5.1-stable/Godot_v4.5.1-stable_linux.x86_64.zip
+          unzip Godot_v4.5.1-stable_linux.x86_64.zip
+          chmod +x Godot_v4.5.1-stable_linux.x86_64
+
+      - name: Ensure Godot is executable
+        run: chmod +x Godot_v4.5.1-stable_linux.x86_64
+
+      - name: Verify test setup
+        run: |
+          echo "=== Checking test directories ==="
+          ls -la test/ || echo "No test directory"
+          ls -la test/unit/ || echo "No unit test directory"
+          ls -la test/integration/ || echo "No integration test directory"
+
+          echo ""
+          echo "=== Checking GUT addon ==="
+          ls -la addons/gut/ | head -5 || echo "No GUT addon found"
+
+          echo ""
+          echo "=== Test .gd files ==="
+          find test -name "*.gd" -type f || echo "No test files found"
+
+      - name: Setup project environment
+        run: |
+          mkdir -p .godot/imported
+
+          echo "Attempting project import (errors expected in CI)..."
+          timeout 180s ./Godot_v4.5.1-stable_linux.x86_64 --headless --import --quit 2>&1 | tee import.log || {
+            echo "Import completed with exit code $?"
+          }
+
+          echo "=== Import results (tail) ==="
+          tail -n 30 import.log || echo "No import log found"
+
+          if grep -q "GUT class_names have not been imported" import.log; then
+            echo "WARNING: GUT classes not imported, but this is expected in CI"
+          fi
+
+      - name: Run unit tests
+        id: unit-tests
+        timeout-minutes: 10
+        run: |
+          echo "Starting unit tests..."
+
+          set +e
+          timeout 300s ./Godot_v4.5.1-stable_linux.x86_64 --headless --path . \
+            --script addons/gut/gut_cmdln.gd \
+            -gconfig=res://test/.gutconfig.json \
+            -gdir=res://test/unit \
+            -ginclude_subdirs \
+            -gexit \
+            -gjunit_xml_file=unit_test_results.xml 2>&1 | tee unit_test.log
+          EXIT_CODE=$?
+          set -e
+
+          if [ $EXIT_CODE -eq 124 ]; then
+            echo "ERROR: Tests timed out after 300 seconds"
+            exit 124
+          elif [ $EXIT_CODE -ne 0 ]; then
+            echo "ERROR: Tests failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+
+          if grep -q "Nothing was run" unit_test.log; then
+            echo "ERROR: No unit tests were discovered or run"
+            exit 1
+          fi
+
+      - name: Run integration tests
+        id: integration-tests
+        timeout-minutes: 10
+        run: |
+          echo "Starting integration tests..."
+
+          set +e
+          timeout 300s ./Godot_v4.5.1-stable_linux.x86_64 --headless --path . \
+            --script addons/gut/gut_cmdln.gd \
+            -gconfig=res://test/.gutconfig.json \
+            -gdir=res://test/integration \
+            -ginclude_subdirs \
+            -gexit \
+            -gjunit_xml_file=integration_test_results.xml 2>&1 | tee integration_test.log
+          EXIT_CODE=$?
+          set -e
+
+          if [ $EXIT_CODE -eq 124 ]; then
+            echo "ERROR: Tests timed out after 300 seconds"
+            exit 124
+          elif [ $EXIT_CODE -ne 0 ]; then
+            echo "ERROR: Tests failed with exit code $EXIT_CODE"
+            exit $EXIT_CODE
+          fi
+
+          if grep -q "Nothing was run" integration_test.log; then
+            echo "ERROR: No integration tests were discovered or run"
+            exit 1
+          fi
+
+      - name: Display test results
+        if: always()
+        run: |
+          echo "=== Unit test log (last 50 lines) ==="
+          if [ -f unit_test.log ]; then
+            tail -n 50 unit_test.log
+          else
+            echo "No unit test log found"
+          fi
+
+          echo ""
+          echo "=== Integration test log (last 50 lines) ==="
+          if [ -f integration_test.log ]; then
+            tail -n 50 integration_test.log
+          else
+            echo "No integration test log found"
+          fi
+
+          echo ""
+          echo "=== Results files ==="
+          ls -la *test_results.xml || echo "No XML result files found"
+
+      - name: Verify test results exist
+        run: |
+          if ! ls *test_results.xml 1> /dev/null 2>&1; then
+            echo "ERROR: No test result XML files were generated!"
+            exit 1
+          fi
+          echo "Test result files found"
+
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            *test_results.xml
+          action_fail: true
+          action_fail_on_inconclusive: true

@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3 uid="uid://bvkt5maj64yqm"]
+
+[ext_resource type="PackedScene" uid="uid://c2yul5us50jn4" path="res://src/ui/super_hud/debug_console.tscn" id="2_h1llh"]
+
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_kqj18"]
+
+[node name="SuperHud" type="PanelContainer"]
+process_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxEmpty_kqj18")
+
+[node name="DebugConsole" parent="." instance=ExtResource("2_h1llh")]
+layout_mode = 2

@@ -1,0 +1,29 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Executables
+*.exe
+*.out
+*.app
+
+~*.dll
+~*.TMP
+
+*DO_NOT_SUBMIT*
+
+build/*
+
+# GDExtension build artifacts.
+ld59extension/bin/
+ld59extension/.scons_cache/
+ld59extension/.sconsign.dblite
+ld59extension/**/*.pyc
+ld59extension/**/__pycache__/
+ld59extension/**/*.o
+ld59extension/**/*.os
+ld59extension/**/*.obj
+
+# Allow committed addon binaries.
+!addons/ld59extension/bin/*.dll
+!addons/ld59extension/bin/*.wasm

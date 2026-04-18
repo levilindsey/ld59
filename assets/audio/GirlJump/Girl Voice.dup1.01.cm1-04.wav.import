@@ -1,0 +1,24 @@
+[remap]
+
+importer="wav"
+type="AudioStreamWAV"
+uid="uid://bf6kea2504jqh"
+path="res://.godot/imported/Girl Voice.dup1.01.cm1-04.wav-b2da47ec6c24d8f74d357341205d368f.sample"
+
+[deps]
+
+source_file="res://assets/audio/GirlJump/Girl Voice.dup1.01.cm1-04.wav"
+dest_files=["res://.godot/imported/Girl Voice.dup1.01.cm1-04.wav-b2da47ec6c24d8f74d357341205d368f.sample"]
+
+[params]
+
+force/8_bit=false
+force/mono=false
+force/max_rate=false
+force/max_rate_hz=44100
+edit/trim=false
+edit/normalize=false
+edit/loop_mode=0
+edit/loop_begin=0
+edit/loop_end=-1
+compress/mode=2
