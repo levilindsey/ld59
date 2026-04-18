@@ -25,6 +25,11 @@ var level: Level
 # type is EcholocationRenderer.
 var echo: CanvasLayer
 
+# Marching-squares terrain. Assigned by TerrainLevel._ready. Typed
+# as Node for the same class_name-dependency reason; actual type is
+# TerrainWorld.
+var terrain: Node
+
 
 func _enter_tree() -> void:
 	if Engine.is_editor_hint():

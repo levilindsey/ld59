@@ -66,6 +66,13 @@ func _ready() -> void:
 	G.ensure_valid(_shader_mat, "EcholocationRenderer: Mask missing ShaderMaterial")
 
 	_shader_mat.set_shader_parameter("bayer_tex", _build_bayer_texture())
+	# Placeholder terrain textures — replace with authored art later.
+	_shader_mat.set_shader_parameter(
+			"interior_tex",
+			PlaceholderTerrainTextures.make_dirt_interior())
+	_shader_mat.set_shader_parameter(
+			"surface_tex",
+			PlaceholderTerrainTextures.make_grass_surface())
 	_shader_mat.set_shader_parameter("near_radius_px", near_radius_px)
 	_shader_mat.set_shader_parameter("near_fade_px", near_fade_px)
 	_shader_mat.set_shader_parameter("edge_width_px", edge_width_px)
@@ -114,6 +121,22 @@ func _process(delta: float) -> void:
 
 	_shader_mat.set_shader_parameter("player_uv", player_uv)
 	_shader_mat.set_shader_parameter("screen_size_px", viewport_size)
+	# Compute world-space anchor for the procedural tile-rendering
+	# branch of the composite shader. Assumes a Camera2D with
+	# ANCHOR_MODE_DRAG_CENTER so the camera's global_position is the
+	# world-space center of the viewport.
+	var cam: Camera2D = get_viewport().get_camera_2d()
+	if is_instance_valid(cam):
+		var zoom: Vector2 = cam.zoom
+		var world_per_screen_px: float = (1.0 / zoom.x
+				if zoom.x > 0.0 else 1.0)
+		var cam_world: Vector2 = cam.global_position
+		var world_origin: Vector2 = (cam_world
+				- viewport_size * world_per_screen_px * 0.5)
+		_shader_mat.set_shader_parameter(
+				"world_origin", world_origin)
+		_shader_mat.set_shader_parameter(
+				"world_per_screen_px", world_per_screen_px)
 	# Keep current_frequency in sync with the player so palette
 	# gating works immediately once the palette is populated.
 	if follow_target is Player:

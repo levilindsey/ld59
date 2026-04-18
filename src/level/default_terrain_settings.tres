@@ -1,0 +1,15 @@
+[gd_resource type="TerrainSettings" load_steps=1 format=3]
+
+[resource]
+chunk_cells = 32
+cell_size_px = 8.0
+iso = 128
+collision_layer = 1
+collision_mask = 0
+simplify_epsilon_px = 0.75
+color_indestructible = Color(0.55, 0.55, 0.60, 1)
+color_red = Color(0.95, 0.35, 0.35, 1)
+color_green = Color(0.35, 0.95, 0.45, 1)
+color_blue = Color(0.35, 0.55, 0.95, 1)
+color_liquid = Color(0.30, 0.70, 0.90, 0.7)
+color_sand = Color(0.90, 0.82, 0.50, 1)

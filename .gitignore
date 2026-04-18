@@ -22,23 +22,23 @@ Thumbs.db
 build/*
 
 # GDExtension build artifacts.
-ld59extension/bin/
-ld59extension/.scons_cache/
-ld59extension/.sconsign.dblite
-ld59extension/**/*.pyc
-ld59extension/**/__pycache__/
-ld59extension/**/*.o
-ld59extension/**/*.os
-ld59extension/**/*.obj
+kbterrain/bin/
+kbterrain/.scons_cache/
+kbterrain/.sconsign.dblite
+kbterrain/**/*.pyc
+kbterrain/**/__pycache__/
+kbterrain/**/*.o
+kbterrain/**/*.os
+kbterrain/**/*.obj
 
 # Allow committed addon binaries (only the runtime .dll/.wasm; MSVC
 # import libraries and export tables are build-only and stay out).
-!addons/ld59extension/bin/*.dll
-!addons/ld59extension/bin/*.wasm
+!addons/kbterrain/bin/*.dll
+!addons/kbterrain/bin/*.wasm
 # MSVC build byproducts that install places alongside the .dll —
 # committed dll stays, these never do.
-addons/ld59extension/bin/*.exp
-addons/ld59extension/bin/*.lib
-addons/ld59extension/bin/*.pdb
+addons/kbterrain/bin/*.exp
+addons/kbterrain/bin/*.lib
+addons/kbterrain/bin/*.pdb
 # Godot's hot-reload leaves tilde-prefixed copies of the live dll.
-addons/ld59extension/bin/~*.dll
+addons/kbterrain/bin/~*.dll

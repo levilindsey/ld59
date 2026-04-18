@@ -1,12 +1,13 @@
-[gd_resource type="Resource" script_class="Settings" load_steps=4 format=3 uid="uid://dv60bmaw1pdx6"]
+[gd_resource type="Resource" script_class="Settings" load_steps=5 format=3 uid="uid://dv60bmaw1pdx6"]
 
 [ext_resource type="Script" uid="uid://cqomr88ncj2d3" path="res://src/core/settings.gd" id="1_krfic"]
 [ext_resource type="PackedScene" uid="uid://bfl5qv8bb5apr" path="res://src/level/default_level.tscn" id="1_legvn"]
 [ext_resource type="PackedScene" uid="uid://cn6hdqmmufnvr" path="res://src/player/player.tscn" id="2_legvn"]
+[ext_resource type="PackedScene" path="res://src/level/terrain_level.tscn" id="3_terrain"]
 
 [resource]
 script = ExtResource("1_krfic")
 pauses_on_focus_out = false
 default_gravity_acceleration = 1400.0
 player_scene = ExtResource("2_legvn")
-default_level_scene = ExtResource("1_legvn")
+default_level_scene = ExtResource("3_terrain")

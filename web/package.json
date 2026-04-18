@@ -1,8 +1,8 @@
 {
-	"name": "ld59-web",
+	"name": "kittenbaticorn-web",
 	"version": "0.1.0",
 	"private": true,
-	"description": "Static host for the ld59 Godot web build with COOP/COEP headers.",
+	"description": "Static host for the Kittenbaticorn Godot web build with COOP/COEP headers.",
 	"scripts": {
 		"start": "node server.js"
 	},

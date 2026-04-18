@@ -87,6 +87,26 @@ uniform float facing_threshold_hi : hint_range(0.0, 1.0) = 0.8;
 // world→screen transform can be verified at a glance.
 uniform bool debug_show_anchor = false;
 
+// --- Procedural tile rendering ---------------------------------------------
+// When enabled, revealed tile pixels are painted by blending two
+// tileable textures:
+//   - interior_tex sampled in world space (the tile's "body")
+//   - surface_tex sampled in a rotated frame aligned with the
+//     surface tangent (the tile's "edge band")
+// Placeholder textures currently: dirt + grass. Replace with
+// per-frequency authored art when palette is populated.
+uniform bool procedural_tile_rendering = true;
+uniform sampler2D interior_tex : source_color, repeat_enable,
+		filter_nearest;
+uniform sampler2D surface_tex : source_color, repeat_enable,
+		filter_nearest;
+uniform float interior_scale_px : hint_range(4.0, 128.0) = 32.0;
+uniform float surface_scale_along_px : hint_range(4.0, 128.0) = 32.0;
+uniform float surface_band_px : hint_range(1.0, 32.0) = 12.0;
+// Screen→world transform. Assumes DRAG_CENTER Camera2D; Y-down.
+uniform vec2 world_origin = vec2(0.0, 0.0);
+uniform float world_per_screen_px = 1.0;
+
 const float TAU_ = 6.28318530718;
 
 
@@ -294,14 +314,50 @@ void fragment() {
 		float reveal = clamp(
 				max(near_vis, dithered_pulse_reveal), 0.0, 1.0);
 
-		// The color used in revealed areas. If stipple_color.a > 0,
-		// pulse-revealed pixels adopt that color (magenta by
-		// default). The near-radius still uses the actual scene
-		// color so the player always sees their surroundings in
-		// their real colors.
+		// Base color for this pixel. When procedural rendering is on
+		// and this pixel looks like a tile, synthesize the color
+		// from interior + surface textures (grass-on-top, dirt-
+		// below look). Otherwise fall back to the scene backbuffer.
 		vec3 scene_rgb = c0;
-		vec3 stipple_rgb = (stipple_color.a > 0.0)
-				? stipple_color.rgb : c0;
+		vec3 tile_rgb = c0;
+		if (procedural_tile_rendering && has_content > 0.5) {
+			vec2 world_pos = world_origin
+					+ UV * screen_size_px * world_per_screen_px;
+			// Interior: world-space wrap keeps texture continuous
+			// across tile boundaries.
+			vec2 interior_uv = world_pos / interior_scale_px;
+			vec3 interior_rgb = texture(interior_tex, interior_uv).rgb;
+
+			// Surface band: rotate the UV so the texture's "x" axis
+			// runs along the surface tangent, and its "y" axis runs
+			// from outside-the-tile (top of strip) into the tile
+			// interior (bottom of strip).
+			vec2 normal = (grad_mag > 0.001)
+					? (-normalize(grad)) : vec2(0.0, -1.0);
+			vec2 tangent = vec2(-normal.y, normal.x);
+			float along = dot(world_pos, tangent) / surface_scale_along_px;
+			// v=0 at the surface, v=1 at surface_band_px inside.
+			// The gradient gives us "how edgy" at THIS pixel; we
+			// interpret (1 - grad_mag) as a rough "depth into the
+			// surface" normalised to band width.
+			float v = clamp(1.0 - grad_mag, 0.0, 1.0);
+			vec3 surface_rgb = texture(surface_tex,
+					vec2(along, v)).rgb;
+
+			// Mix: where the gradient is strong (near edge) we
+			// prefer the surface strip; where it's weak (interior)
+			// we prefer the interior texture.
+			float band_mix = smoothstep(0.2, 0.8, grad_mag);
+			tile_rgb = mix(interior_rgb, surface_rgb, band_mix);
+		}
+		// scene_rgb used for near-radius (real scene colors for the
+		// player's immediate surroundings).
+		vec3 stipple_rgb;
+		if (stipple_color.a > 0.0) {
+			stipple_rgb = stipple_color.rgb;
+		} else {
+			stipple_rgb = tile_rgb;
+		}
 
 		// Revealed = (near_vis OR dithered_pulse_reveal). Use the
 		// REAL scene color inside the near-radius (smooth "you can
