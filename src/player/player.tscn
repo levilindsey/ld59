@@ -9,98 +9,6 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_mf2ua"]
 size = Vector2(16, 4)
 
-[sub_resource type="Animation" id="Animation_vytfq"]
-length = 0.001
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath("PlayerAnimator:frame")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 1,
-"values": [0]
-}
-tracks/1/type = "value"
-tracks/1/imported = false
-tracks/1/enabled = true
-tracks/1/path = NodePath("PlayerAnimator:animation")
-tracks/1/interp = 1
-tracks/1/loop_wrap = true
-tracks/1/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 1,
-"values": ["attack"]
-}
-
-[sub_resource type="Animation" id="Animation_uecbg"]
-resource_name = "attack_left"
-length = 0.4
-step = 0.05
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath("PlayerAnimator:animation")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 1,
-"values": ["attack"]
-}
-tracks/1/type = "value"
-tracks/1/imported = false
-tracks/1/enabled = true
-tracks/1/path = NodePath("PlayerAnimator:frame")
-tracks/1/interp = 1
-tracks/1/loop_wrap = true
-tracks/1/keys = {
-"times": PackedFloat32Array(0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35),
-"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1),
-"update": 1,
-"values": [0, 1, 2, 3, 4, 5, 6, 7]
-}
-
-[sub_resource type="Animation" id="Animation_pw3e2"]
-resource_name = "attack_right"
-length = 0.4
-step = 0.05
-tracks/0/type = "value"
-tracks/0/imported = false
-tracks/0/enabled = true
-tracks/0/path = NodePath("PlayerAnimator:animation")
-tracks/0/interp = 1
-tracks/0/loop_wrap = true
-tracks/0/keys = {
-"times": PackedFloat32Array(0),
-"transitions": PackedFloat32Array(1),
-"update": 1,
-"values": ["attack"]
-}
-tracks/1/type = "value"
-tracks/1/imported = false
-tracks/1/enabled = true
-tracks/1/path = NodePath("PlayerAnimator:frame")
-tracks/1/interp = 1
-tracks/1/loop_wrap = true
-tracks/1/keys = {
-"times": PackedFloat32Array(0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35),
-"transitions": PackedFloat32Array(1, 1, 1, 1, 1, 1, 1, 1),
-"update": 1,
-"values": [0, 1, 2, 3, 4, 5, 6, 7]
-}
-
-[sub_resource type="AnimationLibrary" id="AnimationLibrary_vytfq"]
-_data = {
-&"RESET": SubResource("Animation_vytfq"),
-&"attack_left": SubResource("Animation_uecbg"),
-&"attack_right": SubResource("Animation_pw3e2")
-}
-
 [node name="Player" type="CharacterBody2D" unique_id=217645704 node_paths=PackedStringArray("collision_shape", "animator")]
 collision_layer = 8
 collision_mask = 7
@@ -111,7 +19,7 @@ movement_settings = ExtResource("2_244u8")
 
 [node name="PlayerAnimator" parent="." unique_id=2095922939 instance=ExtResource("2_mf2ua")]
 position = Vector2(0, -10.5)
-animation = "attack"
+animation = "idle_floor"
 metadata/_edit_lock_ = true
 
 [node name="PlayerBodyCollisionShape" type="CollisionShape2D" parent="." unique_id=1838078486]
@@ -120,10 +28,6 @@ position = Vector2(-8.742278e-08, -8)
 rotation = 1.5707964
 shape = SubResource("RectangleShape2D_mf2ua")
 metadata/_edit_lock_ = true
-
-[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1800306376]
-unique_name_in_owner = true
-libraries/ = SubResource("AnimationLibrary_vytfq")
 
 [node name="BugRegionProbe" parent="." unique_id=2011799926 instance=ExtResource("4_probe")]
 
