@@ -24,15 +24,17 @@ tracks with checkbox tasks. Read it at the start of any non-trivial
 session and mark items complete as they land on `main`.
 
 **Parallel sessions**: multiple Claude sessions (or human + Claude)
-may run concurrently on different tracks. Conventions:
+may run concurrently on different tracks. All work lands directly
+on `main` — no feature branches. Conventions:
 
-- Each track works on a branch named `track/<slug>` matching the
-  Parallelization tracks table in `PLAN.md`.
+- `git pull --rebase origin main` before starting and before
+  pushing. Push small, focused commits often so concurrent sessions
+  see your changes.
 - Before editing any file in the "Shared files" table of `PLAN.md`,
-  check that no other active branch has touched it first. Rebase onto
-  `main` before merging.
-- Commit `PLAN.md` checkbox updates alongside the work that satisfies
-  them — the checklist is the system of record.
+  pull first. Serialize edits on those files: pull, edit, commit,
+  push in a tight loop.
+- Commit `PLAN.md` checkbox updates alongside the work that
+  satisfies them — the checklist is the system of record.
 
 If you start a session without clear instructions, consult `PLAN.md`
 and pick an unclaimed track whose dependencies are satisfied.
