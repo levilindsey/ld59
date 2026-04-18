@@ -32,6 +32,9 @@ const _DRIFT_JITTER_RADIANS := PI * 0.6
 @export_range(1.0, 60.0) var lifetime_sec := 12.0
 @export_range(0.0, 64.0) var drift_speed_px_per_sec := 10.0
 
+## HP restored to the player on consumption.
+@export_range(0, 100) var heal_amount: int = 15
+
 var _age_sec := 0.0
 var _drift_velocity := Vector2.ZERO
 var _drift_reroll_countdown := 0.0
@@ -82,6 +85,7 @@ func _on_body_entered(body: Node2D) -> void:
 func _consume(player: Player) -> void:
 	_consumed = true
 	player.set_frequency(frequency)
+	player.apply_heal(heal_amount)
 	eaten.emit(self)
 	queue_free()
 

@@ -184,9 +184,11 @@ surface-facing prominence, one frequency, no damage yet.
 ### Audio (first-pass, load-bearing for feel)
 
 - [x] `echo_audio_player.gd` skeleton subscribes to `pulse_emitted`
-- [ ] Author outgoing "chirp" sample
-- [ ] Author generic "return ping" sample
-- [ ] Wire both into the player, audible on pulse
+- [x] Author outgoing "chirp" sample (synthesized via
+  AudioStreamWAV at runtime)
+- [x] Author generic "return ping" sample (synthesized)
+- [x] Wire both into the player, audible on pulse
+  (EchoAudioPlayer instanced in `main.tscn`)
 
 ### Phase 1 exit
 
@@ -278,13 +280,13 @@ damages only matching tiles.
 - [x] Rate stacking (additive, clamped ≥ 0 per frequency)
 - [x] Annulus-sampled spawn positions, reject-on-solid up to 8 tries
 - [x] Bug consumption: set player frequency
-- [ ] Bug consumption: heal (wiring pending `hud`/PlayerHealth)
+- [x] Bug consumption: heal
 - [x] Minimum-rate-floor per frequency (avoid soft-lock)
 
 ### Player visuals
 
 - [ ] `set_frequency()` updates outline color uniform
-- [ ] HUD frequency indicator (colored chip)
+- [x] HUD frequency indicator (colored chip)
 
 ### GDScript tests
 
@@ -321,10 +323,12 @@ damages only matching tiles.
 
 ### GDScript
 
-- [ ] `PlayerHealth` Node on the player
-- [ ] HUD health bar
-- [ ] Damage from fluid velocity + fragment collision
-- [ ] Scene reload on death at `%PlayerSpawnPoint`
+- [x] `PlayerHealth` Node on the player
+- [x] HUD health bar
+- [ ] Damage from fluid velocity + fragment collision (blocked on
+  `terrain-flow`)
+- [x] Scene reload on death at `%PlayerSpawnPoint` (routed via
+  `Player._on_died` → `G.level.game_over()`)
 
 ### Tests
 
@@ -352,8 +356,7 @@ damages only matching tiles.
 - [x] Perception decay + pulse-raises behavior
 - [x] `EnemySystem.apply_pulse_damage(pulse)` — damage + knockback
   on matching frequency
-- [ ] Touch damage → `PlayerHealth.apply_damage` (wiring pending
-  `hud`/PlayerHealth)
+- [x] Touch damage → `PlayerHealth.apply_damage`
 - [x] `EnemySpawnPoint` (single-shot) + `RespawningEnemySpawnPoint`
   (max active + interval)
 
