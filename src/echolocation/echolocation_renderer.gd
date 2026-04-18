@@ -16,6 +16,11 @@ signal pulse_completed(pulse: EchoPulse)
 
 
 const _MAX_PULSES := 8
+const _MAX_TAGGED_SPRITES := 32
+## Halo radius in screen pixels for a bug's frequency tag. A little
+## larger than the bug's visible body so pulse stipples have room
+## to land inside the halo even when the bug is tiny or fading.
+const _BUG_TAG_RADIUS_PX := 20.0
 
 ## Player's visibility anchor. If null at _ready, falls back to
 ## G.level.player once available.
@@ -31,7 +36,7 @@ const _MAX_PULSES := 8
 
 @export_range(1.0, 16.0) var ring_width_px := 4.0
 @export_range(0.0, 2.0) var ring_glow_strength := 1.2
-@export_range(1.0, 16.0) var bayer_tile_px := 4.0
+@export_range(0.5, 16.0) var bayer_tile_px := 2.0
 
 @export_range(100.0, 2000.0) var default_pulse_speed_px_per_sec := 600.0
 @export_range(100.0, 4000.0) var default_pulse_max_radius_px := 1000.0
@@ -66,7 +71,10 @@ func _ready() -> void:
 	G.ensure_valid(_shader_mat, "EcholocationRenderer: Mask missing ShaderMaterial")
 
 	_shader_mat.set_shader_parameter("bayer_tex", _build_bayer_texture())
-	# Per-type interior + surface atlases (placeholder art).
+	# Per-type interior + surface atlases. The scene renders tiles as
+	# flat palette color; the composite shader overlays these atlases
+	# in the near-field only, so close-by terrain has real art while
+	# pulse stipples outside the near-field stay flat palette color.
 	_shader_mat.set_shader_parameter(
 			"interior_atlas",
 			PlaceholderTerrainTextures.make_interior_atlas())
@@ -88,9 +96,9 @@ func _ready() -> void:
 	_shader_mat.set_shader_parameter(
 			"debug_show_anchor", debug_show_anchor)
 
-	# Populate the frequency palette + per-pixel type detection. The
-	# shader samples interior/surface atlases using the detected type
-	# as the x-axis slot index.
+	# Populate the frequency palette used by per-pixel type detection.
+	# The shader palette-matches each scene pixel to identify tiles
+	# and render them as their flat palette color.
 	var palette_uniforms := (
 			PlaceholderTerrainTextures.build_palette_uniforms())
 	_shader_mat.set_shader_parameter(
@@ -129,8 +137,8 @@ func _process(delta: float) -> void:
 
 	_shader_mat.set_shader_parameter("player_uv", player_uv)
 	_shader_mat.set_shader_parameter("screen_size_px", viewport_size)
-	# Compute world-space anchor for the procedural tile-rendering
-	# branch of the composite shader. Assumes a Camera2D with
+	# Compute world-space anchor for the near-field atlas sampling in
+	# the composite shader. Assumes a Camera2D with
 	# ANCHOR_MODE_DRAG_CENTER so the camera's global_position is the
 	# world-space center of the viewport.
 	var cam: Camera2D = get_viewport().get_camera_2d()
@@ -217,6 +225,33 @@ func _process(delta: float) -> void:
 	_shader_mat.set_shader_parameter("pulse_colors", packed_colors)
 	_shader_mat.set_shader_parameter("pulse_cones", packed_cones)
 	_shader_mat.set_shader_parameter("pulse_count", active_count)
+
+	# Pack tagged sprites (bugs now, enemies later) into the tag-halo
+	# uniform. Each entry gives the shader a screen-space circle + a
+	# frequency id so pulse stipples can reveal the sprite even when
+	# its rendered pixels are too faint or small for palette-match to
+	# catch. Radius scales with canvas zoom so the halo stays at a
+	# consistent visual size regardless of camera zoom.
+	var packed_tags: Array[Vector4] = []
+	packed_tags.resize(_MAX_TAGGED_SPRITES)
+	var tag_count := 0
+	if is_instance_valid(G.bugs):
+		var halo_radius_px: float = (_BUG_TAG_RADIUS_PX
+				* absf(canvas_scale.x))
+		var spawner: BugSpawner = G.bugs as BugSpawner
+		for bug: Bug in spawner.get_alive_bugs():
+			if tag_count >= _MAX_TAGGED_SPRITES:
+				break
+			var bug_screen_px: Vector2 = (bug
+					.get_global_transform_with_canvas().origin)
+			packed_tags[tag_count] = Vector4(
+					bug_screen_px.x,
+					bug_screen_px.y,
+					halo_radius_px,
+					float(bug.frequency))
+			tag_count += 1
+	_shader_mat.set_shader_parameter("tagged_sprites", packed_tags)
+	_shader_mat.set_shader_parameter("tagged_sprite_count", tag_count)
 
 
 ## Fire a new pulse. Returns the EchoPulse on success or null if the

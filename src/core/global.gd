@@ -30,6 +30,12 @@ var echo: CanvasLayer
 # TerrainWorld.
 var terrain: Node
 
+# Bug spawner. Assigned in BugSpawner._enter_tree so the shader can
+# pull live bug positions + frequencies per frame without a scene-
+# tree search. Typed as Node2D to avoid a cross-script class_name
+# dependency at autoload parse time; actual type is BugSpawner.
+var bugs: Node2D
+
 
 func _enter_tree() -> void:
 	if Engine.is_editor_hint():

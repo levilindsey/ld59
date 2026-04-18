@@ -1,10 +1,10 @@
-[gd_scene load_steps=11 format=3 uid="uid://cn6hdqmmufnvr"]
+[gd_scene format=3 uid="uid://cn6hdqmmufnvr"]
 
 [ext_resource type="Script" uid="uid://c1qdd50ca4hst" path="res://src/player/player.gd" id="1_rxibo"]
 [ext_resource type="Resource" uid="uid://ctj0jafyt6dls" path="res://src/player/player_movement_settings.tres" id="2_244u8"]
 [ext_resource type="PackedScene" uid="uid://br1b7cse0hxmt" path="res://src/player/player_animator.tscn" id="2_mf2ua"]
 [ext_resource type="PackedScene" uid="uid://b2kx7y8mp0q4r" path="res://src/bugs/bug_region_probe.tscn" id="4_probe"]
-[ext_resource type="Script" path="res://src/player/player_health.gd" id="5_health"]
+[ext_resource type="Script" uid="uid://cbm40k837ptou" path="res://src/player/player_health.gd" id="5_health"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_mf2ua"]
 size = Vector2(16, 4)
@@ -101,7 +101,7 @@ _data = {
 &"attack_right": SubResource("Animation_pw3e2")
 }
 
-[node name="Player" type="CharacterBody2D" node_paths=PackedStringArray("collision_shape", "animator")]
+[node name="Player" type="CharacterBody2D" unique_id=217645704 node_paths=PackedStringArray("collision_shape", "animator")]
 collision_layer = 8
 collision_mask = 7
 script = ExtResource("1_rxibo")
@@ -109,27 +109,24 @@ collision_shape = NodePath("PlayerBodyCollisionShape")
 animator = NodePath("PlayerAnimator")
 movement_settings = ExtResource("2_244u8")
 
-[node name="PlayerAnimator" parent="." instance=ExtResource("2_mf2ua")]
-position = Vector2(0, -9.5)
+[node name="PlayerAnimator" parent="." unique_id=2095922939 instance=ExtResource("2_mf2ua")]
+position = Vector2(0, -10.5)
 animation = "attack"
 metadata/_edit_lock_ = true
 
-[node name="PlayerBodyCollisionShape" type="CollisionShape2D" parent="."]
+[node name="PlayerBodyCollisionShape" type="CollisionShape2D" parent="." unique_id=1838078486]
 unique_name_in_owner = true
 position = Vector2(-8.742278e-08, -8)
 rotation = 1.5707964
 shape = SubResource("RectangleShape2D_mf2ua")
 metadata/_edit_lock_ = true
 
-[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1800306376]
 unique_name_in_owner = true
-libraries = {
-&"": SubResource("AnimationLibrary_vytfq")
-}
+libraries/ = SubResource("AnimationLibrary_vytfq")
 
-[node name="BugRegionProbe" parent="." instance=ExtResource("4_probe")]
+[node name="BugRegionProbe" parent="." unique_id=2011799926 instance=ExtResource("4_probe")]
 
-[node name="PlayerHealth" type="Node" parent="."]
+[node name="PlayerHealth" type="Node" parent="." unique_id=510139991]
 unique_name_in_owner = true
 script = ExtResource("5_health")
-max_health = 100
