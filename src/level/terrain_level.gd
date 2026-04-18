@@ -23,6 +23,11 @@ extends Level
 @export_group("Test fallback (used when TileMapLayer is empty)")
 @export var test_rect_world_px: Rect2 = Rect2(-320, 32, 640, 256)
 @export var test_rect_type: int = Frequency.Type.GREEN
+## Thickness of the INDESTRUCTIBLE border around the fallback rect.
+## Acts as an anchor so the CC pass has something to call "the main
+## world" when the player carves out chunks. Set to 0 to disable.
+@export_range(0, 8) var test_rect_border_cells: int = 2
+@export var test_rect_border_type: int = Frequency.Type.INDESTRUCTIBLE
 
 @export_group("Authoring")
 ## Frequency.Type assigned to every tile in the tilemap. Per-tile
@@ -102,8 +107,7 @@ func _setup_runtime() -> void:
 		# version is what drives gameplay.
 		tml.visible = false
 	else:
-		TerrainLevelLoader.bake_rect(
-				tw, test_rect_world_px, test_rect_type)
+		_bake_fallback_arena(tw)
 
 	_connect_pulse_damage()
 	_connect_fragment_detached(tw)
@@ -215,6 +219,18 @@ func _rebake_editor_preview() -> void:
 	if is_instance_valid(tml) and tml.get_used_cells().size() > 0:
 		TerrainLevelLoader.bake_from_tile_map_layer(
 				tw, tml, default_terrain_type)
+	else:
+		_bake_fallback_arena(tw)
+
+
+func _bake_fallback_arena(tw: Node) -> void:
+	if test_rect_border_cells > 0:
+		TerrainLevelLoader.bake_rect_with_border(
+				tw,
+				test_rect_world_px,
+				test_rect_type,
+				test_rect_border_cells,
+				test_rect_border_type)
 	else:
 		TerrainLevelLoader.bake_rect(
 				tw, test_rect_world_px, test_rect_type)
