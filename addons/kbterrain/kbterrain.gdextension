@@ -1,0 +1,10 @@
+[configuration]
+entry_symbol = "kbterrain_library_init"
+compatibility_minimum = "4.6"
+reloadable = false
+
+[libraries]
+windows.debug.x86_64 = "res://addons/kbterrain/bin/libkbterrain.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://addons/kbterrain/bin/libkbterrain.windows.template_release.x86_64.dll"
+web.debug.wasm32 = "res://addons/kbterrain/bin/libkbterrain.web.template_debug.wasm32.wasm"
+web.release.wasm32 = "res://addons/kbterrain/bin/libkbterrain.web.template_release.wasm32.wasm"

@@ -1,8 +1,8 @@
-[submodule "ld59extension/godot-cpp"]
-	path = ld59extension/godot-cpp
+[submodule "kbterrain/godot-cpp"]
+	path = kbterrain/godot-cpp
 	url = https://github.com/godotengine/godot-cpp.git
 	branch = godot-4.5-stable
-[submodule "ld59extension/googletest"]
-	path = ld59extension/googletest
+[submodule "kbterrain/googletest"]
+	path = kbterrain/googletest
 	url = https://github.com/google/googletest.git
 	ignore = untracked
