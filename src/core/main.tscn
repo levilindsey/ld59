@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" uid="uid://luccssf71n0" path="res://src/core/game_panel.tscn" id="3_x62ka"]
 [ext_resource type="PackedScene" uid="uid://bvkt5maj64yqm" path="res://src/ui/super_hud/super_hud.tscn" id="7_nxx65"]
 [ext_resource type="PackedScene" path="res://src/echolocation/echolocation_renderer.tscn" id="8_echo"]
+[ext_resource type="Script" path="res://src/echolocation/echo_audio_player.gd" id="9_echoaudio"]
 
 [node name="Main" type="Node2D" unique_id=384292218]
 script = ExtResource("1_avv2o")
@@ -23,6 +24,9 @@ unique_name_in_owner = true
 position = Vector2(0, -7)
 
 [node name="EcholocationRenderer" parent="." unique_id=679299074 instance=ExtResource("8_echo")]
+
+[node name="EchoAudioPlayer" type="Node" parent="."]
+script = ExtResource("9_echoaudio")
 
 [node name="Hud" type="CanvasLayer" parent="." unique_id=1667578978]
 layer = 200

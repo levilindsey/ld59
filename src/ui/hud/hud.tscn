@@ -1,9 +1,11 @@
-[gd_scene load_steps=5 format=3 uid="uid://bt1la6s52krxe"]
+[gd_scene load_steps=7 format=3 uid="uid://bt1la6s52krxe"]
 
 [ext_resource type="Theme" uid="uid://cl3pkwueh4mag" path="res://src/core/main_theme.tres" id="1_4rn03"]
 [ext_resource type="Script" uid="uid://cvmchc2851mho" path="res://src/ui/hud/hud.gd" id="1_eqvli"]
 [ext_resource type="Texture2D" uid="uid://g8krq86co53s" path="res://assets/images/scratch/title.png" id="8_bpdxj"]
 [ext_resource type="Texture2D" uid="uid://3iakxs6hl0gt" path="res://assets/images/scratch/controls.png" id="9_qtkbr"]
+[ext_resource type="PackedScene" uid="uid://cl9y3k4m7vq8x" path="res://src/ui/hud/health_bar.tscn" id="10_hb"]
+[ext_resource type="PackedScene" uid="uid://dv6n3jxk9pzmt" path="res://src/ui/hud/frequency_chip.tscn" id="11_chip"]
 
 [node name="Hud" type="PanelContainer"]
 anchors_preset = 15
@@ -33,7 +35,16 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(120, 0)
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/separation = 0
+theme_override_constants/separation = 4
+
+[node name="HealthBar" parent="MarginContainer/GameState/LeftContent" instance=ExtResource("10_hb")]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="FrequencyChip" parent="MarginContainer/GameState/LeftContent" instance=ExtResource("11_chip")]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 0
 
 [node name="Spacer" type="Control" parent="MarginContainer/GameState"]
 layout_mode = 2

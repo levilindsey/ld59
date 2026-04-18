@@ -15,6 +15,7 @@ func _ready() -> void:
 	half_size = Geometry.calculate_half_width_height(
 		collision_shape.shape,
 		false)
+	%PlayerHealth.died.connect(_on_died)
 
 
 func destroy() -> void:
@@ -47,6 +48,19 @@ func _emit_echo_pulse() -> void:
 
 func set_frequency(freq: int) -> void:
 	current_frequency = freq
+
+
+func apply_damage(amount: int) -> void:
+	%PlayerHealth.apply_damage(amount)
+
+
+func apply_heal(amount: int) -> void:
+	%PlayerHealth.apply_heal(amount)
+
+
+func _on_died() -> void:
+	if is_instance_valid(G.level):
+		G.level.game_over()
 
 
 func _update_actions() -> void:

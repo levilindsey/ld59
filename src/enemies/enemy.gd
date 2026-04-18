@@ -114,10 +114,8 @@ func _on_body_entered(body: Node2D) -> void:
 		_apply_touch_damage_to(body as Player)
 
 
-func _apply_touch_damage_to(_player: Player) -> void:
-	# TODO: route to PlayerHealth once the hud track lands:
-	# %PlayerHealth.apply_damage(touch_damage).
-	pass
+func _apply_touch_damage_to(player: Player) -> void:
+	player.apply_damage(touch_damage)
 
 
 func _get_player() -> Player:
