@@ -6,8 +6,9 @@
 [ext_resource type="PackedScene" uid="uid://b2kx7y8mp0q4r" path="res://src/bugs/bug_region_probe.tscn" id="4_probe"]
 [ext_resource type="Script" uid="uid://cbm40k837ptou" path="res://src/player/player_health.gd" id="5_health"]
 
-[sub_resource type="RectangleShape2D" id="RectangleShape2D_mf2ua"]
-size = Vector2(15, 6)
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_5f2sf"]
+radius = 3.0
+height = 13.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_web_sensor"]
 radius = 4.0
@@ -25,12 +26,12 @@ animation = "idle_floor"
 
 [node name="PlayerBodyCollisionShape" type="CollisionShape2D" parent="." unique_id=1838078486]
 unique_name_in_owner = true
-position = Vector2(3.774895e-08, -7.5)
-rotation = 1.5707964
-shape = SubResource("RectangleShape2D_mf2ua")
+position = Vector2(0, -6.5)
+shape = SubResource("CapsuleShape2D_5f2sf")
 metadata/_edit_lock_ = true
 
 [node name="BugRegionProbe" parent="." unique_id=2011799926 instance=ExtResource("4_probe")]
+position = Vector2(0, -6)
 
 [node name="WebSensor" type="Area2D" parent="."]
 unique_name_in_owner = true
