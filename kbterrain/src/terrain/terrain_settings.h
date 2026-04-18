@@ -31,7 +31,11 @@ public:
 	int chunk_cells = 32;
 	float cell_size_px = 8.0f;
 	// iso threshold in [0, 255]; cells with density >= iso are solid.
-	int iso = 128;
+	// Default 255: with binary 0/255 densities from the bake, the
+	// iso line passes exactly through the inside-corner positions,
+	// so the visual mesh + collision polygon align with the authored
+	// tile boundaries (no half-cell extension on the perimeter).
+	int iso = 255;
 
 	// Collision tuning.
 	int collision_layer = 1; // physics layer 1 = normal_surfaces.
