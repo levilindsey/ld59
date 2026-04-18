@@ -487,14 +487,6 @@ region = Rect2(3230, 0, 34, 36)
 animations = [{
 "frames": [{
 "duration": 1.0,
-"texture": SubResource("Frame000")
-}],
-"loop": true,
-"name": &"ceiling_rest",
-"speed": 16.0
-}, {
-"frames": [{
-"duration": 1.0,
 "texture": SubResource("Frame096")
 }, {
 "duration": 1.0,
