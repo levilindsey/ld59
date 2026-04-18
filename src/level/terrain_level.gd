@@ -80,14 +80,9 @@ func _setup_runtime() -> void:
 		super._ready()
 		return
 
-	# Force visibility_layer = 3 from GDScript in case the scene-file
-	# value is being clobbered by the C++ class init order. Diagnostic
-	# print confirms what the Node2D thinks its layer is.
+	# Belt-and-suspenders: also set from GDScript in case the
+	# scene-file value gets clobbered by the C++ class init order.
 	tw.visibility_layer = 3
-	G.print(
-			"TerrainLevel: tw.visibility_layer=%d global_pos=%s"
-			% [tw.visibility_layer, tw.global_position],
-			ScaffolderLog.CATEGORY_SYSTEM_INITIALIZATION)
 
 	if terrain_settings != null:
 		tw.settings = terrain_settings

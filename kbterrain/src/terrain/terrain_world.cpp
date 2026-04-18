@@ -140,9 +140,6 @@ void TerrainWorld::_ensure_initialized() {
 		RenderingServer::get_singleton()
 				->canvas_item_set_visibility_layer(
 						_parent_canvas_item, 3);
-		UtilityFunctions::print(
-				"[kbterrain] _parent_canvas_item created, "
-				"visibility_layer=3");
 	}
 	// The worker thread only runs at runtime. In editor mode we
 	// mesh synchronously (in _queue_remesh) so designers see the
@@ -274,9 +271,6 @@ void TerrainWorld::_integrate_one(const RemeshResult &r) {
 		// a per-pixel type buffer for the echolocation shader.
 		rs->canvas_item_set_visibility_layer(
 				chunk->canvas_item_rid, 3);
-		UtilityFunctions::print(
-				"[kbterrain] chunk canvas_item created, "
-				"visibility_layer=3");
 	}
 	rs->canvas_item_clear(chunk->canvas_item_rid);
 
