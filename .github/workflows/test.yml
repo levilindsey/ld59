@@ -6,6 +6,16 @@ on:
   pull_request:
   workflow_dispatch:
 
+# publish-unit-test-result-action needs these to create check runs
+# and comment on PRs. The default GITHUB_TOKEN grants only `read`
+# for most scopes on push/pull_request events, which causes a 403
+# when creating the check run.
+permissions:
+  checks: write
+  pull-requests: write
+  contents: read
+  issues: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
