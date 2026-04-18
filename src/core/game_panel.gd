@@ -31,5 +31,12 @@ func on_return_from_screen() -> void:
 
 
 func start_level() -> void:
+	# Guard against double-instantiation. When start_in_game=true,
+	# Level._ready() → reset() → transition(TITLE) → end_game() sets
+	# is_game_ended=true before the outer transition(GAME) reaches
+	# on_return_from_screen, which would otherwise call start_game
+	# again. Skip here; the existing level is already correct.
+	if is_instance_valid(level):
+		return
 	level = G.settings.default_level_scene.instantiate()
 	add_child(level)

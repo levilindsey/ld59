@@ -1,15 +1,17 @@
-[gd_resource type="Resource" script_class="MovementSettings" load_steps=2 format=3 uid="uid://ctj0jafyt6dls"]
+[gd_resource type="Resource" script_class="MovementSettings" format=3 uid="uid://ctj0jafyt6dls"]
 
 [ext_resource type="Script" uid="uid://b23hrw6i5bw6u" path="res://src/scaffolder/character/movement_settings.gd" id="1_0lti3"]
 
 [resource]
 script = ExtResource("1_0lti3")
+max_jump_chain = 999999
 jump_boost = -320.0
+double_jump_boost_multiplier = 1.0
 gravity_slow_rise_multiplier = 0.66
-walk_acceleration = 2000.0
+walk_acceleration = 1200.0
 in_air_horizontal_acceleration = 1200.0
 max_ground_horizontal_speed = 120.0
-max_air_horizontal_speed = 140.0
+max_air_horizontal_speed = 120.0
 max_vertical_speed = 1000.0
 late_jump_forgiveness_threshold_sec = 0.1
 metadata/_custom_type_script = "uid://b23hrw6i5bw6u"
