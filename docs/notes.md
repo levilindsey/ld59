@@ -191,12 +191,12 @@ lives in the scene file.
 Web export template must be built with Emscripten 4.0.0+. The tested
 version from Godot 4.6 CI is 4.0.11. Avoid 4.0.3 through 4.0.6
 (GDExtension regression, Godot issue #105717). Documented in
-`ld59extension/web-template-setup.md`.
+`kbterrain/web-template-setup.md`.
 
 ### MSVC build byproducts
 
 The Windows build drops `.exp`, `.lib`, `.pdb` files alongside the
-committed `.dll` in `addons/ld59extension/bin/`. `.gitignore` filters
+committed `.dll` in `addons/kbterrain/bin/`. `.gitignore` filters
 them out. If a new platform build lands, extend the filter.
 
 ### Godot hot-reload for shader structural changes
@@ -206,3 +206,32 @@ don't hot-reload cleanly. If a shader edit seems to have no visible
 effect: stop the running game, right-click the `.gdshader` file in
 FileSystem → Reimport, then re-run. In the worst case, restart the
 Godot editor.
+
+### `@tool` TerrainWorld in editor
+
+Phase 2 originally bailed on `is_editor_hint()` to avoid the C++
+worker thread fighting with editor scene-save and reimports. Phase
+2.5 added a synchronous mesh path so `TerrainLevel` can be `@tool`
+and live-render the marching-squares preview while the designer
+edits a TileMapLayer.
+
+Rules:
+
+- The C++ worker thread is **not** started in editor mode
+  (`_ensure_initialized` checks `_editor_mode`). Re-mesh runs
+  synchronously on the calling thread via `process_remesh_job` +
+  `_integrate_one`.
+- Physics RIDs are **not** created in editor mode (would interfere
+  with editor-mode tools and aren't useful for visual preview). They
+  are created on first remesh at runtime.
+- `clear_all()` wipes every chunk + frees RIDs. Used by the editor
+  preview before each re-bake to avoid stale chunks lingering when
+  tiles are erased.
+- A child class extending `TerrainWorld` should override `_ready`
+  / `_input` / `_physics_process` carefully if it's `@tool` —
+  early-return on `Engine.is_editor_hint()` for any handler that
+  references runtime-only autoload state (G.echo, G.terrain, etc).
+  See `src/level/terrain_level.gd` for the pattern.
+
+This is the only `@tool` exception in the codebase. Other systems
+(echolocation, bugs, enemies) stay runtime-only.

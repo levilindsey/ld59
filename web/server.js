@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Minimal static server for the ld59 web build.
+ * Minimal static server for the Kittenbaticorn web build.
  *
  * Sets COOP/COEP headers so the Godot threaded web template can
  * initialize SharedArrayBuffer (required for std::thread in the C++
@@ -39,6 +39,6 @@ app.use(
 );
 
 app.listen(PORT, () => {
-	console.log(`ld59 web build: http://localhost:${PORT}`);
+	console.log(`Kittenbaticorn web build: http://localhost:${PORT}`);
 	console.log(`Serving from: ${DIST}`);
 });

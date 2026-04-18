@@ -1,10 +1,17 @@
-# ld59 Implementation Plan
+# Kittenbaticorn Implementation Plan
 
 The authoritative living checklist for the echolocation platformer.
 
 Every item is a checkbox. Sessions — Claude or human, on any device —
 mark items as they land on `main` using `- [x]`. A phase is complete
 when its exit criteria are checked.
+
+Accumulated engineering context — shader tuning values and tradeoffs,
+deferred shader work waiting for Phase 2, Godot/AMD/web quirks
+discovered along the way, architectural contracts to preserve across
+rewrites — lives in [`docs/notes.md`](docs/notes.md). Read that at
+the start of any shader or rendering-adjacent session, and append to
+it as you learn new quirks or make decisions worth preserving.
 
 ## How to use this doc
 
@@ -44,15 +51,15 @@ creation (sand/liquid), and connected-component detachment.
 - **Engine**: Godot 4.6.2-stable.
 - **Renderer**: `gl_compatibility` (WebGL2 on web). No compute
   shaders, no MRT, no float RTs.
-- **GDExtension**: `ld59extension/`, godot-cpp pinned to
+- **GDExtension**: `kbterrain/`, godot-cpp pinned to
   `godot-4.5-stable` (upstream 4.6 tag not yet cut;
   `compatibility_minimum=4.6` in manifest). googletest pinned at
-  v1.15.2. Build via `ld59extension/build_windows.ps1`.
+  v1.15.2. Build via `kbterrain/build_windows.ps1`.
 - **Tests**: GoogleTest (C++) via `build_tests.ps1`. GUT (GDScript)
   under `test/` via CI.
 - **Web**: threaded + dlink-enabled custom template, self-hosted on
   user's node server with COOP/COEP. Safari gets a fallback page.
-  Details in `ld59extension/web-template-setup.md`.
+  Details in `kbterrain/web-template-setup.md`.
 
 Subsystems:
 
@@ -87,14 +94,14 @@ planning aid for who works on what, not a branching scheme.
 | Track | Slug | Primary files | Depends on | Parallel-safe? |
 |---|---|---|---|---|
 | Shader & visibility | `shader` | `src/echolocation/*` | Nothing | ✅ |
-| Terrain C++ core | `terrain-core` | `ld59extension/src/terrain/*` | Nothing (built in isolation) | ✅ |
+| Terrain C++ core | `terrain-core` | `kbterrain/src/terrain/*` | Nothing (built in isolation) | ✅ |
 | Terrain level bake | `terrain-bake` | `src/terrain/terrain_level_loader.gd`, level `.tscn`s | `terrain-core` (API stable) | ⚠️ Sequential after core |
-| Flow sim + fragments | `terrain-flow` | `ld59extension/src/terrain/flow_step.*`, `connected_components.*` | `terrain-core` done | ⚠️ Sequential after core |
+| Flow sim + fragments | `terrain-flow` | `kbterrain/src/terrain/flow_step.*`, `connected_components.*` | `terrain-core` done | ⚠️ Sequential after core |
 | Bug system | `bugs` | `src/bugs/*`, `src/core/frequency.gd` | Nothing (stubs) | ✅ |
 | Enemy system | `enemies` | `src/enemies/*` | `G.echo.pulse_emitted` (exists) | ✅ |
 | Health + HUD | `hud` | `src/player/player_health.gd`, `src/ui/hud/*` | Nothing | ✅ |
 | Audio pipeline | `audio` | `src/echolocation/echo_audio_player.gd`, audio assets | Nothing | ✅ |
-| Web hosting | `web` | `web/*`, `ld59extension/web-template-setup.md` | Nothing | ✅ |
+| Web hosting | `web` | `web/*`, `kbterrain/web-template-setup.md` | Nothing | ✅ |
 
 Claim a track informally: glance at recent commits touching its
 primary files and at the checklist below. If nothing's in flight,
@@ -112,9 +119,9 @@ these files overnight.
 | `src/core/global.gd` | shader, bugs, enemies, hud |
 | `src/core/main.tscn` | shader, hud |
 | `project.godot` | any track adding inputs, layers, or autoloads |
-| `addons/ld59extension/ld59extension.gdextension` | terrain-core, terrain-flow |
-| `ld59extension/SConstruct` | terrain-core, terrain-flow |
-| `ld59extension/src/register_types.cpp` | terrain-core, terrain-flow |
+| `addons/kbterrain/kbterrain.gdextension` | terrain-core, terrain-flow |
+| `kbterrain/SConstruct` | terrain-core, terrain-flow |
+| `kbterrain/src/register_types.cpp` | terrain-core, terrain-flow |
 | `CLAUDE.md` | all tracks (document as you go) |
 | `PLAN.md` | all tracks (check items as you go) |
 
@@ -126,7 +133,7 @@ these files overnight.
   audio. Pure GDScript iteration; no C++ rebuild loop.
 - **Either**: web hosting, terrain-bake.
 
-Binaries in `addons/ld59extension/bin/` are committed — when you
+Binaries in `addons/kbterrain/bin/` are committed — when you
 switch devices, pull `main` and you're ready.
 
 ---
@@ -142,7 +149,7 @@ surface-facing prominence, one frequency, no damage yet.
 - [x] Set compatibility_minimum to 4.6 in `.gdextension` manifest
 - [x] Verify C++ extension loads in Godot 4.6.2 editor
 - [x] Make `build_tests.ps1` detect the 4.6.2 binary
-- [x] Document web template setup (`ld59extension/web-template-setup.md`)
+- [x] Document web template setup (`kbterrain/web-template-setup.md`)
 - [x] Add node static-server + COOP/COEP config (`web/server.js`)
 - [x] Safari fallback HTML (`web/safari_fallback.html`)
 - [ ] Build a custom dlink-enabled threaded web template locally
@@ -166,11 +173,25 @@ surface-facing prominence, one frequency, no damage yet.
 - [x] Camera2D anchor_mode set to DRAG_CENTER in `level.gd`
 - [x] `G.echo` registered in `global.gd`
 - [x] Renderer added to `Main.tscn` at layer 100
+- [x] `stipple_color` uniform (magenta default) for decoupling
+  stipple color from tile art
+- [x] Near-radius shows real scene colors; pulse uses stipple color
+- [x] Facing threshold smoothstep + raw-luminance `has_content` to
+  kill back-facing and open-space stipple leaks
+- [x] Game Panel `start_level()` idempotent (`start_in_game=true`
+  had been double-instantiating the level)
 - [ ] Playtest pass: tune `near_radius_px`, `default_pulse_max_radius_px`,
   `fade_tau_sec`, `bayer_tile_px`, `surface_prominence_strength`,
   `interior_floor` until it *feels* right
 - [ ] Decide directional cone vs full circle default
 - [ ] Tunable pulse cooldown on the player side
+
+**More shader work is deferred until Phase 2 lands** — procedural
+tile rendering, density-field-based surface detection, frequency
+palette activation, bug/enemy visibility modes. See
+[`docs/notes.md`](docs/notes.md) "Deferred shader work" for the
+list and the rationale (SDF from the density field makes the
+remaining items significantly cleaner to implement).
 
 ### Player
 
@@ -205,57 +226,95 @@ surface-facing prominence, one frequency, no damage yet.
 rendering. Pulse damages and destroys tiles. One frequency type +
 Indestructible.
 
-### C++ core (`ld59extension/src/terrain/`)
+### C++ core (`kbterrain/src/terrain/`)
 
-- [ ] `chunk.{h,cpp}` — per-cell `{density, type, health}`, RIDs,
-  `std::atomic<uint64_t> generation`, state enum, fast-path flags
-- [ ] `chunk_manager.{h,cpp}` — non-streaming, all chunks live
-- [ ] `marching_squares.{h,cpp}` — stateless; 16-case `constexpr`
+- [x] `chunk.{h,cpp}` — per-cell `{density, type, health}`, RIDs,
+  `std::atomic<uint64_t> generation`
+- [x] `chunk_manager.{h,cpp}` — non-streaming, all chunks live
+- [x] `marching_squares.{h,cpp}` — stateless; 16-case `constexpr`
   table; emits verts+indices+boundary segments
-- [ ] `density_splat.{h,cpp}` — carve/fill with smoothstep falloff
-- [ ] `douglas_peucker.{h,cpp}` — polyline simplification
-- [ ] `worker_pool.{h,cpp}` — single `std::thread` worker
-- [ ] `terrain_settings.{h,cpp}` — GDCLASS `Resource`
-- [ ] `terrain_world.{h,cpp}` — GDCLASS facade
-- [ ] `terrain_world.damage(world_pos, radius, damage, frequency_mask)`
-- [ ] `terrain_world.carve() / fill() / sample_density() / is_solid()`
-- [ ] `terrain_world.get_surface_height()` for spawn placement
-- [ ] `terrain_world.set_cells(coord, PackedByteArray)` bulk import
-- [ ] SConstruct: glob `src/terrain/*.cpp`
-- [ ] `register_types.cpp`: register `TerrainWorld`, `TerrainSettings`
+- [x] `density_splat.{h,cpp}` — carve/fill with smoothstep falloff
+- [x] `douglas_peucker.{h,cpp}` — polyline simplification + line-
+  soup chaining
+- [x] `worker_pool.{h,cpp}` — single `std::thread` worker,
+  generation-counter cancellation
+- [x] `terrain_settings.{h,cpp}` — GDCLASS `Resource` with
+  per-frequency color palette
+- [x] `terrain_world.{h,cpp}` — GDCLASS facade
+- [x] `terrain_world.damage(world_pos, radius, damage, frequency_mask)`
+- [x] `terrain_world.carve() / fill() / sample_density() / is_solid()`
+- [x] `terrain_world.get_surface_height()` for spawn placement
+- [x] `terrain_world.set_cells(coord, PackedByteArray)` bulk import
+- [x] SConstruct: glob `src/terrain/*.cpp`
+- [x] `register_types.cpp`: register `TerrainWorld`, `TerrainSettings`
 
 ### C++ tests (GoogleTest)
 
-- [ ] `test_marching_squares.h` — all 16 cases + interpolation
-- [ ] `test_density_splat.h` — carve/fill math, idempotence
-- [ ] `test_douglas_peucker.h` — straight lines reduce; zig-zag
-  preserved
+- [x] `test_marching_squares.h` — 8 tests: empty, full, single
+  corner, trapezoid, both diagonal ambiguities, midpoint
+  interpolation, multi-cell chunk
+- [x] `test_density_splat.h` — 6 tests: carve clears, fill inverse,
+  feather falloff, clamp-to-0, AABB clamp, outside-chunk no-op
+- [x] `test_douglas_peucker.h` — 5 tests: straight-line collapses,
+  zig-zag preservation/collapse, empty input, line-soup chaining
+- [x] `test_terrain_world.h` — ChunkManager get/create, world-to-
+  chunk mapping, splat-affected-chunks iteration
 - [ ] `test_worker_pool.h` — generation-counter cancellation
-- [ ] `test_terrain_bake.h` — set_cells round-trips
+  (deferred: threading tests are flaky)
 
 ### GDScript integration
 
-- [ ] `TerrainLevelLoader` GDScript — walks TileMapLayer, reads
-  tile custom data (`type`, `initial_health`), bulk-pushes to
-  `TerrainWorld`
-- [ ] Tile custom data layers on the TileSet (`type`, `initial_health`)
-- [ ] `terrain_test_level.tscn` with TileMap authoring → bake
+- [x] `TerrainLevelLoader` GDScript — `bake_from_tile_map_layer`
+  and `bake_rect` entry points
+- [x] `terrain_level.tscn` with TerrainWorld + hand-coded rect
+  test pattern (authoring via TileMap custom data layers deferred
+  to Phase 3 when per-tile types arrive)
+- [x] `level.gd` subclass `TerrainLevel` bakes terrain on `_ready`,
+  spawns player at the top of the test rect, wires pulse → damage
+- [x] `Settings.default_level_scene` points to
+  `terrain_level.tscn`
+- [x] `G.terrain` autoload field registered in `global.gd`
 - [ ] `terrain_movement_settings.tres` with `floor_max_angle ≈ 60°`,
-  `floor_snap_length = 4`
-- [ ] `level.gd` awaits `generation_completed`, spawns player at
-  `get_surface_height(spawn_x)`
-- [ ] Pulse emission calls `G.terrain.damage(...)`
+  `floor_snap_length = 4` (pending in-editor playtest)
+- [ ] Tile custom data layers on the TileSet (`type`,
+  `initial_health`) — deferred to Phase 3
+
+### Procedural terrain art
+
+- [x] Placeholder `dirt` (interior) + `grass` (surface strip)
+  textures generated in GDScript via
+  `PlaceholderTerrainTextures.make_*`
+- [x] Composite shader: procedural branch samples interior in
+  world-space + surface in rotated-tangent UVs, blends by gradient
+  magnitude (band)
+- [x] `world_origin` + `world_per_screen_px` uniforms track
+  camera transform per frame
+
+### Editor authoring (`@tool` preview)
+
+- [x] `TerrainWorld._editor_mode`: synchronous mesh path (worker
+  bypassed) when running under `Engine.is_editor_hint()`
+- [x] `TerrainWorld.clear_all()` to wipe chunks + free RIDs before
+  re-bake
+- [x] `TerrainLevel` is `@tool`; in editor it bakes the child
+  TileMapLayer and renders the live MS preview, re-baking on
+  `TileMapLayer.changed`
+- [x] `terrain_level.tscn` includes a `Tiles` `TileMapLayer` child
+  using `default_tile_set.tres` for authoring
+- [x] Inspector "Refresh preview" toggle for manual re-bake
+- [x] Editor mode skips physics-body creation (avoids stomping
+  editor-mode tools); collision is rebuilt at runtime
 
 ### GDScript tests (GUT)
 
-- [ ] `test_terrain_player_lands.gd`
+- [ ] `test_terrain_player_lands.gd` (pending in-editor verification)
 - [ ] `test_terrain_pulse_carves.gd`
 
 ### Phase 2 exit
 
-- [ ] Pulse carves a visible, walkable hole
-- [ ] `scons tests=yes` passes all MS tests
-- [ ] GUT tests pass in CI
+- [x] All 25 C++ tests pass (`build_tests.ps1` green)
+- [ ] In-editor: player lands on terrain, pulse carves visible holes,
+  procedural grass/dirt renders on tile edges/interiors
 
 ---
 
@@ -271,6 +330,11 @@ damages only matching tiles.
   in `EcholocationRenderer`
 - [ ] Enable frequency gating in the composite shader (already wired)
 - [ ] Tile custom data: per-tile `type` drives render color
+- [ ] Pick up deferred shader work now that the Phase 2 density
+  field exists — see [`docs/notes.md`](docs/notes.md) "Deferred
+  shader work." (Procedural interior + rotated surface textures,
+  SDF-based surface detection, bug medium-range visibility mode,
+  enemy perception glow.)
 
 ### Bug system (GDScript)
 
@@ -427,7 +491,7 @@ Push frequently so other sessions see your changes. Before editing
 anything listed under "Shared files" above, pull first to minimize
 rebase pain.
 
-**Binaries in `addons/ld59extension/bin/`** are committed. If a
+**Binaries in `addons/kbterrain/bin/`** are committed. If a
 concurrent C++ change pushed a new `.dll` while you were working on
 pure GDScript, your rebase may flag the binary as conflicted — take
-the remote version: `git checkout --theirs addons/ld59extension/bin/`.
+the remote version: `git checkout --theirs addons/kbterrain/bin/`.

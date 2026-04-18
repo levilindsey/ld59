@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LD59 is a single-player 2D game built with Godot 4.6 (specifically
+Kittenbaticorn is a single-player 2D game built with Godot 4.6 (specifically
 4.6.2-stable) for the Ludum Dare 59 game jam. The repo shares the
 `scaffolder/` character/movement framework with other Godot projects
 in this workspace, but this project has no networking, backend, or
@@ -506,19 +506,19 @@ the submodule pin and rebuild.
 ## GDExtension (C++)
 
 Computation-intensive logic lives in a native GDExtension. The
-extension name is `ld59extension`. Classes defined in C++ are
+extension name is `kbterrain`. Classes defined in C++ are
 registered with Godot's `ClassDB` and callable from GDScript like
 any other Godot class.
 
 ### Layout
 
-- `ld59extension/` — C++ source tree. Contains `SConstruct`,
+- `kbterrain/` — C++ source tree. Contains `SConstruct`,
   `src/`, build scripts, and git submodules (`godot-cpp`,
   `googletest`). A top-level `.gdignore` prevents the Godot editor
   from scanning this tree.
-- `addons/ld59extension/ld59extension.gdextension` — manifest that
+- `addons/kbterrain/kbterrain.gdextension` — manifest that
   declares the extension to Godot.
-- `addons/ld59extension/bin/` — compiled `.dll`/`.wasm` binaries,
+- `addons/kbterrain/bin/` — compiled `.dll`/`.wasm` binaries,
   **committed to the repo**.
 
 ### Submodules
@@ -537,13 +537,13 @@ and commit when changing C++ code.
 
 ```powershell
 # Windows (debug + release).
-powershell -ExecutionPolicy Bypass -File ld59extension\build_windows.ps1
+powershell -ExecutionPolicy Bypass -File kbterrain\build_windows.ps1
 
 # Web (requires Emscripten SDK activated in the shell).
-powershell -ExecutionPolicy Bypass -File ld59extension\build_web.ps1
+powershell -ExecutionPolicy Bypass -File kbterrain\build_web.ps1
 ```
 
-Or invoke SCons directly from `ld59extension/`:
+Or invoke SCons directly from `kbterrain/`:
 
 ```powershell
 scons platform=windows target=template_debug install
@@ -557,31 +557,31 @@ commit the binaries themselves.
 
 GoogleTest is embedded into the extension when built with
 `tests=yes`. Test files are colocated with source as
-`src/test_*.h`, gated by the `LD59EXTENSION_TESTS_ENABLED`
+`src/test_*.h`, gated by the `kbterrain_TESTS_ENABLED`
 preprocessor define. The test runner is invoked from
 `register_types.cpp` during module initialisation and prints a
-sentinel line (`ld59extension test result: ALL TESTS PASSED!`)
+sentinel line (`kbterrain test result: ALL TESTS PASSED!`)
 that `build_tests.ps1` greps for.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File ld59extension\build_tests.ps1
+powershell -ExecutionPolicy Bypass -File kbterrain\build_tests.ps1
 ```
 
 To add a test:
 
-1. Create `ld59extension/src/test_<thing>.h` with
-   `#ifdef LD59EXTENSION_TESTS_ENABLED` guards and `TEST(...)`
-   cases (see `test_ld59extension_example.h`).
+1. Create `kbterrain/src/test_<thing>.h` with
+   `#ifdef kbterrain_TESTS_ENABLED` guards and `TEST(...)`
+   cases (see `test_kbterrain_example.h`).
 2. `#include "test_<thing>.h"` inside the
-   `LD59EXTENSION_TESTS_ENABLED` block of `register_types.cpp`.
+   `kbterrain_TESTS_ENABLED` block of `register_types.cpp`.
 
 ### Adding a new C++ class
 
 1. Write `src/my_class.h` and `src/my_class.cpp` following
-   `ld59extension_example.{h,cpp}` (`GDCLASS`, `_bind_methods`).
+   `kbterrain_example.{h,cpp}` (`GDCLASS`, `_bind_methods`).
 2. In `register_types.cpp`, `#include "my_class.h"` and call
    `ClassDB::register_class<MyClass>()` inside
-   `initialize_ld59extension_module()`.
+   `initialize_kbterrain_module()`.
 3. Rebuild.
 
 ### Web export caveat
