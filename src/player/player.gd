@@ -6,6 +6,17 @@ extends Character
 ## player's WebSensor.
 const _WEB_SPEED_MULTIPLIER := 0.25
 
+## Fluid velocity magnitude (px/sec) at which fluid begins to damage
+## the player. Below this the player can wade through liquid safely.
+const _FLUID_DAMAGE_SPEED_THRESHOLD := 120.0
+
+## Damage per second applied at the max fluid speed; scales linearly
+## with excess-over-threshold.
+const _FLUID_DAMAGE_PER_SEC := 20.0
+
+## Applied-damage cooldown so we don't tick integer HP every frame.
+const _FLUID_DAMAGE_TICK_SEC := 0.25
+
 ## Absolute cap on `|velocity.y|` while overlapping a web. Applied
 ## after the scaffolder's action handlers run, so gravity and jump
 ## impulses are still computed normally but the resulting motion is
@@ -15,6 +26,7 @@ const _WEB_MAX_VERTICAL_SPEED_PX_PER_SEC := 120.0
 
 
 var _is_in_web := false
+var _fluid_damage_accum_sec := 0.0
 
 
 var half_size := Vector2.INF
@@ -54,6 +66,26 @@ func _physics_process(delta: float) -> void:
 				velocity.y,
 				-_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC,
 				_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC)
+	_apply_fluid_damage(delta)
+
+
+func _apply_fluid_damage(delta: float) -> void:
+	if not is_instance_valid(G.terrain):
+		return
+	var fluid_vel: Vector2 = G.terrain.sample_fluid_velocity(global_position)
+	var speed := fluid_vel.length()
+	if speed < _FLUID_DAMAGE_SPEED_THRESHOLD:
+		_fluid_damage_accum_sec = 0.0
+		return
+	_fluid_damage_accum_sec += delta
+	if _fluid_damage_accum_sec < _FLUID_DAMAGE_TICK_SEC:
+		return
+	_fluid_damage_accum_sec -= _FLUID_DAMAGE_TICK_SEC
+	var over_threshold := speed - _FLUID_DAMAGE_SPEED_THRESHOLD
+	var dps := minf(_FLUID_DAMAGE_PER_SEC, over_threshold * 0.2)
+	var tick_dmg := int(roundf(dps * _FLUID_DAMAGE_TICK_SEC))
+	if tick_dmg > 0:
+		apply_damage(tick_dmg)
 
 
 func _sample_web_overlap() -> void:

@@ -119,10 +119,13 @@ private:
 	void _integrate_results();
 	void _integrate_one(const terrain::RemeshResult &result);
 	// Returns true if the cell was destroyed this call (type went to
-	// NONE); in that case `out_world_cx`/`out_world_cy` are set.
+	// NONE); in that case `out_world_cx`/`out_world_cy` are set if
+	// non-null. Pass nullptr for both if the caller doesn't need the
+	// destroyed-cell coord (e.g. falloff damage without CC).
 	bool _apply_damage_to_cell(terrain::Chunk *chunk, int cx, int cy,
 			int damage, int frequency_mask, Vector2 world_pos,
-			int32_t *out_world_cx, int32_t *out_world_cy);
+			int32_t *out_world_cx = nullptr,
+			int32_t *out_world_cy = nullptr);
 	void _free_chunk_rids(terrain::Chunk *chunk);
 
 	// Run CC on the world-cell coords of cells that were destroyed
