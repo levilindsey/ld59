@@ -26,7 +26,7 @@ uniform sampler2D screen_tex : hint_screen_texture,
 
 // Offset in UV to use when taking gradient taps. 2 texels = 2/screen
 // is roughly correct; computed in-shader from screen_size_px.
-uniform float gradient_tap_px : hint_range(0.5, 8.0) = 2.0;
+uniform float gradient_tap_px : hint_range(0.5, 32.0) = 8.0;
 
 // Near-field: always-on circular reveal around the player.
 uniform float near_radius_px : hint_range(0.0, 512.0) = 80.0;
@@ -71,6 +71,17 @@ uniform float background_luma_threshold : hint_range(0.0, 1.0) = 0.02;
 
 // Current frequency of the player (Frequency.Type enum value).
 uniform int current_frequency = 0;
+
+// Stipple color override. When alpha > 0, pulse-revealed pixels are
+// painted this color instead of the scene pixel underneath. Keeps
+// the visual language of echolocation separate from the underlying
+// tile art.
+uniform vec4 stipple_color : source_color = vec4(1.0, 0.0, 1.0, 1.0);
+
+// Facing threshold: below this, the surface is considered fully
+// back-facing and no pulse stipple appears. Higher = more strict.
+uniform float facing_threshold_lo : hint_range(0.0, 1.0) = 0.3;
+uniform float facing_threshold_hi : hint_range(0.0, 1.0) = 0.8;
 
 // Debug: bypass effects and draw a crosshair at player_uv so the
 // world→screen transform can be verified at a glance.
@@ -164,15 +175,12 @@ void fragment() {
 	vec2 player_px = player_uv * screen_size_px;
 
 	if (debug_show_anchor) {
-		vec2 cross_delta = px - player_px;
-		vec4 dbg_color = vec4(0.0, 0.0, 0.0, 0.0);
-		if (length(cross_delta) < 6.0) {
-			dbg_color = vec4(1.0, 0.2, 0.2, 1.0);
-		} else if (abs(cross_delta.y) < 1.5
-				|| abs(cross_delta.x) < 1.5) {
-			dbg_color = vec4(0.0, 1.0, 1.0, 1.0);
-		}
-		COLOR = dbg_color;
+		// Verification mode: just output what hint_screen_texture
+		// gives us, tinted green. If the user sees a green-tinted
+		// view of the game world, hint_screen_texture is working.
+		// If they see black, it isn't.
+		vec3 dbg_scene = texture(screen_tex, SCREEN_UV).rgb;
+		COLOR = vec4(dbg_scene * vec3(0.3, 1.5, 0.3), 1.0);
 	} else {
 		// Sample scene color at center + 4 neighbors for a gradient.
 		vec2 tap_uv = vec2(gradient_tap_px, gradient_tap_px)
@@ -194,9 +202,13 @@ void fragment() {
 		float lU = dot(cU, luma);
 		float lD = dot(cD, luma);
 
-		// Gradient: approximate surface-facing direction.
+		// Gradient: approximate surface-facing direction. Using a
+		// wider tap (gradient_tap_px) finds whole-tile boundaries
+		// rather than in-tile pixel-art detail.
 		vec2 grad = vec2(lR - lL, lD - lU);
 		float grad_mag = length(grad);
+		// Amplify: a modest luminance diff should be a strong edge.
+		grad_mag = clamp(grad_mag * 4.0, 0.0, 1.0);
 
 		// "To player" direction for the facing dot product.
 		vec2 to_player = player_px - px;
@@ -209,23 +221,29 @@ void fragment() {
 		// opposite — out of the tile. Negate to get outward normal.
 		vec2 outward_normal = (grad_mag > 0.001)
 				? (-normalize(grad)) : vec2(0.0);
-		float facing = max(0.0, dot(outward_normal, to_player_dir));
+		float facing_raw = dot(outward_normal, to_player_dir);
+		// Sharper cutoff on back-facing / grazing surfaces so only
+		// clearly-toward-player edges stipple.
+		float facing = smoothstep(
+				facing_threshold_lo,
+				facing_threshold_hi,
+				facing_raw);
 
 		// Surface prominence combines "how edgy" with "how facing".
-		// Clamp gradient contribution so fully flat interiors keep
-		// a small floor.
-		float edge_strength = clamp(grad_mag * 6.0, 0.0, 1.0);
-		float prominence_raw = edge_strength * facing;
+		// When surface_prominence_strength is 0 we pass everything;
+		// at 1 we gate fully by prominence_raw (with interior_floor
+		// giving a minimum).
+		float prominence_raw = grad_mag * facing;
 		float prominence = mix(
 				1.0,
 				mix(interior_floor, 1.0, prominence_raw),
 				surface_prominence_strength);
 
-		// Don't light up the backdrop clear color. If this pixel is
-		// darker than background_luma_threshold and there's no
-		// nearby gradient, the pulse contribution is killed.
-		float has_content = step(
-				background_luma_threshold, l0 + grad_mag * 4.0);
+		// Don't light up the backdrop clear color. Test against the
+		// raw center luminance only; adding gradient padding here
+		// leaks "content" into backdrop pixels next to tile edges
+		// and creates stippling in the open space beyond walls.
+		float has_content = step(background_luma_threshold, l0);
 
 		// Frequency gating via palette (skipped when empty).
 		float frequency_match = 1.0;
@@ -276,16 +294,23 @@ void fragment() {
 		float reveal = clamp(
 				max(near_vis, dithered_pulse_reveal), 0.0, 1.0);
 
-		// The scene pixel under this fragment.
+		// The color used in revealed areas. If stipple_color.a > 0,
+		// pulse-revealed pixels adopt that color (magenta by
+		// default). The near-radius still uses the actual scene
+		// color so the player always sees their surroundings in
+		// their real colors.
 		vec3 scene_rgb = c0;
+		vec3 stipple_rgb = (stipple_color.a > 0.0)
+				? stipple_color.rgb : c0;
 
-		// Revealed: show the scene plus any ring glow. Unrevealed:
-		// solid black. Ring glow leaks slightly into dark areas so
-		// the wave front is always readable.
-		vec3 out_rgb = mix(
-				ring_rgb,
-				scene_rgb + ring_rgb,
-				reveal);
+		// Revealed = (near_vis OR dithered_pulse_reveal). Use the
+		// REAL scene color inside the near-radius (smooth "you can
+		// always see around you" reveal), and stipple_rgb where the
+		// pulse reveals. Add ring glow on top everywhere so the
+		// wave front stays readable in dark areas.
+		vec3 revealed_rgb = mix(
+				stipple_rgb, scene_rgb, near_vis);
+		vec3 out_rgb = mix(ring_rgb, revealed_rgb + ring_rgb, reveal);
 		float out_alpha = 1.0; // fully opaque overlay
 
 		// Small dark floor so the ring never punches fully to
