@@ -28,6 +28,12 @@ extends Level
 ## Frequency.Type assigned to every tile in the tilemap. Per-tile
 ## type-from-custom-data lands in Phase 3.
 @export var default_terrain_type: int = Frequency.Type.GREEN
+
+@export_group("Fragments")
+## Scene spawned when a connected-components pass detaches an
+## un-anchored island of terrain cells. Instance is initialized via
+## its `build()` method with pre-baked mesh + collision data.
+@export var fragment_scene: PackedScene
 ## Toggle to force a re-bake from the editor inspector. Auto-flips
 ## back to false after triggering.
 @export var refresh_preview: bool = false:
@@ -100,7 +106,32 @@ func _setup_runtime() -> void:
 				tw, test_rect_world_px, test_rect_type)
 
 	_connect_pulse_damage()
+	_connect_fragment_detached(tw)
 	super._ready()
+
+
+func _connect_fragment_detached(tw: Node) -> void:
+	if tw.has_signal("fragment_detached"):
+		if not tw.is_connected("fragment_detached", _on_fragment_detached):
+			tw.connect("fragment_detached", _on_fragment_detached)
+
+
+func _on_fragment_detached(
+		origin_world: Vector2,
+		mesh_verts: PackedVector2Array,
+		mesh_indices: PackedInt32Array,
+		mesh_colors: PackedColorArray,
+		collision_segments: PackedVector2Array) -> void:
+	if not is_instance_valid(fragment_scene):
+		return
+	var fragment: TerrainChunkFragment = fragment_scene.instantiate()
+	add_child(fragment)
+	fragment.build(
+			origin_world,
+			mesh_verts,
+			mesh_indices,
+			mesh_colors,
+			collision_segments)
 
 
 func _connect_pulse_damage() -> void:

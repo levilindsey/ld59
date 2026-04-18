@@ -393,41 +393,56 @@ damages only matching tiles.
 
 ### C++ flow sim
 
-- [ ] `flow_step.{h,cpp}` — sand + liquid CA, double-buffered,
-  dirty-cell bitset
-- [ ] Flow-remesh sync: flow queues remeshes on main thread
-- [ ] `fluid_velocity_at(pos)` sampled each physics frame for
-  player-damage from fast fluid
+- [x] `flow_step.{h,cpp}` — sand + liquid CA. Simplified from the
+  plan's "double-buffered + dirty bitset" to single-buffer with
+  bottom-up scan + per-frame L/R flip (Noita pattern). Binary cell
+  state (Sandspiel style) rather than analog-density transfer; loses
+  carve detail inside actively-flowing regions but keeps flow simple
+  and stable for a jam.
+- [x] Flow-remesh sync: flow steps on the main thread in `_on_process`
+  (throttled to every other frame), queues remeshes for touched
+  chunks, worker picks them up. No separate dirty-bitset.
+- [x] `fluid_velocity_at(pos)` — per-liquid-cell int8 EMA of net
+  flow, bilinearly sampled.
 
 ### C++ connected components + fragments
 
-- [ ] `connected_components.{h,cpp}` — union-find over damaged
-  chunks
-- [ ] CC detachment threshold + indestructible-anchor rules
-- [ ] `TerrainChunkFragment` RigidBody2D — mesh + collision from
-  MS+DP on subregion
-- [ ] Particle burst on detach
+- [x] `connected_components.{h,cpp}` — flood-fill from destroyed-cell
+  perimeter rather than persistent union-find (research-backed — UF
+  is poor at deletions).
+- [x] CC detachment threshold (5000 cells) + indestructible-anchor
+  rule. Islands touching an INDESTRUCTIBLE cell stay; everything
+  else detaches. Over-budget islands are treated as anchored.
+- [x] `TerrainChunkFragment` RigidBody2D — mesh + collision from
+  MS+DP on the island subregion, emitted via C++ signal and built
+  in GDScript.
+- [ ] Particle burst on detach (polish, not shipping today).
 
 ### GDScript
 
 - [x] `PlayerHealth` Node on the player
 - [x] HUD health bar
-- [ ] Damage from fluid velocity + fragment collision (blocked on
-  `terrain-flow`)
+- [x] Damage from fluid velocity (sample `G.terrain.sample_fluid_velocity`
+  each physics frame; damage-per-second scales above a 120px/s
+  threshold, ticked every 0.25s).
+- [x] Damage from fragment collision (fragment's `body_entered`,
+  relative speed ≥ 200 px/s, flat 10 HP with 0.5 s cooldown).
 - [x] Scene reload on death at `%PlayerSpawnPoint` (routed via
   `Player._on_died` → `G.level.game_over()`)
 
 ### Tests
 
 - [ ] C++: `test_flow_step.h`, `test_connected_components.h`,
-  `test_terrain_fragment_mesh.h`
+  `test_terrain_fragment_mesh.h` (not shipping today).
 - [ ] GUT: `test_fragment_falls_and_rests.gd`, `test_sand_piles.gd`
+  (not shipping today).
 
 ### Phase 4 exit
 
 - [ ] Carving a support detaches a chunk that falls as a RigidBody2D
+  (needs in-editor playtest to confirm).
 - [ ] Falling fragments damage the player; sand/liquid behave
-  plausibly
+  plausibly (needs in-editor playtest to confirm).
 
 ---
 

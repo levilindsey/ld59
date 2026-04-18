@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://src/level/terrain_level.gd" id="1_level"]
 [ext_resource type="Resource" path="res://src/level/default_terrain_settings.tres" id="2_settings"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://src/bugs/bug_spawner.gd" id="5_spawner"]
 [ext_resource type="PackedScene" uid="uid://dgk5b2n3lc8kr" path="res://src/bugs/bug.tscn" id="6_bug"]
 [ext_resource type="Script" path="res://src/enemies/enemy_system.gd" id="7_enemy_sys"]
+[ext_resource type="PackedScene" uid="uid://cqx9m7b3nwf2p" path="res://src/level/terrain_chunk_fragment.tscn" id="8_fragment"]
 
 [node name="TerrainLevel" type="Node2D"]
 script = ExtResource("1_level")
@@ -14,6 +15,7 @@ terrain_world_path = NodePath("TerrainWorld")
 terrain_settings = ExtResource("2_settings")
 tile_map_layer_path = NodePath("Tiles")
 test_rect_world_px = Rect2(-320, 32, 640, 256)
+fragment_scene = ExtResource("8_fragment")
 
 [node name="ParallaxBackground" parent="." instance=ExtResource("4_bg")]
 
