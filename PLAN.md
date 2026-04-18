@@ -406,27 +406,23 @@ damages only matching tiles.
 
 ## Git workflow for parallel work
 
+Everything lands on `main`. No feature branches.
+
 ```bash
-# Start a track
-git checkout main && git pull
-git checkout -b track/shader
+# Start or resume work
+git pull --rebase origin main
 
-# ... work, commit ...
+# ... work, small focused commits ...
 
-# Before merging back
-git checkout main && git pull
-git checkout track/shader
-git rebase main              # resolve conflicts here
-# Re-run C++ tests + GUT tests if your track touched tested code
-
-git checkout main
-git merge track/shader --ff-only    # clean linear history
+git pull --rebase origin main    # pick up any concurrent pushes
 git push
-git branch -d track/shader
 ```
 
-**Binaries in `addons/ld59extension/bin/`** are committed. When a C++
-track pushes a new `.dll`, other in-flight branches may conflict on
-merge — just take the newer binary. If your branch hasn't touched
-`ld59extension/src/`, `git checkout main -- addons/ld59extension/bin/`
-during rebase resolves it.
+Push frequently so other sessions see your changes. Before editing
+anything listed under "Shared files" above, pull first to minimize
+rebase pain.
+
+**Binaries in `addons/ld59extension/bin/`** are committed. If a
+concurrent C++ change pushed a new `.dll` while you were working on
+pure GDScript, your rebase may flag the binary as conflicted — take
+the remote version: `git checkout --theirs addons/ld59extension/bin/`.
