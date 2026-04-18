@@ -325,16 +325,39 @@ damages only matching tiles.
 
 ### Multi-frequency tiles + palette
 
-- [ ] Commit tile art palette (per-frequency colors)
-- [ ] Populate `palette`, `palette_freqs`, `palette_count` uniforms
-  in `EcholocationRenderer`
-- [ ] Enable frequency gating in the composite shader (already wired)
-- [ ] Tile custom data: per-tile `type` drives render color
-- [ ] Pick up deferred shader work now that the Phase 2 density
-  field exists — see [`docs/notes.md`](docs/notes.md) "Deferred
-  shader work." (Procedural interior + rotated surface textures,
-  SDF-based surface detection, bug medium-range visibility mode,
-  enemy perception glow.)
+- [x] Commit tile art palette — per-frequency mid-shade colors in
+  `Frequency.PALETTE` / `TerrainSettings::color_*`. RED is pinkish,
+  GREEN is teal, BLUE is bright cyan-blue, YELLOW is amber-orange,
+  LIQUID is a darker water blue, SAND is greyish yellow,
+  INDESTRUCTIBLE is near-black charcoal.
+- [x] Added `YELLOW` to `Frequency.Type` + `TerrainSettings::Type`
+  + new `color_yellow` property (C++ rebuilt, 22 tests pass).
+- [x] `PlaceholderTerrainTextures` regenerated as **two atlases**
+  (`make_interior_atlas()` + `make_surface_atlas()`). Each has
+  `Frequency.ATLAS_SLOT_COUNT = 8` slots, indexed by the Frequency
+  enum ordinal.
+- [x] Interior atlas has per-type 3-shade palettes (dark/mid/
+  light). Surface atlas has per-type accent palettes (rusty for
+  RED, lime for GREEN, cyan-mint for BLUE, ochre for YELLOW),
+  plus a water-shine treatment for LIQUID. INDESTRUCTIBLE and
+  SAND slots in the surface atlas are transparent — the alpha
+  channel gates the shader's surface blend so they fall back to
+  interior-only naturally.
+- [x] `EcholocationRenderer._ready` populates `palette`,
+  `palette_freqs`, `palette_count` via
+  `PlaceholderTerrainTextures.build_palette_uniforms()`, activating
+  per-pixel frequency detection.
+- [x] Composite shader samples `interior_atlas` + `surface_atlas`
+  at the detected type's slot (`u = type/slot_count + fract(world/
+  interior_scale_px)/slot_count`). Surface alpha × gradient
+  magnitude drives the band blend.
+- [ ] Tile custom data layers on the TileSet (`type`,
+  `initial_health`) — enables per-tile authoring in the TileMap.
+- [ ] Playtest: verify 4 destroyable types read distinctly; moss/
+  shine accents look good; frequency gating feels right.
+- [ ] Pick up other deferred shader work from
+  [`docs/notes.md`](docs/notes.md) (SDF-based surface detection,
+  bug medium-range visibility, enemy perception glow).
 
 ### Bug system (GDScript)
 

@@ -22,6 +22,7 @@ public:
 		TYPE_BLUE = 4,
 		TYPE_LIQUID = 5,
 		TYPE_SAND = 6,
+		TYPE_YELLOW = 7,
 	};
 
 	TerrainSettings();
@@ -39,12 +40,14 @@ public:
 
 	// Per-type render color (used as vertex color when rendering
 	// meshes, and picked up by the composite shader's palette match).
-	Color color_indestructible = Color(0.55f, 0.55f, 0.60f, 1.0f);
-	Color color_red = Color(0.95f, 0.35f, 0.35f, 1.0f);
-	Color color_green = Color(0.35f, 0.95f, 0.45f, 1.0f);
-	Color color_blue = Color(0.35f, 0.55f, 0.95f, 1.0f);
-	Color color_liquid = Color(0.30f, 0.70f, 0.90f, 0.7f);
-	Color color_sand = Color(0.90f, 0.82f, 0.50f, 1.0f);
+	// Keep in sync with src/core/frequency.gd PALETTE.
+	Color color_indestructible = Color(0.12f, 0.12f, 0.14f, 1.0f);
+	Color color_red = Color(0.95f, 0.38f, 0.48f, 1.0f);
+	Color color_green = Color(0.28f, 0.82f, 0.65f, 1.0f);
+	Color color_blue = Color(0.45f, 0.80f, 0.98f, 1.0f);
+	Color color_yellow = Color(0.98f, 0.70f, 0.25f, 1.0f);
+	Color color_liquid = Color(0.16f, 0.36f, 0.68f, 1.0f);
+	Color color_sand = Color(0.80f, 0.74f, 0.52f, 1.0f);
 
 	// Getters / setters.
 	int get_chunk_cells() const { return chunk_cells; }
@@ -73,6 +76,8 @@ public:
 	void set_color_green(Color v) { color_green = v; }
 	Color get_color_blue() const { return color_blue; }
 	void set_color_blue(Color v) { color_blue = v; }
+	Color get_color_yellow() const { return color_yellow; }
+	void set_color_yellow(Color v) { color_yellow = v; }
 	Color get_color_liquid() const { return color_liquid; }
 	void set_color_liquid(Color v) { color_liquid = v; }
 	Color get_color_sand() const { return color_sand; }
