@@ -15,6 +15,7 @@ const _SPAWN_FREQUENCIES := [
 	Frequency.Type.RED,
 	Frequency.Type.GREEN,
 	Frequency.Type.BLUE,
+	Frequency.Type.YELLOW,
 ]
 
 ## Physics layer mask used for the "candidate inside a solid tile?"
@@ -46,6 +47,7 @@ const _MAX_REJECTION_TRIES := 8
 	Frequency.Type.RED: 0.08,
 	Frequency.Type.GREEN: 0.08,
 	Frequency.Type.BLUE: 0.08,
+	Frequency.Type.YELLOW: 0.08,
 }
 
 ## Base rate (bugs/sec) applied before region stacking. Typically 0.
@@ -53,6 +55,7 @@ const _MAX_REJECTION_TRIES := 8
 	Frequency.Type.RED: 0.0,
 	Frequency.Type.GREEN: 0.0,
 	Frequency.Type.BLUE: 0.0,
+	Frequency.Type.YELLOW: 0.0,
 }
 
 ## Accumulated Poisson phase per frequency. When phase crosses

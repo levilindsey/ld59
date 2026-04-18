@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://b8k2pwamtr0x3"]
+
+[ext_resource type="Script" path="res://src/level/web_tile.gd" id="1_web"]
+[ext_resource type="Texture2D" uid="uid://g3ysr8be4but" path="res://assets/images/white_pixel.png" id="2_px"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_web"]
+size = Vector2(16, 16)
+
+[node name="WebTile" type="Area2D"]
+collision_layer = 512
+collision_mask = 0
+script = ExtResource("1_web")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_web")
+
+[node name="Body" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.55)
+texture = ExtResource("2_px")
+scale = Vector2(16, 16)
+
+[node name="StrandA" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.4)
+rotation = 0.7854
+texture = ExtResource("2_px")
+scale = Vector2(22, 1)
+
+[node name="StrandB" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.4)
+rotation = -0.7854
+texture = ExtResource("2_px")
+scale = Vector2(22, 1)
