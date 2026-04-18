@@ -675,6 +675,11 @@ void TerrainWorld::damage_with_falloff(
 	auto coords = _manager->chunks_affected_by_splat(
 			world_pos, radius_px, _cells_cached,
 			_cell_size_px_cached);
+
+	// Same pattern as `damage`: collect destroyed cells, then run
+	// the connected-components island-detach pass once.
+	std::vector<int32_t> destroyed_flat;
+
 	for (const Vector2i &c : coords) {
 		Chunk *chunk = _manager->get(c);
 		if (chunk == nullptr) {
@@ -733,13 +738,14 @@ void TerrainWorld::damage_with_falloff(
 				if (cell_dmg <= 0) {
 					continue;
 				}
-				const int idx_before = chunk->cell_index(cx, cy);
-				const uint8_t type_before =
-						chunk->type_per_cell[idx_before];
-				_apply_damage_to_cell(chunk, cx, cy, cell_dmg,
-						frequency_mask, cell_center);
-				if (chunk->type_per_cell[idx_before]
-						!= type_before) {
+				int32_t w_cx = 0, w_cy = 0;
+				const bool destroyed = _apply_damage_to_cell(
+						chunk, cx, cy, cell_dmg,
+						frequency_mask, cell_center,
+						&w_cx, &w_cy);
+				if (destroyed) {
+					destroyed_flat.push_back(w_cx);
+					destroyed_flat.push_back(w_cy);
 					any_change = true;
 				}
 			}
@@ -750,6 +756,13 @@ void TerrainWorld::damage_with_falloff(
 			_queue_remesh(chunk);
 		}
 	}
+
+	// Note: deliberately NOT calling _detach_islands_from_seeds here.
+	// Until levels include an INDESTRUCTIBLE border, CC flood would
+	// classify the entire test rect as one unanchored island and
+	// remove every cell after the first destroy. Re-enable when
+	// level authoring includes anchor cells.
+	(void)destroyed_flat;
 }
 
 // ---- Queries ---------------------------------------------------------------
