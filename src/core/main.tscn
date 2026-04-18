@@ -1,0 +1,34 @@
+[gd_scene load_steps=8 format=3 uid="uid://uysxpdosx5qc"]
+
+[ext_resource type="Script" uid="uid://cb3gdybtwy0ry" path="res://src/core/main.gd" id="1_avv2o"]
+[ext_resource type="Resource" uid="uid://dv60bmaw1pdx6" path="res://settings.tres" id="2_q2b63"]
+[ext_resource type="PackedScene" uid="uid://bt1la6s52krxe" path="res://src/ui/hud/hud.tscn" id="2_ukt3u"]
+[ext_resource type="PackedScene" uid="uid://diqnxd2kabxfk" path="res://src/core/audio_main.tscn" id="3_nlf45"]
+[ext_resource type="PackedScene" uid="uid://bay8r2p3h4d2b" path="res://src/core/state_main.tscn" id="3_nxx65"]
+[ext_resource type="PackedScene" uid="uid://luccssf71n0" path="res://src/core/game_panel.tscn" id="3_x62ka"]
+[ext_resource type="PackedScene" uid="uid://bvkt5maj64yqm" path="res://src/ui/super_hud/super_hud.tscn" id="7_nxx65"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_avv2o")
+settings = ExtResource("2_q2b63")
+
+[node name="StateMain" parent="." instance=ExtResource("3_nxx65")]
+
+[node name="AudioMain" parent="." instance=ExtResource("3_nlf45")]
+unique_name_in_owner = true
+
+[node name="GamePanel" parent="." instance=ExtResource("3_x62ka")]
+unique_name_in_owner = true
+position = Vector2(0, -7)
+
+[node name="Hud" type="CanvasLayer" parent="."]
+layer = 200
+
+[node name="Hud" parent="Hud" instance=ExtResource("2_ukt3u")]
+unique_name_in_owner = true
+
+[node name="SuperHud" type="CanvasLayer" parent="."]
+layer = 300
+
+[node name="SuperHud" parent="SuperHud" instance=ExtResource("7_nxx65")]
+unique_name_in_owner = true

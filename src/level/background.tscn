@@ -1,0 +1,73 @@
+[gd_scene load_steps=8 format=3 uid="uid://bo0yvrajk0ktn"]
+
+[ext_resource type="Texture2D" uid="uid://ccrh0uyxuhy7h" path="res://assets/images/old/background_stars.png" id="1_hiovr"]
+[ext_resource type="Texture2D" uid="uid://dj2ig84eome17" path="res://assets/images/old/background_color.png" id="1_q8y0s"]
+[ext_resource type="Texture2D" uid="uid://b243yno6xjgom" path="res://assets/images/old/background_moon.png" id="2_q8y0s"]
+[ext_resource type="Texture2D" uid="uid://deyqd7ngj7khb" path="res://assets/images/old/background_far.png" id="3_gmre0"]
+[ext_resource type="Texture2D" uid="uid://dancm7xx3tyft" path="res://assets/images/old/background_close.png" id="4_bbilr"]
+[ext_resource type="Texture2D" uid="uid://dgcjqxigt15l1" path="res://assets/images/old/background_mountains.png" id="5_bbilr"]
+[ext_resource type="Texture2D" uid="uid://d085kkb23bsyn" path="res://assets/images/old/background_forest.png" id="7_x8l4o"]
+
+[node name="Background" type="Node2D"]
+
+[node name="Color" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0, 0)
+scroll_offset = Vector2(0, 256)
+repeat_size = Vector2(2048, 0)
+
+[node name="Sprite2D" type="Sprite2D" parent="Color"]
+scale = Vector2(2, 2)
+texture = ExtResource("1_q8y0s")
+
+[node name="Stars" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0.03, 0.03)
+scroll_offset = Vector2(0, 128)
+repeat_size = Vector2(2048, 0)
+
+[node name="Sprite2D" type="Sprite2D" parent="Stars"]
+scale = Vector2(2, 2)
+texture = ExtResource("1_hiovr")
+
+[node name="Moon" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0.05, 0.05)
+scroll_offset = Vector2(0, 256)
+repeat_size = Vector2(1024, 0)
+
+[node name="Sprite2D" type="Sprite2D" parent="Moon"]
+texture = ExtResource("2_q8y0s")
+
+[node name="FarClouds" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0.1, 0.2)
+scroll_offset = Vector2(0, 100)
+repeat_size = Vector2(2048, 0)
+
+[node name="Sprite2D" type="Sprite2D" parent="FarClouds"]
+scale = Vector2(2, 2)
+texture = ExtResource("3_gmre0")
+
+[node name="Mountains" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0.15, 0.4)
+scroll_offset = Vector2(0, 300)
+repeat_size = Vector2(2048, 0)
+
+[node name="Sprite2D" type="Sprite2D" parent="Mountains"]
+scale = Vector2(2, 2)
+texture = ExtResource("5_bbilr")
+
+[node name="NearClouds" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0.2, 0.3)
+scroll_offset = Vector2(0, -60)
+repeat_size = Vector2(2048, 0)
+
+[node name="Sprite2D" type="Sprite2D" parent="NearClouds"]
+scale = Vector2(2, 2)
+texture = ExtResource("4_bbilr")
+
+[node name="Forest" type="Parallax2D" parent="."]
+scroll_scale = Vector2(0.4, 0.6)
+scroll_offset = Vector2(0, 60)
+repeat_size = Vector2(2048, 0)
+
+[node name="Sprite2D" type="Sprite2D" parent="Forest"]
+scale = Vector2(2, 2)
+texture = ExtResource("7_x8l4o")
