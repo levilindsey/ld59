@@ -682,7 +682,12 @@ func _update_attachment_contact() -> void:
 
 	if is_attaching_to_surface:
 		attachment_contact = _get_attachment_contact()
-		G.ensure(is_instance_valid(attachment_contact))
+		# Same Godot-vs-our-classification mismatch as the contact
+		# re-use path: is_attaching_to_surface can be true while no
+		# matching contact exists in surface_contacts. Bail rather
+		# than crash on a null deref.
+		if not is_instance_valid(attachment_contact):
+			return
 
 		var next_attachment_position := attachment_contact.position
 		var next_attachment_normal := attachment_contact.normal

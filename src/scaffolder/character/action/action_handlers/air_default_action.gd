@@ -50,12 +50,18 @@ func process(character) -> bool:
 		character.is_rising_from_jump = false
 		character.velocity.y = BOUNCE_OFF_CEILING_VELOCITY
 
-		var is_ceiling_sloped_against_movement: bool = \
-				(character.surface_state.ceiling_contact \
-						.normal.x < 0.0) != \
-				(character.velocity.x < 0.0)
-		if is_ceiling_sloped_against_movement:
-			character.velocity.x = 0.0
+		# Godot's is_on_ceiling() can flip true on a contact whose
+		# normal our Collision class didn't classify as CEILING (sharp
+		# concave-polygon corner — same root cause as the surface-
+		# state re-use path). Skip the slope-aware horizontal cancel
+		# when no CEILING contact is present.
+		var ceiling_contact = character.surface_state.ceiling_contact
+		if ceiling_contact != null:
+			var is_ceiling_sloped_against_movement: bool = \
+					(ceiling_contact.normal.x < 0.0) != \
+					(character.velocity.x < 0.0)
+			if is_ceiling_sloped_against_movement:
+				character.velocity.x = 0.0
 
 	return true
 
