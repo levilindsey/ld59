@@ -3,8 +3,18 @@ extends Character
 
 
 ## Horizontal speed multiplier applied while any WebTile overlaps the
-## player's WebSensor. Vertical movement is unaffected.
+## player's WebSensor.
 const _WEB_SPEED_MULTIPLIER := 0.25
+
+## Absolute cap on `|velocity.y|` while overlapping a web. Applied
+## after the scaffolder's action handlers run, so gravity and jump
+## impulses are still computed normally but the resulting motion is
+## slow. Clamping (rather than scaling) avoids compound-drag weirdness
+## across frames at varying physics steps.
+const _WEB_MAX_VERTICAL_SPEED_PX_PER_SEC := 120.0
+
+
+var _is_in_web := false
 
 
 var half_size := Vector2.INF
@@ -35,22 +45,27 @@ func _physics_process(delta: float) -> void:
 	if G.level.has_won:
 		return
 
-	_update_web_slowdown()
+	_sample_web_overlap()
+	_current_max_horizontal_speed_multiplier = (
+			_WEB_SPEED_MULTIPLIER if _is_in_web else 1.0)
 	super._physics_process(delta)
+	if _is_in_web:
+		velocity.y = clampf(
+				velocity.y,
+				-_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC,
+				_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC)
 
 
-func _update_web_slowdown() -> void:
+func _sample_web_overlap() -> void:
 	var sensor: Area2D = get_node_or_null(^"%WebSensor") as Area2D
 	if not is_instance_valid(sensor):
-		_current_max_horizontal_speed_multiplier = 1.0
+		_is_in_web = false
 		return
-	var in_web := false
 	for area in sensor.get_overlapping_areas():
 		if area is WebTile:
-			in_web = true
-			break
-	_current_max_horizontal_speed_multiplier = (
-			_WEB_SPEED_MULTIPLIER if in_web else 1.0)
+			_is_in_web = true
+			return
+	_is_in_web = false
 
 
 func _unhandled_input(event: InputEvent) -> void:
