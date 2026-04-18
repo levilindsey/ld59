@@ -46,6 +46,16 @@ uniform float gradient_tap_px : hint_range(0.5, 32.0) = 12.0;
 uniform float near_radius_px : hint_range(0.0, 512.0) = 80.0;
 uniform float near_fade_px : hint_range(0.0, 128.0) = 32.0;
 
+// Distance attenuation for pulse stippling (separate from the
+// traveling-wave envelope). Pixels closer than `stipple_fade_start_px`
+// stipple at full density; from there to `stipple_fade_end_px` the
+// density fades smoothly to zero. This expresses the intuition that
+// echolocation reveals close detail clearly and dims with distance.
+uniform float stipple_fade_start_px : hint_range(0.0, 2000.0)
+		= 180.0;
+uniform float stipple_fade_end_px : hint_range(0.0, 2000.0)
+		= 420.0;
+
 // Pulses. xy=center_uv, z=age_sec, w=speed_px_per_sec.
 uniform vec4 pulses[MAX_PULSES];
 uniform vec4 pulse_colors[MAX_PULSES];
@@ -87,6 +97,11 @@ uniform float gradient_gain : hint_range(0.5, 12.0) = 3.0;
 // "detected-an-edge" response tends to plateau across the interior
 // band before dropping out; a high floor trims that plateau.
 uniform float grad_floor : hint_range(0.0, 0.7) = 0.4;
+// Power curve applied to grad_mag after the noise-floor cut. Values
+// > 1 dim the tail of the gradient much faster than its head, so
+// the deep end of the surface→interior band reads as faintly
+// stippled while the surface itself stays bright.
+uniform float gradient_fade_curve : hint_range(0.5, 6.0) = 2.5;
 
 // Bayer dither for pointillism (8x8 ordered). Smaller tile = finer
 // stipples. Shader cost is constant regardless of tile size — it's
@@ -382,6 +397,11 @@ void fragment() {
 				(grad_mag - grad_floor) / max(1.0 - grad_floor, 1e-3),
 				0.0,
 				1.0);
+		// Power curve: dims the tail much faster than the head so
+		// the deep end of the surface→interior gradient reads as
+		// faintly stippled (or none at all) while the surface
+		// stipples stay bright.
+		grad_mag = pow(grad_mag, gradient_fade_curve);
 
 		// Surface-atlas-specific proximity signal. Uses only the
 		// close (4 px) scale so the surface accent texture stays a
@@ -544,10 +564,21 @@ void fragment() {
 			ring_alpha = max(ring_alpha, r);
 		}
 
+		// Distance falloff: stipple density tapers off the further
+		// the pixel is from the player, dropping to zero past
+		// stipple_fade_end_px. Layered on top of the traveling-wave
+		// envelope, so close cells reveal densely under a pulse and
+		// far cells barely reveal at all.
+		float distance_falloff = 1.0 - smoothstep(
+				stipple_fade_start_px,
+				stipple_fade_end_px,
+				to_player_len);
+
 		float pulse_reveal = raw_pulse_vis
 				* prominence
 				* frequency_match
-				* has_content;
+				* has_content
+				* distance_falloff;
 
 		// Dither the pulse reveal so it reads as stippling.
 		float bayer = texture(
