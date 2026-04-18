@@ -7,8 +7,8 @@
 [ext_resource type="PackedScene" uid="uid://bay8r2p3h4d2b" path="res://src/core/state_main.tscn" id="3_nxx65"]
 [ext_resource type="PackedScene" uid="uid://luccssf71n0" path="res://src/core/game_panel.tscn" id="3_x62ka"]
 [ext_resource type="PackedScene" uid="uid://bvkt5maj64yqm" path="res://src/ui/super_hud/super_hud.tscn" id="7_nxx65"]
-[ext_resource type="PackedScene" path="res://src/echolocation/echolocation_renderer.tscn" id="8_echo"]
-[ext_resource type="Script" path="res://src/echolocation/echo_audio_player.gd" id="9_echoaudio"]
+[ext_resource type="PackedScene" uid="uid://cd816wn34iluf" path="res://src/echolocation/echolocation_renderer.tscn" id="8_echo"]
+[ext_resource type="Script" uid="uid://c1lu8wb3b7vjc" path="res://src/echolocation/echo_audio_player.gd" id="9_echoaudio"]
 
 [node name="Main" type="Node2D" unique_id=384292218]
 script = ExtResource("1_avv2o")
@@ -23,9 +23,23 @@ unique_name_in_owner = true
 unique_name_in_owner = true
 position = Vector2(0, -7)
 
-[node name="EcholocationRenderer" parent="." unique_id=679299074 instance=ExtResource("8_echo")]
+[node name="TagViewport" type="SubViewport" parent="." unique_id=812349762]
+unique_name_in_owner = true
+disable_3d = true
+transparent_bg = true
+handle_input_locally = false
+canvas_cull_mask = 3
+size = Vector2i(1152, 648)
+render_target_update_mode = 4
 
-[node name="EchoAudioPlayer" type="Node" parent="."]
+[node name="TagCamera2D" type="Camera2D" parent="TagViewport" unique_id=388194073]
+unique_name_in_owner = true
+zoom = Vector2(2, 2)
+
+[node name="EcholocationRenderer" parent="." unique_id=679299074 instance=ExtResource("8_echo")]
+debug_show_tag = true
+
+[node name="EchoAudioPlayer" type="Node" parent="." unique_id=361375720]
 script = ExtResource("9_echoaudio")
 
 [node name="Hud" type="CanvasLayer" parent="." unique_id=1667578978]

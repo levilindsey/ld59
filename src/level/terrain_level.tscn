@@ -18,6 +18,7 @@ test_rect_world_px = Rect2(-320, 32, 640, 256)
 [node name="ParallaxBackground" parent="." instance=ExtResource("4_bg")]
 
 [node name="TerrainWorld" type="TerrainWorld" parent="."]
+visibility_layer = 3
 unique_name_in_owner = true
 
 [node name="Tiles" type="TileMapLayer" parent="."]
