@@ -62,15 +62,6 @@ func _ready() -> void:
 	if (is_instance_valid(tag_camera)
 			and "canvas_cull_mask" in tag_camera):
 		tag_camera.set("canvas_cull_mask", 3)
-	G.print(
-			"main._ready: tag_viewport.world_2d shared, "
-			+ "size=%s, cull_mask=%d, tag_camera_current=%s" % [
-				tag_viewport.size,
-				tag_viewport.canvas_cull_mask,
-				is_instance_valid(tag_camera)
-						and tag_camera.is_current(),
-			],
-			ScaffolderLog.CATEGORY_SYSTEM_INITIALIZATION)
 
 	await get_tree().process_frame
 

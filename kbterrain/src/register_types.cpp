@@ -7,7 +7,6 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
-#include <godot_cpp/variant/utility_functions.hpp>
 
 #ifdef KBTERRAIN_TESTS_ENABLED
 #include <gmock/gmock.h>
@@ -53,9 +52,6 @@ void initialize_kbterrain_module(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
-
-	UtilityFunctions::print(
-			"[kbterrain] module init (build with visibility_layer=3 fix)");
 
 	ClassDB::register_class<TerrainSettings>();
 	ClassDB::register_class<TerrainWorld>();
