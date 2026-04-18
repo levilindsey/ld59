@@ -344,15 +344,17 @@ damages only matching tiles.
 
 **Goal**: something to fight.
 
-- [ ] `Enemy` base class (typed, health, scalar perception, FSM)
-- [ ] `MonsterBird` subclass — flying, arc paths
-- [ ] `Spider` subclass — wall-crawler (use scaffolder surface raycasts)
-- [ ] `FlyingCritter` subclass — small, swarm-ish
-- [ ] Perception decay + pulse-raises behavior
-- [ ] `EnemySystem.apply_pulse_damage(pulse)` — damage + knockback
+- [x] `Enemy` base class (typed, health, scalar perception, FSM)
+- [x] `MonsterBird` subclass — flying, arc paths
+- [x] `Spider` subclass — floor-crawler via downward raycast
+- [ ] `Spider`: wall- and ceiling-crawl via scaffolder surface raycasts
+- [x] `FlyingCritter` subclass — small, swarm-ish
+- [x] Perception decay + pulse-raises behavior
+- [x] `EnemySystem.apply_pulse_damage(pulse)` — damage + knockback
   on matching frequency
-- [ ] Touch damage → `PlayerHealth.apply_damage`
-- [ ] `EnemySpawnPoint` (single-shot) + `RespawningEnemySpawnPoint`
+- [ ] Touch damage → `PlayerHealth.apply_damage` (wiring pending
+  `hud`/PlayerHealth)
+- [x] `EnemySpawnPoint` (single-shot) + `RespawningEnemySpawnPoint`
   (max active + interval)
 
 ### GDScript tests

@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://uysxpdosx5qc"]
+[gd_scene format=3 uid="uid://uysxpdosx5qc"]
 
 [ext_resource type="Script" uid="uid://cb3gdybtwy0ry" path="res://src/core/main.gd" id="1_avv2o"]
 [ext_resource type="Resource" uid="uid://dv60bmaw1pdx6" path="res://settings.tres" id="2_q2b63"]
@@ -9,29 +9,29 @@
 [ext_resource type="PackedScene" uid="uid://bvkt5maj64yqm" path="res://src/ui/super_hud/super_hud.tscn" id="7_nxx65"]
 [ext_resource type="PackedScene" path="res://src/echolocation/echolocation_renderer.tscn" id="8_echo"]
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=384292218]
 script = ExtResource("1_avv2o")
 settings = ExtResource("2_q2b63")
 
-[node name="StateMain" parent="." instance=ExtResource("3_nxx65")]
+[node name="StateMain" parent="." unique_id=1154848502 instance=ExtResource("3_nxx65")]
 
-[node name="AudioMain" parent="." instance=ExtResource("3_nlf45")]
+[node name="AudioMain" parent="." unique_id=276962393 instance=ExtResource("3_nlf45")]
 unique_name_in_owner = true
 
-[node name="GamePanel" parent="." instance=ExtResource("3_x62ka")]
+[node name="GamePanel" parent="." unique_id=639648694 instance=ExtResource("3_x62ka")]
 unique_name_in_owner = true
 position = Vector2(0, -7)
 
-[node name="EcholocationRenderer" parent="." instance=ExtResource("8_echo")]
+[node name="EcholocationRenderer" parent="." unique_id=679299074 instance=ExtResource("8_echo")]
 
-[node name="Hud" type="CanvasLayer" parent="."]
+[node name="Hud" type="CanvasLayer" parent="." unique_id=1667578978]
 layer = 200
 
-[node name="Hud" parent="Hud" instance=ExtResource("2_ukt3u")]
+[node name="Hud" parent="Hud" unique_id=270993078 instance=ExtResource("2_ukt3u")]
 unique_name_in_owner = true
 
-[node name="SuperHud" type="CanvasLayer" parent="."]
+[node name="SuperHud" type="CanvasLayer" parent="." unique_id=1421046737]
 layer = 300
 
-[node name="SuperHud" parent="SuperHud" instance=ExtResource("7_nxx65")]
+[node name="SuperHud" parent="SuperHud" unique_id=1005743446 instance=ExtResource("7_nxx65")]
 unique_name_in_owner = true
