@@ -1,0 +1,57 @@
+[gd_scene format=3 uid="uid://ck8v0fmnuap7q"]
+
+[ext_resource type="Script" path="res://src/enemies/coyote.gd" id="1_coyote"]
+[ext_resource type="Texture2D" uid="uid://g3ysr8be4but" path="res://assets/images/white_pixel.png" id="2_px"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_coyote"]
+radius = 9.0
+
+[node name="Coyote" type="Area2D"]
+collision_layer = 16
+collision_mask = 8
+script = ExtResource("1_coyote")
+max_health = 55
+touch_damage = 14
+knockback_impulse_px_per_sec = 260.0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_coyote")
+
+[node name="Body" type="Sprite2D" parent="."]
+texture = ExtResource("2_px")
+scale = Vector2(18, 11)
+
+[node name="Head" type="Sprite2D" parent="."]
+position = Vector2(8, -4)
+texture = ExtResource("2_px")
+scale = Vector2(7, 6)
+
+[node name="Tail" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.8)
+position = Vector2(-10, -3)
+texture = ExtResource("2_px")
+scale = Vector2(5, 3)
+
+[node name="LegFrontLeft" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.8)
+position = Vector2(5, 6)
+texture = ExtResource("2_px")
+scale = Vector2(2, 6)
+
+[node name="LegFrontRight" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.8)
+position = Vector2(8, 6)
+texture = ExtResource("2_px")
+scale = Vector2(2, 6)
+
+[node name="LegBackLeft" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.8)
+position = Vector2(-7, 6)
+texture = ExtResource("2_px")
+scale = Vector2(2, 6)
+
+[node name="LegBackRight" type="Sprite2D" parent="."]
+modulate = Color(1, 1, 1, 0.8)
+position = Vector2(-4, 6)
+texture = ExtResource("2_px")
+scale = Vector2(2, 6)
