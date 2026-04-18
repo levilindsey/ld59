@@ -5,8 +5,6 @@ extends CharacterAnimator
 const _ANIMATION_NAME_MAPPING := {
 	"rest": "idle_floor",
 	"rest_on_ceiling": "idle_ceiling",
-	"jump_fall": "fly",
-	"jump_rise": "fly",
 }
 
 
