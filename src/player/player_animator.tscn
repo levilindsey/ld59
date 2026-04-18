@@ -1,11 +1,7 @@
 [gd_scene format=3 uid="uid://br1b7cse0hxmt"]
 
-[ext_resource type="Script" path="res://src/player/player_animator.gd" id="1_script"]
+[ext_resource type="Script" uid="uid://c021w8e8kl5k" path="res://src/player/player_animator.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://rihqreb0nh5o" path="res://assets/images/scratch/kittenbaticorn.png" id="2_tex"]
-
-[sub_resource type="AtlasTexture" id="Frame000"]
-atlas = ExtResource("2_tex")
-region = Rect2(0, 0, 34, 36)
 
 [sub_resource type="AtlasTexture" id="Frame096"]
 atlas = ExtResource("2_tex")
@@ -102,6 +98,10 @@ region = Rect2(4012, 0, 34, 36)
 [sub_resource type="AtlasTexture" id="Frame119"]
 atlas = ExtResource("2_tex")
 region = Rect2(4046, 0, 34, 36)
+
+[sub_resource type="AtlasTexture" id="Frame000"]
+atlas = ExtResource("2_tex")
+region = Rect2(0, 0, 34, 36)
 
 [sub_resource type="AtlasTexture" id="Frame001"]
 atlas = ExtResource("2_tex")

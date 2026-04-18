@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://c1qdd50ca4hst" path="res://src/player/player.gd" id="1_rxibo"]
 [ext_resource type="Resource" uid="uid://ctj0jafyt6dls" path="res://src/player/player_movement_settings.tres" id="2_244u8"]
 [ext_resource type="PackedScene" uid="uid://br1b7cse0hxmt" path="res://src/player/player_animator.tscn" id="2_mf2ua"]
-[ext_resource type="Script" uid="uid://b50tfbt5wsthb" path="res://src/scaffolder/character/character_animator.gd" id="4_jiejy"]
 [ext_resource type="PackedScene" uid="uid://b2kx7y8mp0q4r" path="res://src/bugs/bug_region_probe.tscn" id="4_probe"]
 [ext_resource type="Script" uid="uid://cbm40k837ptou" path="res://src/player/player_health.gd" id="5_health"]
 
@@ -19,9 +18,7 @@ animator = NodePath("PlayerAnimator")
 movement_settings = ExtResource("2_244u8")
 
 [node name="PlayerAnimator" parent="." unique_id=2095922939 instance=ExtResource("2_mf2ua")]
-script = ExtResource("4_jiejy")
 animation = "idle_floor"
-metadata/_custom_type_script = "uid://b50tfbt5wsthb"
 
 [node name="PlayerBodyCollisionShape" type="CollisionShape2D" parent="." unique_id=1838078486]
 unique_name_in_owner = true
