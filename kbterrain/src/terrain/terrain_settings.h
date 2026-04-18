@@ -23,6 +23,14 @@ public:
 		TYPE_LIQUID = 5,
 		TYPE_SAND = 6,
 		TYPE_YELLOW = 7,
+		// WEB_* are markers for the level loader only — these tiles
+		// spawn a WebTile Area2D (at the base frequency encoded in
+		// the suffix) instead of solid terrain. Never stored in
+		// `type_per_cell`.
+		TYPE_WEB_RED = 8,
+		TYPE_WEB_GREEN = 9,
+		TYPE_WEB_BLUE = 10,
+		TYPE_WEB_YELLOW = 11,
 	};
 
 	TerrainSettings();
@@ -52,6 +60,14 @@ public:
 	Color color_yellow = Color(0.98f, 0.70f, 0.25f, 1.0f);
 	Color color_liquid = Color(0.16f, 0.36f, 0.68f, 1.0f);
 	Color color_sand = Color(0.80f, 0.74f, 0.52f, 1.0f);
+	// WEB_* never render through the terrain shader but have palette
+	// entries for symmetry with the Frequency enum and for any debug
+	// readout that asks. Defaults are translucent versions of the
+	// corresponding base frequency colors.
+	Color color_web_red = Color(0.95f, 0.38f, 0.48f, 0.55f);
+	Color color_web_green = Color(0.28f, 0.82f, 0.65f, 0.55f);
+	Color color_web_blue = Color(0.45f, 0.80f, 0.98f, 0.55f);
+	Color color_web_yellow = Color(0.98f, 0.70f, 0.25f, 0.55f);
 
 	// Getters / setters.
 	int get_chunk_cells() const { return chunk_cells; }
@@ -86,6 +102,14 @@ public:
 	void set_color_liquid(Color v) { color_liquid = v; }
 	Color get_color_sand() const { return color_sand; }
 	void set_color_sand(Color v) { color_sand = v; }
+	Color get_color_web_red() const { return color_web_red; }
+	void set_color_web_red(Color v) { color_web_red = v; }
+	Color get_color_web_green() const { return color_web_green; }
+	void set_color_web_green(Color v) { color_web_green = v; }
+	Color get_color_web_blue() const { return color_web_blue; }
+	void set_color_web_blue(Color v) { color_web_blue = v; }
+	Color get_color_web_yellow() const { return color_web_yellow; }
+	void set_color_web_yellow(Color v) { color_web_yellow = v; }
 
 	// Look up the render color for a Type enum value.
 	Color color_for_type(int type) const;

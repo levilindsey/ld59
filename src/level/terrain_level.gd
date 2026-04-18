@@ -33,6 +33,12 @@ extends Level
 ## Frequency.Type assigned to every tile in the tilemap. Per-tile
 ## type-from-custom-data lands in Phase 3.
 @export var default_terrain_type: int = Frequency.Type.GREEN
+## Scene instantiated by the loader whenever it encounters a TileMap
+## tile whose `type` custom-data equals `Frequency.Type.WEB`. The
+## instance is parented under this level and positioned at the
+## tile's world center. Its `frequency` export is populated from the
+## tile's `web_frequency` custom data (default GREEN).
+@export var web_tile_scene: PackedScene
 
 @export_group("Fragments")
 ## Scene spawned when a connected-components pass detaches an
@@ -102,7 +108,8 @@ func _setup_runtime() -> void:
 	var tml := _get_tile_map_layer()
 	if is_instance_valid(tml) and tml.get_used_cells().size() > 0:
 		TerrainLevelLoader.bake_from_tile_map_layer(
-				tw, tml, default_terrain_type)
+				tw, tml, default_terrain_type,
+				self, web_tile_scene)
 		# The tilemap was authoring-only; hide it now that the MS
 		# version is what drives gameplay.
 		tml.visible = false
@@ -217,6 +224,9 @@ func _rebake_editor_preview() -> void:
 	tw.clear_all()
 	var tml := _get_tile_map_layer()
 	if is_instance_valid(tml) and tml.get_used_cells().size() > 0:
+		# Skip web-spawn in the @tool preview path — the editor
+		# doesn't need runtime Area2D instances and spawning under
+		# the edited scene pollutes the tree.
 		TerrainLevelLoader.bake_from_tile_map_layer(
 				tw, tml, default_terrain_type)
 	else:

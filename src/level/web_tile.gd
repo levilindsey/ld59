@@ -15,7 +15,9 @@ const _WEB_LAYER_BIT := 1 << 9
 ## Frequency this web tile belongs to. Drives both its tint and which
 ## pulse frequency can damage it.
 @export var frequency: int = Frequency.Type.GREEN
-@export_range(1, 500) var max_health: int = 20
+## 1/5 the 255 baseline of a normal terrain cell — webs are meant
+## to feel flimsy so the player can burn through them quickly.
+@export_range(1, 500) var max_health: int = 51
 
 var _health: int
 
