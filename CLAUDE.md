@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LD59 is a single-player 2D game built with Godot 4.5 for the
-Ludum Dare 59 game jam. The repo shares the `scaffolder/`
-character/movement framework with other Godot projects in this
-workspace, but this project has no networking, backend, or
+LD59 is a single-player 2D game built with Godot 4.6 (specifically
+4.6.2-stable) for the Ludum Dare 59 game jam. The repo shares the
+`scaffolder/` character/movement framework with other Godot projects
+in this workspace, but this project has no networking, backend, or
 cross-play concerns.
 
 ## Claude Code Settings
@@ -15,6 +15,27 @@ cross-play concerns.
 Do NOT use the local memory system (`~/.claude/projects/*/memory/`).
 This project is worked on across multiple machines. All persistent
 context belongs in this file so it stays in sync via git.
+
+## Implementation plan
+
+`PLAN.md` at the repo root is the **authoritative, living checklist**
+for the project. It breaks the work into phases and parallelizable
+tracks with checkbox tasks. Read it at the start of any non-trivial
+session and mark items complete as they land on `main`.
+
+**Parallel sessions**: multiple Claude sessions (or human + Claude)
+may run concurrently on different tracks. Conventions:
+
+- Each track works on a branch named `track/<slug>` matching the
+  Parallelization tracks table in `PLAN.md`.
+- Before editing any file in the "Shared files" table of `PLAN.md`,
+  check that no other active branch has touched it first. Rebase onto
+  `main` before merging.
+- Commit `PLAN.md` checkbox updates alongside the work that satisfies
+  them — the checklist is the system of record.
+
+If you start a session without clear instructions, consult `PLAN.md`
+and pick an unclaimed track whose dependencies are satisfied.
 
 ## Project Structure
 
@@ -469,6 +490,16 @@ runs.
 8. **Deterministic tests** — no randomness, no timing
    dependencies in unit tests.
 9. **Clean up** — use `add_child_autofree()` for nodes.
+
+## Engine version
+
+Target: **Godot 4.6.2-stable**. The `godot-cpp` submodule is pinned
+at tag `godot-4.5-stable` because godot-cpp has not yet cut a
+`godot-4.6-stable` tag (as of Apr 2026). The extension built against
+godot-cpp 4.5 is forward-compatible with Godot 4.6.2 editor via the
+`compatibility_minimum = "4.6"` declaration in the `.gdextension`
+manifest. When the upstream `godot-4.6-stable` tag is published, bump
+the submodule pin and rebuild.
 
 ## GDExtension (C++)
 

@@ -23,10 +23,19 @@ $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 
 Write-Info ""
 Write-Info "=== Running Godot headless to trigger tests ==="
-if (-not (Get-Command godot -ErrorAction SilentlyContinue)) {
-	Write-Err "godot not found on PATH."
-	exit 1
+
+# Project targets 4.6.2. Prefer the 4.6.2 binary if present; fall
+# back to `godot` on PATH (which may be older).
+$GodotExe = "C:\Program Files\Godot\Godot_v4.6.2-stable_win64.exe"
+if (-not (Test-Path $GodotExe)) {
+	if (Get-Command godot -ErrorAction SilentlyContinue) {
+		$GodotExe = "godot"
+	} else {
+		Write-Err "Godot 4.6.2 binary not found and 'godot' is not on PATH."
+		exit 1
+	}
 }
+Write-Info "Using: $GodotExe"
 
 # --quit (vs --quit-after) exits immediately after startup. The
 # extension's module init fires during startup, so tests still run.
@@ -43,7 +52,7 @@ if (Test-Path $LogPath) { Remove-Item $LogPath }
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
 try {
-	& godot --headless --path "$ProjectRoot" --quit *>&1 |
+	& $GodotExe --headless --path "$ProjectRoot" --quit *>&1 |
 		Tee-Object -FilePath $LogPath | Out-Null
 } finally {
 	$ErrorActionPreference = $prevEap

@@ -19,6 +19,12 @@ var game_panel: GamePanel
 var session: Session
 var level: Level
 
+# Echolocation: visibility renderer + pulse emitter. Assigned in
+# EcholocationRenderer._enter_tree. Typed as CanvasLayer to avoid a
+# cross-script class_name dependency at autoload parse time; actual
+# type is EcholocationRenderer.
+var echo: CanvasLayer
+
 
 func _enter_tree() -> void:
 	if Engine.is_editor_hint():

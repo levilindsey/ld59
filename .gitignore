@@ -35,6 +35,10 @@ ld59extension/**/*.obj
 # import libraries and export tables are build-only and stay out).
 !addons/ld59extension/bin/*.dll
 !addons/ld59extension/bin/*.wasm
-# ...but the tilde-prefixed copies Godot leaves behind during hot-
-# reload are still ignored.
+# MSVC build byproducts that install places alongside the .dll —
+# committed dll stays, these never do.
+addons/ld59extension/bin/*.exp
+addons/ld59extension/bin/*.lib
+addons/ld59extension/bin/*.pdb
+# Godot's hot-reload leaves tilde-prefixed copies of the live dll.
 addons/ld59extension/bin/~*.dll
