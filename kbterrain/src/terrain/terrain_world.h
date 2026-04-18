@@ -2,6 +2,7 @@
 #define KBTERRAIN_TERRAIN_TERRAIN_WORLD_H
 
 #include "chunk_manager.h"
+#include "flow_step.h"
 #include "terrain_settings.h"
 #include "worker_pool.h"
 
@@ -59,6 +60,11 @@ public:
 
 	Dictionary get_stats() const;
 
+	// Sampled fluid velocity at a world position. Returns Vector2()
+	// outside liquids. Used by the player to take damage from
+	// fast-moving liquid.
+	Vector2 sample_fluid_velocity(Vector2 world_pos) const;
+
 	// Clear every chunk and free their RIDs. Used by the @tool
 	// preview to wipe state before re-baking from a TileMap.
 	void clear_all();
@@ -71,6 +77,7 @@ private:
 	Ref<TerrainSettings> _settings;
 	std::unique_ptr<terrain::ChunkManager> _manager;
 	std::unique_ptr<terrain::WorkerPool> _worker;
+	std::unique_ptr<terrain::FlowStep> _flow_step;
 
 	// Type → RGBA8 lookup table (size 256), rebuilt from the settings
 	// palette and passed into remesh jobs so the worker can color
@@ -92,17 +99,43 @@ private:
 	// preview path). Set in _ensure_initialized.
 	bool _editor_mode = false;
 
+	// Frame counter used to throttle the flow cellular automaton
+	// (which would otherwise run at render framerate and feel too
+	// jittery). Stepped once per _on_process call.
+	uint32_t _flow_tick_counter = 0;
+
+	// How often to step the flow CA. 2 means every other frame
+	// (~30Hz at 60fps).
+	static constexpr uint32_t FLOW_STEP_INTERVAL = 2;
+
+	// Max island size the CC pass will detach. Larger stays as part
+	// of the main world. Prevents "half the level detaches" cascade.
+	static constexpr int MAX_DETACH_FLOOD = 5000;
+
 	void _ensure_initialized();
 	void _rebuild_type_lut();
 	int _frequency_to_bit(int freq) const;
 	void _queue_remesh(terrain::Chunk *chunk);
 	void _integrate_results();
 	void _integrate_one(const terrain::RemeshResult &result);
-	void _apply_damage_to_cell(terrain::Chunk *chunk, int cx, int cy,
-			int damage, int frequency_mask, Vector2 world_pos);
+	// Returns true if the cell was destroyed this call (type went to
+	// NONE); in that case `out_world_cx`/`out_world_cy` are set.
+	bool _apply_damage_to_cell(terrain::Chunk *chunk, int cx, int cy,
+			int damage, int frequency_mask, Vector2 world_pos,
+			int32_t *out_world_cx, int32_t *out_world_cy);
 	void _free_chunk_rids(terrain::Chunk *chunk);
 
-	// Process tick drains worker results.
+	// Run CC on the world-cell coords of cells that were destroyed
+	// in the most recent damage call; emit `fragment_detached` for
+	// each detached island.
+	void _detach_islands_from_seeds(
+			const std::vector<int32_t> &seed_world_cells_flat);
+
+	// Step the flow CA once and queue remeshes for any chunks
+	// that changed.
+	void _step_flow();
+
+	// Process tick drains worker results and steps flow.
 	void _on_process();
 
 	// --- RIDs ----
