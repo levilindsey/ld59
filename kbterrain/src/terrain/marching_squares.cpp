@@ -285,12 +285,16 @@ void mesh_chunk(
 					origin_px.x + x * cell_size_px,
 					origin_px.y + y * cell_size_px);
 
-			// Only case 15 (fully-solid cell) emits interior triangles.
-			// With iso=255 and binary 0/255 density the partial cases
-			// are degenerate anyway, and skipping them explicitly keeps
-			// the visual mesh strictly inside authored cell boundaries
-			// so it aligns with the per-cell collision quads.
-			if (cs == 15) {
+			// Only emit interior triangles for fully-solid, typed cells.
+			// `cs == 15` rules out partial cases (degenerate at
+			// iso=255; half-cell trapezoids at iso<255). `type_here
+			// != 0` rules out hollow case-15 cells — cells whose
+			// corners are all 255 because neighbor cells are painted,
+			// but whose own type is NONE. Emitting those would produce
+			// transparent triangles that some drivers still raster
+			// with visible artifacts. Combined, the mesh lives
+			// strictly inside authored cell boundaries.
+			if (cs == 15 && type_here != 0) {
 				emit_interior(
 						cs, origin, cell_size_px, d, iso, color, out);
 			}
