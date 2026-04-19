@@ -17,27 +17,15 @@ extends PanelContainer
 
 
 ## Fill-color interpolation endpoints. Above `_HEALTHY_RATIO` the
-## bar stays solid green; below `_WARN_RATIO` solid red; linearly
-## interpolated in between.
+## bar stays solid at the "healthy" color; below `_WARN_RATIO`
+## solid at the "warn" color; linearly interpolated in between.
+## Colors come from Settings so the whole HUD palette stays
+## centrally tunable.
 const _HEALTHY_RATIO := 2.0 / 3.0
 const _WARN_RATIO := 1.0 / 3.0
-const _HEALTHY_COLOR := Color(0.3, 0.85, 0.3, 1.0)
-const _WARN_COLOR := Color(0.95, 0.25, 0.25, 1.0)
-
-## Panel background = fill.rgb * _BG_DARKEN at _BG_ALPHA.
-const _BG_DARKEN := 0.25
-const _BG_ALPHA := 0.85
-## Panel border = fill.rgb at _BORDER_ALPHA.
-const _BORDER_ALPHA := 0.45
-## Heart icon = lerp(fill_color, WHITE, _HEART_PASTEL_T). Higher t
-## reads as lighter + less saturated (both shift together when
-## lerping toward white).
-const _HEART_PASTEL_T := 0.4
 
 ## Duration of the white damage-flash over the modulate layer.
 const _DAMAGE_FLASH_DURATION_SEC := 0.25
-## Peak modulate multiplier during the flash (white-ish tint).
-const _DAMAGE_FLASH_PEAK := Color(2.0, 2.0, 2.0, 1.0)
 
 
 var _panel_style: StyleBoxFlat = null
@@ -79,29 +67,40 @@ func _process(_delta: float) -> void:
 func _update_theme_colors() -> void:
 	if _fill_style == null or _panel_style == null:
 		return
+	var s: Settings = G.settings
+	if s == null:
+		return
 	var ratio: float = 0.0
 	if _bar.max_value > 0.0:
 		ratio = clampf(_bar.value / _bar.max_value, 0.0, 1.0)
 	var mix_t: float = smoothstep(
 			_WARN_RATIO, _HEALTHY_RATIO, ratio)
-	var fill_color: Color = _WARN_COLOR.lerp(_HEALTHY_COLOR, mix_t)
+	var fill_color: Color = s.color_health_warn.lerp(
+			s.color_health_healthy, mix_t)
 	_fill_style.bg_color = fill_color
+	var darken := s.color_slot_bg_darkness
 	_panel_style.bg_color = Color(
-			fill_color.r * _BG_DARKEN,
-			fill_color.g * _BG_DARKEN,
-			fill_color.b * _BG_DARKEN,
-			_BG_ALPHA)
+			fill_color.r * darken,
+			fill_color.g * darken,
+			fill_color.b * darken,
+			s.color_slot_bg_alpha)
 	_panel_style.border_color = Color(
-			fill_color.r, fill_color.g, fill_color.b, _BORDER_ALPHA)
+			fill_color.r,
+			fill_color.g,
+			fill_color.b,
+			s.color_slot_border_alpha)
 	if _heart_icon != null:
 		_heart_icon.modulate = fill_color.lerp(
-				Color.WHITE, _HEART_PASTEL_T)
+				Color.WHITE, s.color_icon_pastel_t)
 
 
 func _play_damage_flash() -> void:
 	if _flash_tween != null and _flash_tween.is_valid():
 		_flash_tween.kill()
-	modulate = _DAMAGE_FLASH_PEAK
+	var peak: Color = Color(2.0, 2.0, 2.0, 1.0)
+	if G.settings != null:
+		peak = G.settings.color_health_damage_flash_peak
+	modulate = peak
 	_flash_tween = create_tween()
 	_flash_tween.tween_property(
 			self, "modulate",

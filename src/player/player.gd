@@ -113,6 +113,30 @@ const _UNSTICK_MAX_RING_RADIUS := 8
 ## flush against the cell) doesn't count as overlap.
 const _AABB_OVERLAP_EPSILON_PX := 0.5
 
+## Two airborne ceiling touches within this window trigger the
+## idle-ceiling-attached state.
+const _CEILING_BONK_DOUBLE_THRESHOLD_SEC := 0.4
+
+## After entering idle-ceiling-attached, detach inputs are ignored for
+## this long so held inputs or coincident events don't immediately slip
+## the player back off the ceiling.
+const _POST_ATTACH_DETACH_LOCKOUT_SEC := 0.2
+
+## Lockout applied at spawn, a touch longer than the normal post-attach
+## lockout so the title screen/camera can settle before the player can
+## take control.
+const _SPAWN_DETACH_LOCKOUT_SEC := 0.4
+
+## Extra downward y offset applied to the animator's AnimatedSprite2D
+## while attached-idle, so the sprite reads as kissing the ceiling
+## instead of floating in the gap.
+const _ATTACHED_IDLE_SPRITE_Y_OFFSET_PX := 1.0
+
+## Downward spawn offset from `%PlayerSpawnPoint.global_position`. The
+## player spawns 15 px below the marker so the spawn marker can sit
+## right at the ceiling line the player hangs from.
+const _CEILING_SPAWN_Y_OFFSET_PX := 15.0
+
 
 signal juice_changed(frequency: int, new_value: int)
 signal frequency_selection_changed(frequency: int)
@@ -138,6 +162,29 @@ var _pre_step_velocity_y := 0.0
 ## the jump impulse), whether the player actually moved.
 var _check_jump_displacement_next_step := false
 
+## True while the player is pinned in the idle-ceiling-attached state.
+## Gates the normal physics/animation pipeline in `_physics_process`
+## and the detach-input poll.
+var _is_attached_idle := false
+
+## Seconds remaining before detach inputs are honored. Ticked each
+## physics step.
+var _detach_lockout_remaining_sec := 0.0
+
+## Scaled play time of the most recent airborne ceiling touch.
+## `-INF` when no recent bonk is being tracked. Reset when the player
+## lands on a non-air surface so bonks don't chain across long gaps.
+var _last_ceiling_bonk_time_sec := -INF
+
+## True from spawn until the FIRST detach of the run. While true the
+## player is impervious to damage and the player-layer bit is cleared
+## so bugs/enemies can't detect them.
+var _is_in_spawn_grace := false
+
+## Tracks whether the 1 px sprite offset is currently applied, so
+## repeated attach/detach cycles can't compound the offset.
+var _attached_sprite_offset_applied := false
+
 ## Per-frequency juice pool. Populated in `_ready()`; only the four
 ## gameplay frequencies (RED/GREEN/BLUE/YELLOW) are keys.
 var _juice: Dictionary = {}
@@ -150,6 +197,12 @@ var half_size := Vector2.INF
 ## "stipple-only" — no juice cost, half-rate cooldown, reveals the
 ## level but interacts with no tiles or enemies.
 var current_frequency: int = Frequency.Type.NONE
+
+## Read-only view of the idle-ceiling-attached flag for external
+## callers (e.g. future AI that wants to skip targeting the player
+## during spawn grace).
+var is_attached_idle: bool:
+	get: return _is_attached_idle
 
 
 func _ready() -> void:
@@ -256,6 +309,16 @@ func _physics_process(delta: float) -> void:
 	if G.level.has_won:
 		return
 
+	_detach_lockout_remaining_sec = maxf(
+			0.0, _detach_lockout_remaining_sec - delta)
+
+	if _is_attached_idle:
+		velocity = Vector2.ZERO
+		animator.play("idle_ceiling")
+		if _wants_to_detach():
+			_exit_attached_idle()
+		return
+
 	_sample_web_overlap()
 	_sample_water_overlap()
 	if _is_in_water:
@@ -299,6 +362,7 @@ func _physics_process(delta: float) -> void:
 	_apply_fluid_damage(delta)
 	_snap_to_terrain_surface()
 	_unstick_from_terrain()
+	_check_ceiling_bonk_attach()
 
 
 ## Workaround for a Godot 2D physics issue where `CharacterBody2D`'s
@@ -655,6 +719,8 @@ func get_current_cooldown_duration() -> float:
 
 
 func apply_damage(amount: int) -> void:
+	if _is_in_spawn_grace:
+		return
 	if _invincibility_remaining_sec > 0.0:
 		return
 	if %PlayerHealth.is_dead():
@@ -756,3 +822,80 @@ func play_sound(sound_name: String, force_restart := false) -> void:
 	if G.level.has_won:
 		return
 	G.audio.play_player_sound(sound_name, force_restart)
+
+
+## Enters the idle-ceiling-attached state: zeroes velocity, resets jump
+## state, applies the 1 px sprite offset, and starts the idle_ceiling
+## animation. `lockout_sec` is how long detach inputs are ignored.
+func _enter_attached_idle(lockout_sec: float) -> void:
+	_is_attached_idle = true
+	_detach_lockout_remaining_sec = lockout_sec
+	_last_ceiling_bonk_time_sec = -INF
+	velocity = Vector2.ZERO
+	jump_count = 0
+	is_rising_from_jump = false
+	just_triggered_jump = false
+	if not _attached_sprite_offset_applied:
+		animator.animated_sprite.position.y += (
+				_ATTACHED_IDLE_SPRITE_Y_OFFSET_PX)
+		_attached_sprite_offset_applied = true
+	animator.play("idle_ceiling")
+
+
+## Exits the idle-ceiling-attached state. Reverts the sprite offset and,
+## if this was the spawn-grace attachment, clears grace and restores
+## the player-layer bit so bugs/enemies can detect the player again.
+func _exit_attached_idle() -> void:
+	_is_attached_idle = false
+	if _attached_sprite_offset_applied:
+		animator.animated_sprite.position.y -= (
+				_ATTACHED_IDLE_SPRITE_Y_OFFSET_PX)
+		_attached_sprite_offset_applied = false
+	if _is_in_spawn_grace:
+		_is_in_spawn_grace = false
+		# Godot's helper is 1-indexed: value 4 flips bit index 3 (= 8).
+		set_collision_layer_value(4, true)
+
+
+## Called after `super._physics_process` so `just_touched_ceiling` is
+## fresh for this frame. Two airborne ceiling touches within the
+## double-bonk window trigger attachment. Outside of AIR, clears the
+## stamp so stale bonks don't chain.
+func _check_ceiling_bonk_attach() -> void:
+	if _is_attached_idle:
+		return
+	if surface_state.surface_type != SurfaceType.AIR:
+		_last_ceiling_bonk_time_sec = -INF
+		return
+	if not surface_state.just_touched_ceiling:
+		return
+	var now := G.time.get_scaled_play_time()
+	if now - _last_ceiling_bonk_time_sec \
+			<= _CEILING_BONK_DOUBLE_THRESHOLD_SEC:
+		_enter_attached_idle(_POST_ATTACH_DETACH_LOCKOUT_SEC)
+	else:
+		_last_ceiling_bonk_time_sec = now
+
+
+## Polls raw input for any direction-press or a jump just-press. Used
+## only while attached-idle. `ability` (echo) is deliberately excluded.
+func _wants_to_detach() -> bool:
+	if _detach_lockout_remaining_sec > 0.0:
+		return false
+	return (
+			Input.is_action_pressed("move_up")
+			or Input.is_action_pressed("move_down")
+			or Input.is_action_pressed("move_left")
+			or Input.is_action_pressed("move_right")
+			or Input.is_action_just_pressed("jump"))
+
+
+## Entry point used by the level right after spawn. Nudges the player
+## down from the spawn marker, marks them as in spawn grace (impervious
+## + imperceptible) and drops the player-layer bit, then enters
+## attached-idle with the spawn lockout.
+func _enter_attached_idle_at_spawn() -> void:
+	global_position.y += _CEILING_SPAWN_Y_OFFSET_PX
+	_is_in_spawn_grace = true
+	set_collision_layer_value(4, false)
+	_enter_attached_idle(_SPAWN_DETACH_LOCKOUT_SEC)

@@ -60,9 +60,43 @@ var _tilemap_signal_connected: bool = false
 
 
 func _enter_tree() -> void:
+	_sync_terrain_settings_palette()
 	if Engine.is_editor_hint():
 		return
 	super._enter_tree()
+
+
+## Pushes `Settings` frequency colors into the level's shared
+## `TerrainSettings` resource so the C++ terrain shader vertex
+## colors match `Frequency.PALETTE`. Runs before the TerrainWorld
+## bakes meshes so no post-bake refresh is needed.
+func _sync_terrain_settings_palette() -> void:
+	if G.settings == null:
+		return
+	if terrain_settings == null:
+		return
+	var s: Settings = G.settings
+	terrain_settings.set("color_indestructible",
+			s.color_frequency_indestructible)
+	terrain_settings.set("color_red", s.color_frequency_red)
+	terrain_settings.set("color_green", s.color_frequency_green)
+	terrain_settings.set("color_blue", s.color_frequency_blue)
+	terrain_settings.set("color_liquid", s.color_frequency_liquid)
+	terrain_settings.set("color_sand", s.color_frequency_sand)
+	terrain_settings.set("color_yellow", s.color_frequency_yellow)
+	var web_alpha := s.color_frequency_web_alpha
+	terrain_settings.set("color_web_red",
+			_with_alpha(s.color_frequency_red, web_alpha))
+	terrain_settings.set("color_web_green",
+			_with_alpha(s.color_frequency_green, web_alpha))
+	terrain_settings.set("color_web_blue",
+			_with_alpha(s.color_frequency_blue, web_alpha))
+	terrain_settings.set("color_web_yellow",
+			_with_alpha(s.color_frequency_yellow, web_alpha))
+
+
+static func _with_alpha(color: Color, alpha: float) -> Color:
+	return Color(color.r, color.g, color.b, alpha)
 
 
 func _exit_tree() -> void:
@@ -76,12 +110,6 @@ func _ready() -> void:
 		_setup_editor_preview()
 		return
 	_setup_runtime()
-
-
-func _input(event: InputEvent) -> void:
-	if Engine.is_editor_hint():
-		return
-	super._input(event)
 
 
 func _physics_process(delta: float) -> void:
@@ -225,16 +253,6 @@ func _on_pulse_emitted(pulse: EchoPulse) -> void:
 
 func spawn_player() -> void:
 	super.spawn_player()
-	if is_instance_valid(player) and is_instance_valid(G.terrain):
-		# Try to find the actual terrain surface above the spawn
-		# point; fall back to the test rect's top edge.
-		var spawn_x: float = %PlayerSpawnPoint.global_position.x
-		var surface_y: float = G.terrain.get_surface_height(
-				spawn_x, 4096.0)
-		if is_nan(surface_y):
-			surface_y = test_rect_world_px.position.y
-		player.global_position = Vector2(
-				spawn_x, surface_y - player.half_size.y - 1.0)
 
 
 # ---- Editor preview ---------------------------------------------------------

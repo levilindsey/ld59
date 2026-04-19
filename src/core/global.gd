@@ -53,6 +53,7 @@ var is_verbose: bool:
 func _enter_tree() -> void:
 	if Engine.is_editor_hint():
 		settings = load("res://settings.tres")
+		Frequency.configure_palette(settings)
 
 	time.name = "Time"
 	add_child(time)

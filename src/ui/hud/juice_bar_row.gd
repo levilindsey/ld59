@@ -20,15 +20,6 @@ const _SLOT_ORDER: Array[int] = [
 	Frequency.Type.YELLOW,
 ]
 
-## Echo icon modulate = lerp(base_hue, WHITE, _ECHO_ICON_PASTEL_T).
-## Higher t reads as lighter + less saturated.
-const _ECHO_ICON_PASTEL_T := 0.4
-
-## Fallback hue used for the NONE slot's echo icon (the slot is
-## gray-themed, not driven by a Frequency palette entry).
-const _ECHO_ICON_NONE_BASE := Color(0.55, 0.55, 0.6, 1.0)
-
-
 var _slots: Dictionary = {}
 
 @onready var _selection_box: Control = $SelectionBox
@@ -36,13 +27,18 @@ var _slots: Dictionary = {}
 
 func _ready() -> void:
 	_collect_slots()
-	_apply_echo_icon_tints()
+	_apply_slot_themes()
 
 
-## Per-slot echo icon modulate = that slot's hue lerped toward
-## white so the icon reads as a lighter / less-saturated tint of
-## the slot color.
-func _apply_echo_icon_tints() -> void:
+## Apply every colored slot's bg / border / fill from
+## `Settings.color_frequency_*` (derivation params shared with
+## HealthBar), apply the NONE slot's explicit colors, and tint
+## each slot's echo icon to that slot's hue lerped toward white
+## (Settings.color_icon_pastel_t).
+func _apply_slot_themes() -> void:
+	var s: Settings = G.settings
+	if s == null:
+		return
 	for freq: int in _SLOT_ORDER:
 		var slot: PanelContainer = _slots.get(freq, null)
 		if slot == null:
@@ -50,16 +46,54 @@ func _apply_echo_icon_tints() -> void:
 		var bar := slot.get_node_or_null("Bar") as ProgressBar
 		if bar == null:
 			continue
-		var icon := bar.get_node_or_null("EchoIcon") as CanvasItem
-		if icon == null:
-			continue
-		var base := _echo_icon_base_color(freq)
-		icon.modulate = base.lerp(Color.WHITE, _ECHO_ICON_PASTEL_T)
+		if freq == Frequency.Type.NONE:
+			_apply_slot_none(slot, bar, s)
+		else:
+			_apply_slot_colored(slot, bar, Frequency.color_of(freq), s)
+		_apply_echo_icon_tint(bar, _echo_icon_base_color(freq, s), s)
 
 
-func _echo_icon_base_color(freq: int) -> Color:
+func _apply_slot_colored(
+		slot: PanelContainer,
+		bar: ProgressBar,
+		base: Color,
+		s: Settings) -> void:
+	var panel := slot.get_theme_stylebox("panel") as StyleBoxFlat
+	if panel != null:
+		var d := s.color_slot_bg_darkness
+		panel.bg_color = Color(
+				base.r * d, base.g * d, base.b * d, s.color_slot_bg_alpha)
+		panel.border_color = Color(
+				base.r, base.g, base.b, s.color_slot_border_alpha)
+	var fill := bar.get_theme_stylebox("fill") as StyleBoxFlat
+	if fill != null:
+		fill.bg_color = base
+
+
+func _apply_slot_none(
+		slot: PanelContainer,
+		bar: ProgressBar,
+		s: Settings) -> void:
+	var panel := slot.get_theme_stylebox("panel") as StyleBoxFlat
+	if panel != null:
+		panel.bg_color = s.color_slot_none_bg
+		panel.border_color = s.color_slot_none_border
+	var fill := bar.get_theme_stylebox("fill") as StyleBoxFlat
+	if fill != null:
+		fill.bg_color = s.color_slot_none_fill
+
+
+func _apply_echo_icon_tint(
+		bar: ProgressBar, base: Color, s: Settings) -> void:
+	var icon := bar.get_node_or_null("EchoIcon") as CanvasItem
+	if icon == null:
+		return
+	icon.modulate = base.lerp(Color.WHITE, s.color_icon_pastel_t)
+
+
+func _echo_icon_base_color(freq: int, s: Settings) -> Color:
 	if freq == Frequency.Type.NONE:
-		return _ECHO_ICON_NONE_BASE
+		return s.color_slot_none_echo_base
 	return Frequency.color_of(freq)
 
 

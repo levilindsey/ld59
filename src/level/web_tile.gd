@@ -29,8 +29,23 @@ func _ready() -> void:
 	collision_mask = 0
 	_health = max_health
 	_apply_frequency_tint()
+	_apply_settings_modulates()
 	if is_instance_valid(G.echo):
 		G.echo.pulse_emitted.connect(_on_pulse_emitted)
+
+
+func _apply_settings_modulates() -> void:
+	if G.settings == null:
+		return
+	var body := get_node_or_null("Body") as CanvasItem
+	if body != null:
+		body.modulate = G.settings.color_web_body_modulate
+	var strand_a := get_node_or_null("StrandA") as CanvasItem
+	if strand_a != null:
+		strand_a.modulate = G.settings.color_web_strand_modulate
+	var strand_b := get_node_or_null("StrandB") as CanvasItem
+	if strand_b != null:
+		strand_b.modulate = G.settings.color_web_strand_modulate
 
 
 func _on_pulse_emitted(pulse: EchoPulse) -> void:

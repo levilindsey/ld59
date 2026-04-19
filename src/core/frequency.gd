@@ -31,12 +31,26 @@ enum Type {
 }
 
 
+## Number of atlas slots the placeholder textures reserve, sized to
+## fit every Frequency.Type enum value (including NONE at index 0).
+const ATLAS_SLOT_COUNT := 12
+
+
 ## Mid-shade representative color per type. The composite shader
 ## uses these for nearest-palette-match type detection on the
 ## backbuffer, and TerrainWorld uses them as the mesh vertex color.
-## Keep these in sync with `TerrainSettings::color_for_type()` on
-## the C++ side.
-const PALETTE := {
+##
+## Declared as a `static var` (not a `const`) so
+## `configure_palette(settings)` can overwrite entries from the
+## `Settings` resource at startup. The defaults here are only used
+## as a fallback if Settings isn't available (e.g., unit tests
+## without an autoload).
+##
+## C++ `TerrainSettings::color_for_type()` is kept in sync at
+## runtime by pushing the same Settings values into the level's
+## `TerrainSettings` resource.
+# gdlint: ignore=class-variable-name
+static var PALETTE: Dictionary = {
 	Type.NONE: Color(0, 0, 0, 0),
 	Type.INDESTRUCTIBLE: Color(0.12, 0.12, 0.14, 1),
 	Type.RED: Color(0.95, 0.38, 0.48, 1),
@@ -44,21 +58,45 @@ const PALETTE := {
 	Type.BLUE: Color(0.45, 0.80, 0.98, 1),
 	Type.LIQUID: Color(0.16, 0.36, 0.68, 1),
 	Type.SAND: Color(0.80, 0.74, 0.52, 1),
-	Type.YELLOW: Color(0.98, 0.70, 0.25, 1),
-	# WEB_* never render through the terrain shader (loader spawns
-	# WebTile Area2Ds). Palette entries exist so `color_of(WEB_*)`
-	# returns a sensible fallback — translucent (alpha 0.55) variant
-	# of the corresponding base frequency color.
+	Type.YELLOW: Color(0.95, 0.82, 0.22, 1),
+	# WEB_* are translucent variants (alpha taken from
+	# `color_frequency_web_alpha`). These defaults are overwritten
+	# by `configure_palette` at startup.
 	Type.WEB_RED: Color(0.95, 0.38, 0.48, 0.55),
 	Type.WEB_GREEN: Color(0.28, 0.82, 0.65, 0.55),
 	Type.WEB_BLUE: Color(0.45, 0.80, 0.98, 0.55),
-	Type.WEB_YELLOW: Color(0.98, 0.70, 0.25, 0.55),
+	Type.WEB_YELLOW: Color(0.95, 0.82, 0.22, 0.55),
 }
 
 
-## Number of atlas slots the placeholder textures reserve, sized to
-## fit every Frequency.Type enum value (including NONE at index 0).
-const ATLAS_SLOT_COUNT := 12
+## Populates `PALETTE` from a `Settings` resource. Called once at
+## startup (from `G._enter_tree` in editor mode and `Main._ready`
+## in-game). No-op if `settings` is null so headless tests can
+## fall through to the authored defaults.
+static func configure_palette(settings: Settings) -> void:
+	if settings == null:
+		return
+	PALETTE[Type.NONE] = settings.color_frequency_none
+	PALETTE[Type.INDESTRUCTIBLE] = settings.color_frequency_indestructible
+	PALETTE[Type.RED] = settings.color_frequency_red
+	PALETTE[Type.GREEN] = settings.color_frequency_green
+	PALETTE[Type.BLUE] = settings.color_frequency_blue
+	PALETTE[Type.LIQUID] = settings.color_frequency_liquid
+	PALETTE[Type.SAND] = settings.color_frequency_sand
+	PALETTE[Type.YELLOW] = settings.color_frequency_yellow
+	var web_alpha := settings.color_frequency_web_alpha
+	PALETTE[Type.WEB_RED] = _with_alpha(
+			settings.color_frequency_red, web_alpha)
+	PALETTE[Type.WEB_GREEN] = _with_alpha(
+			settings.color_frequency_green, web_alpha)
+	PALETTE[Type.WEB_BLUE] = _with_alpha(
+			settings.color_frequency_blue, web_alpha)
+	PALETTE[Type.WEB_YELLOW] = _with_alpha(
+			settings.color_frequency_yellow, web_alpha)
+
+
+static func _with_alpha(color: Color, alpha: float) -> Color:
+	return Color(color.r, color.g, color.b, alpha)
 
 
 ## Returns true if `type` is one of the WEB_* marker types. The

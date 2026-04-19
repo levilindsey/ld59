@@ -15,6 +15,7 @@ var is_paused := true:
 func _enter_tree() -> void:
 	G.main = self
 	G.settings = settings
+	Frequency.configure_palette(settings)
 
 	Scaffolder.set_up()
 

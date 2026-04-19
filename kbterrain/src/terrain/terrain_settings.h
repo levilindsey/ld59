@@ -57,7 +57,7 @@ public:
 	Color color_red = Color(0.95f, 0.38f, 0.48f, 1.0f);
 	Color color_green = Color(0.28f, 0.82f, 0.65f, 1.0f);
 	Color color_blue = Color(0.45f, 0.80f, 0.98f, 1.0f);
-	Color color_yellow = Color(0.98f, 0.70f, 0.25f, 1.0f);
+	Color color_yellow = Color(0.95f, 0.82f, 0.22f, 1.0f);
 	Color color_liquid = Color(0.16f, 0.36f, 0.68f, 1.0f);
 	Color color_sand = Color(0.80f, 0.74f, 0.52f, 1.0f);
 	// WEB_* never render through the terrain shader but have palette
@@ -67,7 +67,7 @@ public:
 	Color color_web_red = Color(0.95f, 0.38f, 0.48f, 0.55f);
 	Color color_web_green = Color(0.28f, 0.82f, 0.65f, 0.55f);
 	Color color_web_blue = Color(0.45f, 0.80f, 0.98f, 0.55f);
-	Color color_web_yellow = Color(0.98f, 0.70f, 0.25f, 0.55f);
+	Color color_web_yellow = Color(0.95f, 0.82f, 0.22f, 0.55f);
 
 	// Getters / setters.
 	int get_chunk_cells() const { return chunk_cells; }

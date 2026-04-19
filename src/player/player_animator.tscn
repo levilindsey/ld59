@@ -15,515 +15,515 @@ shader_parameter/pulse_alpha = 0.0
 
 [sub_resource type="AtlasTexture" id="Frame000"]
 atlas = ExtResource("2_tex")
-region = Rect2(0, 0, 34, 36)
+region = Rect2(0, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame001"]
 atlas = ExtResource("2_tex")
-region = Rect2(34, 0, 34, 36)
+region = Rect2(46, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame002"]
 atlas = ExtResource("2_tex")
-region = Rect2(68, 0, 34, 36)
+region = Rect2(92, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame003"]
 atlas = ExtResource("2_tex")
-region = Rect2(102, 0, 34, 36)
+region = Rect2(138, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame004"]
 atlas = ExtResource("2_tex")
-region = Rect2(136, 0, 34, 36)
+region = Rect2(184, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame005"]
 atlas = ExtResource("2_tex")
-region = Rect2(170, 0, 34, 36)
+region = Rect2(230, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame006"]
 atlas = ExtResource("2_tex")
-region = Rect2(204, 0, 34, 36)
+region = Rect2(276, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame007"]
 atlas = ExtResource("2_tex")
-region = Rect2(238, 0, 34, 36)
+region = Rect2(322, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame008"]
 atlas = ExtResource("2_tex")
-region = Rect2(272, 0, 34, 36)
+region = Rect2(368, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame009"]
 atlas = ExtResource("2_tex")
-region = Rect2(306, 0, 34, 36)
+region = Rect2(414, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame010"]
 atlas = ExtResource("2_tex")
-region = Rect2(340, 0, 34, 36)
+region = Rect2(460, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame011"]
 atlas = ExtResource("2_tex")
-region = Rect2(374, 0, 34, 36)
+region = Rect2(506, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame012"]
 atlas = ExtResource("2_tex")
-region = Rect2(408, 0, 34, 36)
+region = Rect2(552, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame013"]
 atlas = ExtResource("2_tex")
-region = Rect2(442, 0, 34, 36)
+region = Rect2(598, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame014"]
 atlas = ExtResource("2_tex")
-region = Rect2(476, 0, 34, 36)
+region = Rect2(644, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame015"]
 atlas = ExtResource("2_tex")
-region = Rect2(510, 0, 34, 36)
+region = Rect2(690, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame016"]
 atlas = ExtResource("2_tex")
-region = Rect2(544, 0, 34, 36)
+region = Rect2(736, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame017"]
 atlas = ExtResource("2_tex")
-region = Rect2(578, 0, 34, 36)
+region = Rect2(782, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame018"]
 atlas = ExtResource("2_tex")
-region = Rect2(612, 0, 34, 36)
+region = Rect2(828, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame019"]
 atlas = ExtResource("2_tex")
-region = Rect2(646, 0, 34, 36)
+region = Rect2(874, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame020"]
 atlas = ExtResource("2_tex")
-region = Rect2(680, 0, 34, 36)
+region = Rect2(920, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame021"]
 atlas = ExtResource("2_tex")
-region = Rect2(714, 0, 34, 36)
+region = Rect2(966, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame022"]
 atlas = ExtResource("2_tex")
-region = Rect2(748, 0, 34, 36)
+region = Rect2(1012, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame023"]
 atlas = ExtResource("2_tex")
-region = Rect2(782, 0, 34, 36)
+region = Rect2(1058, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame024"]
 atlas = ExtResource("2_tex")
-region = Rect2(816, 0, 34, 36)
+region = Rect2(1104, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame025"]
 atlas = ExtResource("2_tex")
-region = Rect2(850, 0, 34, 36)
+region = Rect2(1150, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame026"]
 atlas = ExtResource("2_tex")
-region = Rect2(884, 0, 34, 36)
+region = Rect2(1196, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame027"]
 atlas = ExtResource("2_tex")
-region = Rect2(918, 0, 34, 36)
+region = Rect2(1242, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame028"]
 atlas = ExtResource("2_tex")
-region = Rect2(952, 0, 34, 36)
+region = Rect2(1288, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame029"]
 atlas = ExtResource("2_tex")
-region = Rect2(986, 0, 34, 36)
+region = Rect2(1334, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame030"]
 atlas = ExtResource("2_tex")
-region = Rect2(1020, 0, 34, 36)
+region = Rect2(1380, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame031"]
 atlas = ExtResource("2_tex")
-region = Rect2(1054, 0, 34, 36)
+region = Rect2(1426, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame032"]
 atlas = ExtResource("2_tex")
-region = Rect2(1088, 0, 34, 36)
+region = Rect2(1472, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame033"]
 atlas = ExtResource("2_tex")
-region = Rect2(1122, 0, 34, 36)
+region = Rect2(1518, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame034"]
 atlas = ExtResource("2_tex")
-region = Rect2(1156, 0, 34, 36)
+region = Rect2(1564, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame035"]
 atlas = ExtResource("2_tex")
-region = Rect2(1190, 0, 34, 36)
+region = Rect2(1610, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame036"]
 atlas = ExtResource("2_tex")
-region = Rect2(1224, 0, 34, 36)
+region = Rect2(1656, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame037"]
 atlas = ExtResource("2_tex")
-region = Rect2(1258, 0, 34, 36)
+region = Rect2(1702, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame038"]
 atlas = ExtResource("2_tex")
-region = Rect2(1292, 0, 34, 36)
+region = Rect2(1748, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame039"]
 atlas = ExtResource("2_tex")
-region = Rect2(1326, 0, 34, 36)
+region = Rect2(1794, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame040"]
 atlas = ExtResource("2_tex")
-region = Rect2(1360, 0, 34, 36)
+region = Rect2(1840, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame041"]
 atlas = ExtResource("2_tex")
-region = Rect2(1394, 0, 34, 36)
+region = Rect2(1886, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame042"]
 atlas = ExtResource("2_tex")
-region = Rect2(1428, 0, 34, 36)
+region = Rect2(1932, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame043"]
 atlas = ExtResource("2_tex")
-region = Rect2(1462, 0, 34, 36)
+region = Rect2(1978, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame044"]
 atlas = ExtResource("2_tex")
-region = Rect2(1496, 0, 34, 36)
+region = Rect2(2024, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame045"]
 atlas = ExtResource("2_tex")
-region = Rect2(1530, 0, 34, 36)
+region = Rect2(2070, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame046"]
 atlas = ExtResource("2_tex")
-region = Rect2(1564, 0, 34, 36)
+region = Rect2(2116, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame047"]
 atlas = ExtResource("2_tex")
-region = Rect2(1598, 0, 34, 36)
+region = Rect2(2162, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame048"]
 atlas = ExtResource("2_tex")
-region = Rect2(1632, 0, 34, 36)
+region = Rect2(2208, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame049"]
 atlas = ExtResource("2_tex")
-region = Rect2(1666, 0, 34, 36)
+region = Rect2(2254, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame050"]
 atlas = ExtResource("2_tex")
-region = Rect2(1700, 0, 34, 36)
+region = Rect2(2300, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame051"]
 atlas = ExtResource("2_tex")
-region = Rect2(1734, 0, 34, 36)
+region = Rect2(2346, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame052"]
 atlas = ExtResource("2_tex")
-region = Rect2(1768, 0, 34, 36)
+region = Rect2(2392, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame053"]
 atlas = ExtResource("2_tex")
-region = Rect2(1802, 0, 34, 36)
+region = Rect2(2438, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame054"]
 atlas = ExtResource("2_tex")
-region = Rect2(1836, 0, 34, 36)
+region = Rect2(2484, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame055"]
 atlas = ExtResource("2_tex")
-region = Rect2(1870, 0, 34, 36)
+region = Rect2(2530, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame056"]
 atlas = ExtResource("2_tex")
-region = Rect2(1904, 0, 34, 36)
+region = Rect2(2576, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame057"]
 atlas = ExtResource("2_tex")
-region = Rect2(1938, 0, 34, 36)
+region = Rect2(2622, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame058"]
 atlas = ExtResource("2_tex")
-region = Rect2(1972, 0, 34, 36)
+region = Rect2(2668, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame059"]
 atlas = ExtResource("2_tex")
-region = Rect2(2006, 0, 34, 36)
+region = Rect2(2714, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame060"]
 atlas = ExtResource("2_tex")
-region = Rect2(2040, 0, 34, 36)
+region = Rect2(2760, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame061"]
 atlas = ExtResource("2_tex")
-region = Rect2(2074, 0, 34, 36)
+region = Rect2(2806, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame062"]
 atlas = ExtResource("2_tex")
-region = Rect2(2108, 0, 34, 36)
+region = Rect2(2852, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame063"]
 atlas = ExtResource("2_tex")
-region = Rect2(2142, 0, 34, 36)
+region = Rect2(2898, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame120"]
 atlas = ExtResource("2_tex")
-region = Rect2(4080, 0, 34, 36)
+region = Rect2(5520, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame121"]
 atlas = ExtResource("2_tex")
-region = Rect2(4114, 0, 34, 36)
+region = Rect2(5566, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame122"]
 atlas = ExtResource("2_tex")
-region = Rect2(4148, 0, 34, 36)
+region = Rect2(5612, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame123"]
 atlas = ExtResource("2_tex")
-region = Rect2(4182, 0, 34, 36)
+region = Rect2(5658, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame124"]
 atlas = ExtResource("2_tex")
-region = Rect2(4216, 0, 34, 36)
+region = Rect2(5704, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame125"]
 atlas = ExtResource("2_tex")
-region = Rect2(4250, 0, 34, 36)
+region = Rect2(5750, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame126"]
 atlas = ExtResource("2_tex")
-region = Rect2(4284, 0, 34, 36)
+region = Rect2(5796, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame127"]
 atlas = ExtResource("2_tex")
-region = Rect2(4318, 0, 34, 36)
+region = Rect2(5842, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame096"]
 atlas = ExtResource("2_tex")
-region = Rect2(3264, 0, 34, 36)
+region = Rect2(4416, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame097"]
 atlas = ExtResource("2_tex")
-region = Rect2(3298, 0, 34, 36)
+region = Rect2(4462, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame098"]
 atlas = ExtResource("2_tex")
-region = Rect2(3332, 0, 34, 36)
+region = Rect2(4508, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame099"]
 atlas = ExtResource("2_tex")
-region = Rect2(3366, 0, 34, 36)
+region = Rect2(4554, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame100"]
 atlas = ExtResource("2_tex")
-region = Rect2(3400, 0, 34, 36)
+region = Rect2(4600, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame101"]
 atlas = ExtResource("2_tex")
-region = Rect2(3434, 0, 34, 36)
+region = Rect2(4646, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame102"]
 atlas = ExtResource("2_tex")
-region = Rect2(3468, 0, 34, 36)
+region = Rect2(4692, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame103"]
 atlas = ExtResource("2_tex")
-region = Rect2(3502, 0, 34, 36)
+region = Rect2(4738, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame104"]
 atlas = ExtResource("2_tex")
-region = Rect2(3536, 0, 34, 36)
+region = Rect2(4784, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame105"]
 atlas = ExtResource("2_tex")
-region = Rect2(3570, 0, 34, 36)
+region = Rect2(4830, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame106"]
 atlas = ExtResource("2_tex")
-region = Rect2(3604, 0, 34, 36)
+region = Rect2(4876, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame107"]
 atlas = ExtResource("2_tex")
-region = Rect2(3638, 0, 34, 36)
+region = Rect2(4922, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame108"]
 atlas = ExtResource("2_tex")
-region = Rect2(3672, 0, 34, 36)
+region = Rect2(4968, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame109"]
 atlas = ExtResource("2_tex")
-region = Rect2(3706, 0, 34, 36)
+region = Rect2(5014, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame110"]
 atlas = ExtResource("2_tex")
-region = Rect2(3740, 0, 34, 36)
+region = Rect2(5060, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame111"]
 atlas = ExtResource("2_tex")
-region = Rect2(3774, 0, 34, 36)
+region = Rect2(5106, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame112"]
 atlas = ExtResource("2_tex")
-region = Rect2(3808, 0, 34, 36)
+region = Rect2(5152, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame113"]
 atlas = ExtResource("2_tex")
-region = Rect2(3842, 0, 34, 36)
+region = Rect2(5198, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame114"]
 atlas = ExtResource("2_tex")
-region = Rect2(3876, 0, 34, 36)
+region = Rect2(5244, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame115"]
 atlas = ExtResource("2_tex")
-region = Rect2(3910, 0, 34, 36)
+region = Rect2(5290, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame116"]
 atlas = ExtResource("2_tex")
-region = Rect2(3944, 0, 34, 36)
+region = Rect2(5336, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame117"]
 atlas = ExtResource("2_tex")
-region = Rect2(3978, 0, 34, 36)
+region = Rect2(5382, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame118"]
 atlas = ExtResource("2_tex")
-region = Rect2(4012, 0, 34, 36)
+region = Rect2(5428, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame119"]
 atlas = ExtResource("2_tex")
-region = Rect2(4046, 0, 34, 36)
+region = Rect2(5474, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame064"]
 atlas = ExtResource("2_tex")
-region = Rect2(2176, 0, 34, 36)
+region = Rect2(2944, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame065"]
 atlas = ExtResource("2_tex")
-region = Rect2(2210, 0, 34, 36)
+region = Rect2(2990, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame066"]
 atlas = ExtResource("2_tex")
-region = Rect2(2244, 0, 34, 36)
+region = Rect2(3036, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame067"]
 atlas = ExtResource("2_tex")
-region = Rect2(2278, 0, 34, 36)
+region = Rect2(3082, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame068"]
 atlas = ExtResource("2_tex")
-region = Rect2(2312, 0, 34, 36)
+region = Rect2(3128, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame069"]
 atlas = ExtResource("2_tex")
-region = Rect2(2346, 0, 34, 36)
+region = Rect2(3174, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame070"]
 atlas = ExtResource("2_tex")
-region = Rect2(2380, 0, 34, 36)
+region = Rect2(3220, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame071"]
 atlas = ExtResource("2_tex")
-region = Rect2(2414, 0, 34, 36)
+region = Rect2(3266, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame072"]
 atlas = ExtResource("2_tex")
-region = Rect2(2448, 0, 34, 36)
+region = Rect2(3312, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame073"]
 atlas = ExtResource("2_tex")
-region = Rect2(2482, 0, 34, 36)
+region = Rect2(3358, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame074"]
 atlas = ExtResource("2_tex")
-region = Rect2(2516, 0, 34, 36)
+region = Rect2(3404, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame075"]
 atlas = ExtResource("2_tex")
-region = Rect2(2550, 0, 34, 36)
+region = Rect2(3450, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame076"]
 atlas = ExtResource("2_tex")
-region = Rect2(2584, 0, 34, 36)
+region = Rect2(3496, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame077"]
 atlas = ExtResource("2_tex")
-region = Rect2(2618, 0, 34, 36)
+region = Rect2(3542, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame078"]
 atlas = ExtResource("2_tex")
-region = Rect2(2652, 0, 34, 36)
+region = Rect2(3588, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame079"]
 atlas = ExtResource("2_tex")
-region = Rect2(2686, 0, 34, 36)
+region = Rect2(3634, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame080"]
 atlas = ExtResource("2_tex")
-region = Rect2(2720, 0, 34, 36)
+region = Rect2(3680, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame081"]
 atlas = ExtResource("2_tex")
-region = Rect2(2754, 0, 34, 36)
+region = Rect2(3726, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame082"]
 atlas = ExtResource("2_tex")
-region = Rect2(2788, 0, 34, 36)
+region = Rect2(3772, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame083"]
 atlas = ExtResource("2_tex")
-region = Rect2(2822, 0, 34, 36)
+region = Rect2(3818, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame084"]
 atlas = ExtResource("2_tex")
-region = Rect2(2856, 0, 34, 36)
+region = Rect2(3864, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame085"]
 atlas = ExtResource("2_tex")
-region = Rect2(2890, 0, 34, 36)
+region = Rect2(3910, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame086"]
 atlas = ExtResource("2_tex")
-region = Rect2(2924, 0, 34, 36)
+region = Rect2(3956, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame087"]
 atlas = ExtResource("2_tex")
-region = Rect2(2958, 0, 34, 36)
+region = Rect2(4002, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame088"]
 atlas = ExtResource("2_tex")
-region = Rect2(2992, 0, 34, 36)
+region = Rect2(4048, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame089"]
 atlas = ExtResource("2_tex")
-region = Rect2(3026, 0, 34, 36)
+region = Rect2(4094, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame090"]
 atlas = ExtResource("2_tex")
-region = Rect2(3060, 0, 34, 36)
+region = Rect2(4140, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame091"]
 atlas = ExtResource("2_tex")
-region = Rect2(3094, 0, 34, 36)
+region = Rect2(4186, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame092"]
 atlas = ExtResource("2_tex")
-region = Rect2(3128, 0, 34, 36)
+region = Rect2(4232, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame093"]
 atlas = ExtResource("2_tex")
-region = Rect2(3162, 0, 34, 36)
+region = Rect2(4278, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame094"]
 atlas = ExtResource("2_tex")
-region = Rect2(3196, 0, 34, 36)
+region = Rect2(4324, 0, 46, 52)
 
 [sub_resource type="AtlasTexture" id="Frame095"]
 atlas = ExtResource("2_tex")
-region = Rect2(3230, 0, 34, 36)
+region = Rect2(4370, 0, 46, 52)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_main"]
 animations = [{
