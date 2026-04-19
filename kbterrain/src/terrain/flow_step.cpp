@@ -44,6 +44,25 @@ void FlowStep::reset_velocity_cache() {
 	_flow_by_chunk.clear();
 }
 
+// Query a world-cell's type via ChunkManager. Returns TYPE_NONE if
+// the containing chunk doesn't exist. Used for cross-chunk lookups
+// during flow.
+static uint8_t flow_world_cell_type(
+		ChunkManager &manager, int chunk_cells,
+		int32_t world_cx, int32_t world_cy) {
+	int32_t chunk_x = world_cx / chunk_cells;
+	int32_t chunk_y = world_cy / chunk_cells;
+	int32_t local_x = world_cx - chunk_x * chunk_cells;
+	int32_t local_y = world_cy - chunk_y * chunk_cells;
+	if (local_x < 0) { local_x += chunk_cells; chunk_x -= 1; }
+	if (local_y < 0) { local_y += chunk_cells; chunk_y -= 1; }
+	Chunk *c = manager.get(Vector2i(chunk_x, chunk_y));
+	if (c == nullptr) {
+		return TerrainSettings::TYPE_NONE;
+	}
+	return c->type_per_cell[local_y * chunk_cells + local_x];
+}
+
 bool FlowStep::step_world(
 		ChunkManager &manager,
 		int chunk_cells,
@@ -52,14 +71,23 @@ bool FlowStep::step_world(
 	_step_counter++;
 	const bool prefer_right = (_step_counter & 1u) == 0;
 
-	// Decay all velocity accumulators; clear moved flags for the
-	// new step.
+	// Decay velocities slightly (for the sampled-velocity HUD / player
+	// damage path) and clear moved flags. The per-cell horizontal
+	// direction memory baked into vel_x's sign is NOT decayed to zero
+	// — once a liquid cell has committed to a lateral direction, it
+	// can't reverse into its origin cell. This breaks the mirror
+	// symmetry that causes pool-surface oscillation while still
+	// letting the cell move further in its original direction.
 	for (auto &pair : _flow_by_chunk) {
 		ChunkFlow &cf = pair.second;
 		for (size_t i = 0; i < cf.vel_x.size(); i++) {
-			cf.vel_x[i] = static_cast<int8_t>(
-					(static_cast<int>(cf.vel_x[i]) * VELOCITY_DECAY_NUM)
-					/ VELOCITY_DECAY_DEN);
+			// Keep sign-preserving clamp at |vel| >= 1 so the cell
+			// remembers its direction forever while occupied.
+			int vx = static_cast<int>(cf.vel_x[i]);
+			int new_vx = (vx * VELOCITY_DECAY_NUM) / VELOCITY_DECAY_DEN;
+			if (vx > 0 && new_vx < 1) new_vx = 1;
+			if (vx < 0 && new_vx > -1) new_vx = -1;
+			cf.vel_x[i] = static_cast<int8_t>(new_vx);
 			cf.vel_y[i] = static_cast<int8_t>(
 					(static_cast<int>(cf.vel_y[i]) * VELOCITY_DECAY_NUM)
 					/ VELOCITY_DECAY_DEN);
@@ -197,26 +225,102 @@ bool FlowStep::_try_sand(
 		uint8_t iso,
 		bool prefer_right,
 		std::vector<Vector2i> &dirty) {
-	// Down.
+	// Sand prefers empty space but can also swap through liquid —
+	// water doesn't block sand, it just gets displaced upward. Try
+	// straight down first, then diagonals.
 	Chunk *dst = nullptr;
 	ChunkFlow *dst_flow = nullptr;
 	int dx = 0, dy = 0;
-	if (_is_empty(chunk, cx, cy + 1, manager, chunk_cells, iso,
+	if (_try_sand_move(chunk, flow, cx, cy, 0, 1,
+				manager, chunk_cells, iso, dirty)) {
+		return true;
+	}
+	const int first_side = prefer_right ? 1 : -1;
+	for (int s_try = 0; s_try < 2; s_try++) {
+		const int side = (s_try == 0) ? first_side : -first_side;
+		if (_try_sand_move(chunk, flow, cx, cy, side, 1,
+					manager, chunk_cells, iso, dirty)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// Attempt a sand move in (offset_x, offset_y) direction. The cell
+// may be empty (normal move) or liquid (swap). Returns true on move.
+bool FlowStep::_try_sand_move(
+		Chunk &chunk,
+		ChunkFlow &flow,
+		int cx,
+		int cy,
+		int offset_x,
+		int offset_y,
+		ChunkManager &manager,
+		int chunk_cells,
+		uint8_t iso,
+		std::vector<Vector2i> &dirty) {
+	Chunk *dst = nullptr;
+	ChunkFlow *dst_flow = nullptr;
+	int dx = 0, dy = 0;
+	if (_is_empty(chunk, cx + offset_x, cy + offset_y,
+				manager, chunk_cells, iso,
 				&dst, &dst_flow, &dx, &dy)) {
 		return _move_cell(chunk, flow, cx, cy,
 				*dst, *dst_flow, dx, dy, chunk_cells, dirty);
 	}
-	// Diagonal down. Prefer side varies by frame.
-	const int first_side = prefer_right ? 1 : -1;
-	for (int s_try = 0; s_try < 2; s_try++) {
-		const int side = (s_try == 0) ? first_side : -first_side;
-		if (_is_empty(chunk, cx + side, cy + 1, manager, chunk_cells,
-					iso, &dst, &dst_flow, &dx, &dy)) {
-			return _move_cell(chunk, flow, cx, cy,
-					*dst, *dst_flow, dx, dy, chunk_cells, dirty);
-		}
+	// Target full — check if it's liquid AND the source is sand
+	// (sand sinks through water). Liquid-into-liquid "swaps" are
+	// no-ops that still return success and falsely tell the caller
+	// the cell moved, blocking further move attempts this step —
+	// that manifested as water freezing in mid-fall when stacked.
+	const int src_idx = chunk.cell_index(cx, cy);
+	const uint8_t src_type = chunk.type_per_cell[src_idx];
+	if (src_type != TerrainSettings::TYPE_SAND) {
+		return false;
 	}
-	return false;
+	const int32_t world_tx = chunk.coords.x * chunk_cells + cx + offset_x;
+	const int32_t world_ty = chunk.coords.y * chunk_cells + cy + offset_y;
+	const uint8_t target_type = flow_world_cell_type(
+			manager, chunk_cells, world_tx, world_ty);
+	if (target_type != TerrainSettings::TYPE_LIQUID) {
+		return false;
+	}
+	// Resolve target chunk + local coords.
+	int32_t chunk_x = world_tx / chunk_cells;
+	int32_t chunk_y = world_ty / chunk_cells;
+	int32_t local_x = world_tx - chunk_x * chunk_cells;
+	int32_t local_y = world_ty - chunk_y * chunk_cells;
+	if (local_x < 0) { local_x += chunk_cells; chunk_x -= 1; }
+	if (local_y < 0) { local_y += chunk_cells; chunk_y -= 1; }
+	Chunk *target = manager.get(Vector2i(chunk_x, chunk_y));
+	if (target == nullptr) {
+		return false;
+	}
+	ChunkFlow &target_flow = _get_or_create_flow(
+			Vector2i(chunk_x, chunk_y), chunk_cells);
+	return _swap_cells(chunk, flow, cx, cy,
+			*target, target_flow, local_x, local_y,
+			chunk_cells, dirty);
+}
+
+// Count contiguous liquid cells downward from (cx, cy) inclusive.
+// Stops at the first non-liquid cell or after `max_count` cells.
+// Used by the sideways-spread rule to compare how deep each
+// column's liquid sits below the spreading row so water flows
+// from deeper to shallower only.
+static int count_liquid_downward(
+		ChunkManager &manager, int chunk_cells,
+		int32_t world_cx, int32_t world_cy, int max_count) {
+	int count = 0;
+	for (int i = 0; i < max_count; i++) {
+		const uint8_t t = flow_world_cell_type(
+				manager, chunk_cells, world_cx, world_cy + i);
+		if (t != TerrainSettings::TYPE_LIQUID) {
+			break;
+		}
+		count++;
+	}
+	return count;
 }
 
 bool FlowStep::_try_liquid(
@@ -233,18 +337,31 @@ bool FlowStep::_try_liquid(
 				iso, prefer_right, dirty)) {
 		return true;
 	}
-	// Sideways spread when down blocked.
+	// Sideways spread. Bidirectional, with a permanent per-cell
+	// direction memory (vel_x's sign, which no longer decays to
+	// zero while the cell is occupied). A cell that previously
+	// moved right refuses to move left and vice versa — this
+	// breaks the mirror symmetry that drove oscillation on flat
+	// surfaces. Fresh cells (vel_x == 0) move in the step's
+	// preferred direction first and fall back to the other.
+	const int src_idx = chunk.cell_index(cx, cy);
+	const int8_t src_vx = flow.vel_x[src_idx];
 	Chunk *dst = nullptr;
 	ChunkFlow *dst_flow = nullptr;
 	int dx = 0, dy = 0;
 	const int first_side = prefer_right ? 1 : -1;
 	for (int s_try = 0; s_try < 2; s_try++) {
 		const int side = (s_try == 0) ? first_side : -first_side;
-		if (_is_empty(chunk, cx + side, cy, manager, chunk_cells,
+		// Skip if this cell previously committed to the opposite
+		// direction.
+		if (src_vx > 0 && side < 0) continue;
+		if (src_vx < 0 && side > 0) continue;
+		if (!_is_empty(chunk, cx + side, cy, manager, chunk_cells,
 					iso, &dst, &dst_flow, &dx, &dy)) {
-			return _move_cell(chunk, flow, cx, cy,
-					*dst, *dst_flow, dx, dy, chunk_cells, dirty);
+			continue;
 		}
+		return _move_cell(chunk, flow, cx, cy,
+				*dst, *dst_flow, dx, dy, chunk_cells, dirty);
 	}
 	return false;
 }
@@ -283,10 +400,12 @@ bool FlowStep::_move_cell(
 	const int delta_vy = (wy_dst - wy_src) * MOVE_VELOCITY_IMPULSE;
 	_velocity_add(dst_flow.vel_x[dst_idx], delta_vx);
 	_velocity_add(dst_flow.vel_y[dst_idx], delta_vy);
-	// Source retains a decayed trail, not a fresh write — helps the
-	// sample near moving fronts be smooth.
-	_velocity_add(src_flow.vel_x[src_idx], delta_vx / 2);
-	_velocity_add(src_flow.vel_y[src_idx], delta_vy / 2);
+	// Source cell is now empty; reset its direction memory so the
+	// next cell to land there starts fresh. Without this, a cell
+	// that arrives later would be stuck with the previous cell's
+	// committed direction and couldn't reverse.
+	src_flow.vel_x[src_idx] = 0;
+	src_flow.vel_y[src_idx] = 0;
 
 	// Rebuild density corners around both cells.
 	_refresh_corner_density(src_chunk, src_cx, src_cy, chunk_cells);
@@ -302,6 +421,54 @@ bool FlowStep::_move_cell(
 		dirty.push_back(src_chunk.coords);
 	}
 
+	return true;
+}
+
+bool FlowStep::_swap_cells(
+		Chunk &src_chunk,
+		ChunkFlow &src_flow,
+		int src_cx,
+		int src_cy,
+		Chunk &dst_chunk,
+		ChunkFlow &dst_flow,
+		int dst_cx,
+		int dst_cy,
+		int chunk_cells,
+		std::vector<Vector2i> &dirty) {
+	const int src_idx = src_chunk.cell_index(src_cx, src_cy);
+	const int dst_idx = dst_chunk.cell_index(dst_cx, dst_cy);
+	std::swap(src_chunk.type_per_cell[src_idx],
+			dst_chunk.type_per_cell[dst_idx]);
+	std::swap(src_chunk.health_per_cell[src_idx],
+			dst_chunk.health_per_cell[dst_idx]);
+	// Both cells are occupied now; flag both so this step doesn't
+	// re-examine them.
+	dst_flow.moved_this_frame[dst_idx] = 1;
+	src_flow.moved_this_frame[src_idx] = 1;
+
+	const int wx_src = src_chunk.coords.x * chunk_cells + src_cx;
+	const int wy_src = src_chunk.coords.y * chunk_cells + src_cy;
+	const int wx_dst = dst_chunk.coords.x * chunk_cells + dst_cx;
+	const int wy_dst = dst_chunk.coords.y * chunk_cells + dst_cy;
+	const int delta_vx = (wx_dst - wx_src) * MOVE_VELOCITY_IMPULSE;
+	const int delta_vy = (wy_dst - wy_src) * MOVE_VELOCITY_IMPULSE;
+	_velocity_add(dst_flow.vel_x[dst_idx], delta_vx);
+	_velocity_add(dst_flow.vel_y[dst_idx], delta_vy);
+	// Displaced cell moves in the opposite direction.
+	_velocity_add(src_flow.vel_x[src_idx], -delta_vx);
+	_velocity_add(src_flow.vel_y[src_idx], -delta_vy);
+
+	// Corners stay 255 (both cells remain non-NONE), so no density
+	// refresh needed — marching-squares case still reads solid. But
+	// the mesh needs to rebuild to pick up the type/color change.
+	src_chunk.generation.fetch_add(1);
+	if (&src_chunk != &dst_chunk) {
+		dst_chunk.generation.fetch_add(1);
+		dirty.push_back(src_chunk.coords);
+		dirty.push_back(dst_chunk.coords);
+	} else {
+		dirty.push_back(src_chunk.coords);
+	}
 	return true;
 }
 

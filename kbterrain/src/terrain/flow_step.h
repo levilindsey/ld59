@@ -123,6 +123,35 @@ private:
 			int chunk_cells,
 			std::vector<Vector2i> &dirty);
 
+	// Like `_move_cell` but swaps the src and dst cell contents.
+	// Used so sand can fall through liquid — sand goes down, liquid
+	// floats up into the vacated cell.
+	bool _swap_cells(
+			Chunk &src_chunk,
+			ChunkFlow &src_flow,
+			int src_cx,
+			int src_cy,
+			Chunk &dst_chunk,
+			ChunkFlow &dst_flow,
+			int dst_cx,
+			int dst_cy,
+			int chunk_cells,
+			std::vector<Vector2i> &dirty);
+
+	// Attempt a sand move in (offset_x, offset_y). Handles normal
+	// move into empty cells AND swap-through-liquid.
+	bool _try_sand_move(
+			Chunk &chunk,
+			ChunkFlow &flow,
+			int cx,
+			int cy,
+			int offset_x,
+			int offset_y,
+			ChunkManager &manager,
+			int chunk_cells,
+			uint8_t iso,
+			std::vector<Vector2i> &dirty);
+
 	// Is the cell at (cx, cy) in chunk (possibly looked up via
 	// manager if cx/cy is out of range) empty for flow purposes?
 	// Sets *out_chunk / *out_cx / *out_cy to the target if non-null.

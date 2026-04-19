@@ -32,6 +32,68 @@ using terrain::WorkerPool;
 
 namespace {
 
+// World-cell type lookup via ChunkManager. Returns TYPE_NONE if the
+// containing chunk doesn't exist.
+uint8_t world_cell_type(
+		terrain::ChunkManager &manager,
+		int chunk_cells,
+		int32_t world_cx,
+		int32_t world_cy) {
+	int32_t chunk_x = world_cx / chunk_cells;
+	int32_t chunk_y = world_cy / chunk_cells;
+	int32_t local_x = world_cx - chunk_x * chunk_cells;
+	int32_t local_y = world_cy - chunk_y * chunk_cells;
+	if (local_x < 0) { local_x += chunk_cells; chunk_x -= 1; }
+	if (local_y < 0) { local_y += chunk_cells; chunk_y -= 1; }
+	terrain::Chunk *c = manager.get(Vector2i(chunk_x, chunk_y));
+	if (c == nullptr) {
+		return TerrainSettings::TYPE_NONE;
+	}
+	return c->type_per_cell[local_y * chunk_cells + local_x];
+}
+
+// Build a collision-density snapshot for a chunk. Starts from the
+// real density (cross-chunk consistent via bake + corner refresh)
+// and zeros any corner whose all 4 adjacent world cells are
+// non-collidable (NONE or LIQUID). Cross-chunk neighbors are queried
+// via ChunkManager so boundary corners stay consistent across
+// chunks.
+std::vector<uint8_t> build_collision_density(
+		terrain::ChunkManager &manager,
+		const terrain::Chunk &chunk,
+		int chunk_cells) {
+	std::vector<uint8_t> out = chunk.density;
+	const int s = chunk_cells + 1;
+	const int32_t base_x = chunk.coords.x * chunk_cells;
+	const int32_t base_y = chunk.coords.y * chunk_cells;
+	for (int y = 0; y <= chunk_cells; y++) {
+		for (int x = 0; x <= chunk_cells; x++) {
+			const int32_t wcx_r = base_x + x;
+			const int32_t wcy_r = base_y + y;
+			bool all_non_collidable = true;
+			// 4 adjacent cells sharing this corner:
+			//   (wcx_r - 1, wcy_r - 1), (wcx_r, wcy_r - 1),
+			//   (wcx_r - 1, wcy_r),     (wcx_r, wcy_r).
+			for (int dy = -1; dy <= 0 && all_non_collidable; dy++) {
+				for (int dx = -1; dx <= 0; dx++) {
+					const uint8_t t = world_cell_type(
+							manager, chunk_cells,
+							wcx_r + dx, wcy_r + dy);
+					if (t != TerrainSettings::TYPE_NONE
+							&& t != TerrainSettings::TYPE_LIQUID) {
+						all_non_collidable = false;
+						break;
+					}
+				}
+			}
+			if (all_non_collidable) {
+				out[y * s + x] = 0;
+			}
+		}
+	}
+	return out;
+}
+
 // After a cell's type is cleared, rebuild its 4 corner densities by
 // checking whether any of the (up to 4) cells sharing each corner
 // still has a non-NONE type. Writes 255 if any non-NONE neighbor
@@ -131,6 +193,9 @@ void TerrainWorld::_bind_methods() {
 	ClassDB::bind_method(
 			D_METHOD("is_cell_type_at", "world_pos", "type"),
 			&TerrainWorld::is_cell_type_at);
+	ClassDB::bind_method(
+			D_METHOD("is_cell_collidable", "world_pos"),
+			&TerrainWorld::is_cell_collidable);
 	ClassDB::bind_method(
 			D_METHOD("get_surface_height", "world_x", "search_max_y_px"),
 			&TerrainWorld::get_surface_height);
@@ -276,7 +341,7 @@ void TerrainWorld::set_cells(Vector2i coords, const PackedByteArray &bytes) {
 				bytes[density_size + per_cell_size + i];
 	}
 	chunk->generation.fetch_add(1);
-	_queue_remesh(chunk);
+	_queue_remesh_and_neighbors(chunk);
 }
 
 void TerrainWorld::_queue_remesh(Chunk *chunk) {
@@ -290,6 +355,8 @@ void TerrainWorld::_queue_remesh(Chunk *chunk) {
 	job.iso = static_cast<uint8_t>(_iso_cached);
 	job.origin_px = chunk->origin_px(_cell_size_px_cached);
 	job.density_snapshot = chunk->density;
+	job.collision_density_snapshot = build_collision_density(
+			*_manager, *chunk, _cells_cached);
 	job.type_snapshot = chunk->type_per_cell;
 	job.type_to_color_rgba = _type_to_rgba_lut;
 	job.simplify_epsilon_px = _simplify_eps_cached;
@@ -304,6 +371,31 @@ void TerrainWorld::_queue_remesh(Chunk *chunk) {
 		_worker->submit(std::move(job));
 	}
 }
+
+void TerrainWorld::_queue_remesh_and_neighbors(Chunk *chunk) {
+	_queue_remesh(chunk);
+	// Neighbor-chunk collision density depends on this chunk's cells
+	// along the shared edge. Schedule their remeshes too. Used for
+	// relatively rare events (bake, damage, paint, CC detach) where
+	// the extra work is acceptable. Flow step deliberately skips
+	// this because it mutates hundreds of cells per step and the
+	// cascade would backlog the worker.
+	const Vector2i coord = chunk->coords;
+	const Vector2i neighbors[4] = {
+		Vector2i(coord.x - 1, coord.y),
+		Vector2i(coord.x + 1, coord.y),
+		Vector2i(coord.x, coord.y - 1),
+		Vector2i(coord.x, coord.y + 1),
+	};
+	for (const Vector2i &nc : neighbors) {
+		Chunk *n = _manager->get(nc);
+		if (n == nullptr) {
+			continue;
+		}
+		_queue_remesh(n);
+	}
+}
+
 
 void TerrainWorld::_integrate_results() {
 	if (!_worker) {
@@ -462,7 +554,7 @@ void TerrainWorld::carve(Vector2 world_pos, float radius_px, float strength) {
 				std::clamp(strength, 0.0f, 1.0f), feather);
 		if (changed) {
 			chunk->generation.fetch_add(1);
-			_queue_remesh(chunk);
+			_queue_remesh_and_neighbors(chunk);
 		}
 	}
 }
@@ -483,7 +575,7 @@ void TerrainWorld::fill(Vector2 world_pos, float radius_px, float strength) {
 				std::clamp(strength, 0.0f, 1.0f), feather);
 		if (changed) {
 			chunk->generation.fetch_add(1);
-			_queue_remesh(chunk);
+			_queue_remesh_and_neighbors(chunk);
 		}
 	}
 }
@@ -586,7 +678,7 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 
 		if (any_change) {
 			chunk->generation.fetch_add(1);
-			_queue_remesh(chunk);
+			_queue_remesh_and_neighbors(chunk);
 		}
 	}
 
@@ -611,7 +703,7 @@ void TerrainWorld::_detach_islands_from_seeds(
 		if (chunk == nullptr) {
 			continue;
 		}
-		_queue_remesh(chunk);
+		_queue_remesh_and_neighbors(chunk);
 	}
 	// For each island: mesh locally, DP-simplify, emit signal.
 	for (DetachedIsland &island : islands) {
@@ -710,19 +802,19 @@ void TerrainWorld::paint_cell_at_world(
 		return;
 	}
 	const int idx = chunk->cell_index(cx, cy);
-	// Don't paint over INDESTRUCTIBLE or existing cells; merge-back
-	// should only fill empty space.
-	if (chunk->type_per_cell[idx] != TerrainSettings::TYPE_NONE) {
+	const uint8_t existing = chunk->type_per_cell[idx];
+	// Allow overwriting NONE (empty) and LIQUID (water displaced by
+	// a heavier falling solid). Any other occupied cell is
+	// preserved — the falling cell's paint no-ops.
+	if (existing != TerrainSettings::TYPE_NONE
+			&& existing != TerrainSettings::TYPE_LIQUID) {
 		return;
 	}
 	chunk->type_per_cell[idx] = static_cast<uint8_t>(type);
 	chunk->health_per_cell[idx] = static_cast<uint8_t>(health);
-	// Refresh corners so newly-shared boundaries with still-NONE
-	// neighbors don't leave stray 255 corners (which cause the
-	// neighbor to render a half-cell sliver).
 	refresh_corners_after_clear(chunk, cx, cy);
 	chunk->generation.fetch_add(1);
-	_queue_remesh(chunk);
+	_queue_remesh_and_neighbors(chunk);
 }
 
 void TerrainWorld::_step_flow() {
@@ -859,7 +951,7 @@ void TerrainWorld::damage_with_falloff(
 
 		if (any_change) {
 			chunk->generation.fetch_add(1);
-			_queue_remesh(chunk);
+			_queue_remesh_and_neighbors(chunk);
 		}
 	}
 
@@ -918,6 +1010,31 @@ bool TerrainWorld::is_cell_non_empty(Vector2 world_pos) const {
 	}
 	return chunk->type_per_cell[chunk->cell_index(cx, cy)]
 			!= TerrainSettings::TYPE_NONE;
+}
+
+bool TerrainWorld::is_cell_collidable(Vector2 world_pos) const {
+	if (!_manager) {
+		return false;
+	}
+	const Vector2i coord = ChunkManager::world_to_chunk(
+			world_pos, _cells_cached, _cell_size_px_cached);
+	auto it = _manager->all().find(coord);
+	if (it == _manager->all().end()) {
+		return false;
+	}
+	Chunk *chunk = it->second.get();
+	const Vector2 origin = chunk->origin_px(_cell_size_px_cached);
+	int cx = static_cast<int>(
+			std::floor((world_pos.x - origin.x) / _cell_size_px_cached));
+	int cy = static_cast<int>(
+			std::floor((world_pos.y - origin.y) / _cell_size_px_cached));
+	if (cx < 0 || cy < 0
+			|| cx >= _cells_cached || cy >= _cells_cached) {
+		return false;
+	}
+	const uint8_t t = chunk->type_per_cell[chunk->cell_index(cx, cy)];
+	return t != TerrainSettings::TYPE_NONE
+			&& t != TerrainSettings::TYPE_LIQUID;
 }
 
 bool TerrainWorld::is_cell_type_at(Vector2 world_pos, int type) const {

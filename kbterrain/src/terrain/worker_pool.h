@@ -31,6 +31,13 @@ struct RemeshJob {
 	Vector2 origin_px;
 	// Density buffer (cells+1)^2.
 	std::vector<uint8_t> density_snapshot;
+	// Collision density buffer (cells+1)^2. Same layout as
+	// `density_snapshot` but with corners zeroed wherever every
+	// adjacent cell is non-collidable (NONE or LIQUID), including
+	// across chunk boundaries. Used to emit collision segments that
+	// ignore water. Main thread is responsible for keeping it
+	// consistent with neighbor chunks so seams match.
+	std::vector<uint8_t> collision_density_snapshot;
 	// Type buffer cells*cells.
 	std::vector<uint8_t> type_snapshot;
 	// Type → RGBA8 lookup (size 256). Copied so the worker doesn't

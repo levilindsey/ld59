@@ -67,6 +67,11 @@ public:
 	// True iff the cell containing `world_pos` is of the given
 	// `Frequency.Type`. Queries `type_per_cell` directly.
 	bool is_cell_type_at(Vector2 world_pos, int type) const;
+	// True iff the cell containing `world_pos` is a collide-able
+	// solid — non-NONE and non-LIQUID. Use this (not
+	// `is_cell_non_empty`) for falling-cell landing checks and
+	// eviction clearance so falling solids pass through water.
+	bool is_cell_collidable(Vector2 world_pos) const;
 	// Cast a ray down from (x, -very_large) finding the topmost solid
 	// sample crossing; returns y in world px. Returns NAN if no hit.
 	float get_surface_height(float world_x, float search_max_y_px) const;
@@ -129,6 +134,7 @@ private:
 	void _rebuild_type_lut();
 	int _frequency_to_bit(int freq) const;
 	void _queue_remesh(terrain::Chunk *chunk);
+	void _queue_remesh_and_neighbors(terrain::Chunk *chunk);
 	void _integrate_results();
 	void _integrate_one(const terrain::RemeshResult &result);
 	// Returns true if the cell was destroyed this call (type went to
