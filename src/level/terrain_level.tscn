@@ -8,6 +8,7 @@
 [ext_resource type="PackedScene" uid="uid://dgk5b2n3lc8kr" path="res://src/bugs/bug.tscn" id="6_bug"]
 [ext_resource type="Script" uid="uid://o2i6tqdak3pe" path="res://src/enemies/enemy_system.gd" id="7_enemy_sys"]
 [ext_resource type="PackedScene" path="res://src/level/falling_cell.tscn" id="8_falling_cell"]
+[ext_resource type="AudioStream" path="res://src/level/fwoof_randomizer.tres" id="8_fwoof"]
 [ext_resource type="PackedScene" uid="uid://b8k2pwamtr0x3" path="res://src/level/web_tile.tscn" id="9_web"]
 [ext_resource type="Texture2D" uid="uid://rihqreb0nh5o" path="res://assets/images/scratch/kittenbaticorn.png" id="10_kitten"]
 [ext_resource type="Script" uid="uid://cidpun4kcqrme" path="res://src/level/editor_placeholder_sprite.gd" id="11_placeholder"]
@@ -29,6 +30,7 @@ terrain_settings = ExtResource("2_settings")
 tile_map_layer_path = NodePath("Tiles")
 web_tile_scene = ExtResource("9_web")
 falling_cell_scene = ExtResource("8_falling_cell")
+fwoof_stream = ExtResource("8_fwoof")
 
 [node name="ParallaxBackground" parent="." unique_id=482765648 instance=ExtResource("4_bg")]
 

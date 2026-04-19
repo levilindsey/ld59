@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://c06kie5bwasob" path="res://src/enemies/coyote.gd" id="1_coyote"]
 [ext_resource type="Texture2D" uid="uid://70badbq75sgf" path="res://assets/images/scratch/coyote.png" id="2_tex"]
 [ext_resource type="Shader" uid="uid://cgd14djt4xvu0" path="res://src/player/player_damage_flash.gdshader" id="3_damage_shader"]
+[ext_resource type="AudioStream" uid="uid://bmmb77pvp3ji5" path="res://assets/audio/Bark.wav" id="4_bark"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_ckicr"]
 size = Vector2(20, 19)
@@ -150,3 +151,8 @@ position = Vector2(0, -15.5)
 sprite_frames = SubResource("SpriteFrames_coyote")
 animation = &"idle"
 autoplay = "idle"
+
+[node name="VoicePlayer" type="AudioStreamPlayer2D" parent="." unique_id=1071286293]
+unique_name_in_owner = true
+stream = ExtResource("4_bark")
+bus = &"SFX"

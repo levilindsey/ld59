@@ -91,6 +91,10 @@ var _wander_has_target: bool = false
 var _wander_target: Vector2 = Vector2.ZERO
 var _wander_idle_timer_sec: float = 0.0
 
+## Tracks `is_pursuing()` across frames so the base class can fire
+## `_on_pursuit_started()` exactly on the rising edge.
+var _was_pursuing: bool = false
+
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -139,8 +143,21 @@ func _process(delta: float) -> void:
 			_perception = 1.0
 	_update_behavior(delta, player)
 
+	var is_pursuing_now := is_pursuing()
+	if is_pursuing_now and not _was_pursuing:
+		_on_pursuit_started()
+	_was_pursuing = is_pursuing_now
+
 	global_position += (_velocity + _knockback_velocity) * delta
 	_tick_invincibility(delta)
+
+
+## Override in subclasses. Called once each time perception crosses
+## above `_PURSUIT_THRESHOLD` from below (i.e. the enemy starts
+## tracking the player). Subclasses use this to play a spatial
+## "detection" sound (bark/hoot/chirp).
+func _on_pursuit_started() -> void:
+	pass
 
 
 func _tick_invincibility(delta: float) -> void:

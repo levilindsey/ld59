@@ -19,6 +19,7 @@ extends Node2D
 	"player_damage" = %PlayerDamage,
 	"player_echo" = %PlayerEcho,
 	"player_eat_bug" = %PlayerEatBug,
+	"player_select" = %PlayerSelect,
 	"click" = %ClickStreamPlayer,
 	"godot_splash" = %ClickStreamPlayer,
 	"scg_splash" = %SnoringCatStreamPlayer,
@@ -155,6 +156,9 @@ func play_player_sound(
 			pass
 		"echo":
 			play.call("player_echo")
+			pass
+		"select":
+			play.call("player_select")
 			pass
 		"walk":
 			pass

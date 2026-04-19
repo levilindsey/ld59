@@ -158,3 +158,14 @@ func _begin_swoop(player: Player) -> void:
 	else:
 		_swoop_velocity = (to_player.normalized()
 				* _SWOOP_SPEED_PX_PER_SEC)
+	_play_voice()
+
+
+func _on_pursuit_started() -> void:
+	_play_voice()
+
+
+func _play_voice() -> void:
+	var voice := get_node_or_null(^"%VoicePlayer") as AudioStreamPlayer2D
+	if voice != null:
+		voice.play()

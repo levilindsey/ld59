@@ -87,6 +87,12 @@ func _update_animation(horizontal: float) -> void:
 		animated_sprite.flip_h = horizontal < 0.0
 
 
+func _on_pursuit_started() -> void:
+	var voice := get_node_or_null(^"%VoicePlayer") as AudioStreamPlayer2D
+	if voice != null:
+		voice.play()
+
+
 func _snap_to_floor() -> void:
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.new()

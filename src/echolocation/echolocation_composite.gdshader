@@ -421,19 +421,31 @@ vec2 world_to_density_uv(vec2 world_px) {
 
 
 // Convert world-px to type-texture UV. Type texture is
-// (cells_wide, cells_high); texel `i` covers the cell whose world-x
-// span is `[i * cell_size, (i + 1) * cell_size)`. We floor the cell
-// position to the integer index and aim the UV at that texel's center,
-// so `filter_nearest` samples the cell that CONTAINS the fragment
-// unambiguously at every world position — including cell boundaries.
-//
-// An earlier version used `(cell + 0.5) / W`, which lined up the texel
-// CENTER with the cell center. That shifted the nearest-filter's
-// Voronoi boundary by half a texel, so pixels in the second half of
-// cell i sampled cell i+1 instead, producing a half-cell wide color
-// bleed around every painted boundary (the "thick teal band about a
-// cell wide" visible above / beside painted edges).
+// (cells_wide, cells_high). Offset by half a cell so nearest-filter
+// samples the cell whose CENTER is closest — creating a half-cell
+// Voronoi halo around each cell that matches the density-gradient
+// "near-surface" band. This halo is what lets the bleed-mitigation
+// block below detect that a fragment just outside the authored
+// solid region is still "associated with" its neighboring cell's
+// type, so it can sample `c0` 2 pixels further out to skip the
+// 1-px mesh-rasterization bleed. For classifying which cell a
+// fragment is STRICTLY inside (for running the interior / surface
+// texture block), use `world_to_type_uv_floored` instead.
 vec2 world_to_type_uv(vec2 world_px) {
+	vec2 cell = (world_px - density_world_origin_px)
+			/ density_cell_size_px;
+	return (cell + vec2(0.5)) / density_world_cell_size;
+}
+
+
+// Floored variant of `world_to_type_uv`. Aims the UV at the center
+// of the texel for the cell that STRICTLY contains the fragment.
+// Used to gate the interior / surface texture block so that only
+// painted cells render their texture — without this, the half-cell
+// Voronoi halo from `world_to_type_uv` would let the texture block
+// run on unpainted cells whose corner densities all clamp to 255
+// (e.g., an unpainted cell sandwiched between two painted rows).
+vec2 world_to_type_uv_floored(vec2 world_px) {
 	vec2 cell = (world_px - density_world_origin_px)
 			/ density_cell_size_px;
 	return (floor(cell) + vec2(0.5)) / density_world_cell_size;
@@ -876,14 +888,30 @@ void fragment() {
 					density_tex, world_to_density_uv(world_pos)).r;
 		}
 		bool inside_solid_cell = d_here_outer >= 0.99;
-		// When the fragment is JUST outside the solid and `c0` matches
-		// the bg palette color, Godot's 2D rasterization has bled the
-		// mesh color 1 pixel past the authored cell edge. Sample `c0`
-		// from a pixel 2 screen-pixels further out along the outward
-		// normal — that pixel is reliably past the bleed and gives us
-		// the real backbuffer (sky / parallax) color. Use that to
-		// paint a smooth transition instead of leaving the bleed or
-		// punching a hard black ring.
+		// Strict cell-containment check for the interior / surface
+		// texture block. `is_bg_tile` uses the half-cell Voronoi halo,
+		// which correctly tags the 1-px mesh-bleed ring for the
+		// bleed-mitigation sample below but also tags unpainted cells
+		// whose corner densities happen to clamp to 255 (e.g., a strip
+		// sandwiched between two painted rows — all 4 corners are 255
+		// so density reads 1 across the whole unpainted cell). Gate
+		// the texture block on the FLOOR-based type sample so the
+		// texture only paints over fragments that are strictly inside
+		// an authored painted cell.
+		int bg_type_id_floor = 0;
+		if (in_world_bbox) {
+			bg_type_id_floor = int(
+					texture(type_tex,
+							world_to_type_uv_floored(world_pos)).r
+							* 255.0 + 0.5);
+		}
+		bool fragment_in_painted_cell = bg_type_id_floor != 0;
+		// Mesh-rasterization bleed mitigation. Godot's 2D renderer
+		// bleeds the mesh color up to 1 pixel past the authored cell
+		// edge in the backbuffer. Since `is_bg_tile` uses the half-
+		// cell Voronoi halo, it's still true in that bleed ring, so
+		// we can detect "pixel just outside a painted cell" and
+		// sample `c0` 2 pixels further out to skip past the bleed.
 		if (is_bg_tile && !inside_solid_cell && !overlay_sprite_here) {
 			vec2 snap_n;
 			if (abs(surface_normal.x) > abs(surface_normal.y)) {
@@ -894,9 +922,10 @@ void fragment() {
 			vec2 offset_uv = SCREEN_UV + snap_n * 2.0 / screen_size_px;
 			textured_rgb = texture(screen_tex, offset_uv).rgb;
 		}
-		if (is_bg_tile && !overlay_sprite_here && inside_solid_cell) {
+		if (fragment_in_painted_cell && !overlay_sprite_here
+				&& inside_solid_cell) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
-			float u_base = float(bg_type_id) / slot_count_f;
+			float u_base = float(bg_type_id_floor) / slot_count_f;
 			float u_width = 1.0 / slot_count_f;
 
 			// Interior: wrap within a tile-sized cell, then shift
@@ -921,7 +950,7 @@ void fragment() {
 			// chip down over multiple pulses, instead of popping cold.
 			float health_norm = texture(
 					health_tex,
-					world_to_type_uv(world_pos)).r;
+					world_to_type_uv_floored(world_pos)).r;
 			float damage_frac = 1.0 - health_norm;
 			if (damage_frac > 0.01 && damage_tier_count > 1) {
 				float tier_f = damage_frac

@@ -20,9 +20,10 @@
 [ext_resource type="AudioStream" uid="uid://bcsxnw3or8qi3" path="res://assets/audio/Eek3.wav" id="19_nigky"]
 [ext_resource type="AudioStream" uid="uid://c28jk3xxpj3l7" path="res://assets/audio/Eek4.wav" id="20_joad8"]
 [ext_resource type="AudioStream" uid="uid://dgnox4se14xhj" path="res://assets/audio/Eek5.wav" id="21_2cdrb"]
-[ext_resource type="AudioStream" uid="uid://d1viyfu1agwtq" path="res://assets/audio/EatBug.wav" id="21_fqgka"]
+[ext_resource type="AudioStream" uid="uid://sushu0d7u66r" path="res://assets/audio/Chomp.wav" id="21_kmns2"]
 [ext_resource type="AudioStream" uid="uid://cm8lv8ms82jb0" path="res://assets/audio/Echo2.wav" id="22_kmns2"]
 [ext_resource type="AudioStream" uid="uid://bdua0okcwuhet" path="res://assets/audio/Echo3.wav" id="23_00bue"]
+[ext_resource type="AudioStream" uid="uid://cbtn3b364vide" path="res://assets/audio/Select.wav" id="24_select"]
 
 [sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_2b2qe"]
 streams_count = 4
@@ -60,12 +61,16 @@ stream_3/stream = ExtResource("21_2cdrb")
 
 [sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_a42ls"]
 streams_count = 1
-stream_0/stream = ExtResource("21_fqgka")
+stream_0/stream = ExtResource("21_kmns2")
 
 [sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_1t17q"]
 streams_count = 2
 stream_0/stream = ExtResource("22_kmns2")
 stream_1/stream = ExtResource("23_00bue")
+
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_select"]
+streams_count = 1
+stream_0/stream = ExtResource("24_select")
 
 [node name="AudioMain" type="Node2D" unique_id=1190513098]
 process_mode = 3
@@ -141,5 +146,11 @@ bus = &"SFX"
 [node name="PlayerEcho" type="AudioStreamPlayer" parent="." unique_id=2058583719]
 unique_name_in_owner = true
 stream = SubResource("AudioStreamRandomizer_1t17q")
+pitch_scale = 1.1
+bus = &"SFX"
+
+[node name="PlayerSelect" type="AudioStreamPlayer" parent="." unique_id=2058583720]
+unique_name_in_owner = true
+stream = SubResource("AudioStreamRandomizer_select")
 pitch_scale = 1.1
 bus = &"SFX"
