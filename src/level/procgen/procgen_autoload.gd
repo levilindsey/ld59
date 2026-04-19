@@ -30,8 +30,8 @@ func _run_generate(parsed: Dictionary) -> void:
 	cfg.seed = int(parsed.get("procgen-seed", 0))
 	cfg.width_tiles = int(parsed.get("width", 72))
 	cfg.height_tiles = int(parsed.get("height", 40))
-	cfg.set_piece_budget = int(parsed.get("budget", 6))
-	cfg.platform_count = int(parsed.get("platforms", 8))
+	cfg.chamber_count = int(parsed.get("chambers", 5))
+	cfg.platforms_per_chamber = int(parsed.get("platforms-per", 2))
 
 	var template_path: String = parsed.get(
 			"template", "res://src/level/terrain_level.tscn")
@@ -171,12 +171,12 @@ func _run_adjust(parsed: Dictionary) -> void:
 	if op != "remove_entity":
 		ProcgenTileMapWriter.clear_and_write_tilemap(tml, grid)
 
-	# Re-run the validator on the final state. We don't have entity
-	# hint objects for post-load nodes, so pass an empty list; the
-	# node-related validator checks only flag hint issues, which are
-	# irrelevant for a re-validate of an already-saved scene.
+	# Re-run the validator. Derive synthetic hints from the scene's
+	# actual child nodes so validator checks (web-near-spider, bug-
+	# region coverage) can still fire correctly after a save/load.
+	var scene_hints := _scan_scene_for_hints(root)
 	var report := ProcgenValidator.validate(
-			grid, spawn_tile, dest_tile, [])
+			grid, spawn_tile, dest_tile, scene_hints)
 	for line in report.summary_lines():
 		print(line)
 	if report.has_errors() and op != "validate":
@@ -284,6 +284,63 @@ func _parse_rect(s: String) -> Rect2i:
 	return Rect2i(
 			int(parts[0]), int(parts[1]),
 			int(parts[2]), int(parts[3]))
+
+
+## Walk the scene tree and synthesize EntityHint objects for every
+## enemy spawn point and bug spawn region we find. Lets the
+## validator's hint-dependent checks (web-near-spider, bug-coverage)
+## work on a saved scene without the original generator in memory.
+func _scan_scene_for_hints(root: Node) -> Array:
+	var out: Array = []
+	for child in root.get_children():
+		var h: Variant = _hint_for_node(child)
+		if h != null:
+			out.append(h)
+	return out
+
+
+func _hint_for_node(node: Node) -> Variant:
+	# Enemy spawn point: Node2D with `enemy_scene: PackedScene`
+	# property set by the writer.
+	if node is Node2D and not (node is Area2D):
+		var es: Variant = node.get("enemy_scene")
+		if es is PackedScene:
+			var kind := _enemy_kind_from_scene_path(
+					(es as PackedScene).resource_path)
+			if kind != "":
+				var hint := ProcgenSetPieceLibrary.EntityHint.new()
+				hint.kind = kind
+				hint.tile = _world_pos_to_tile(
+						(node as Node2D).global_position)
+				return hint
+	# Bug region: Area2D with `frequency` + `rate_delta`.
+	if node is Area2D:
+		var freq_var: Variant = node.get("frequency")
+		var rate_var: Variant = node.get("rate_delta")
+		if freq_var != null and rate_var != null:
+			var hint := ProcgenSetPieceLibrary.EntityHint.new()
+			hint.kind = "bug_region"
+			hint.tile = _world_pos_to_tile(
+					(node as Area2D).global_position)
+			hint.frequency = int(freq_var)
+			return hint
+	return null
+
+
+func _enemy_kind_from_scene_path(path: String) -> String:
+	if path.ends_with("spider.tscn"):
+		return "enemy_spider"
+	if path.ends_with("coyote.tscn"):
+		return "enemy_coyote"
+	if path.ends_with("monster_bird.tscn"):
+		return "enemy_bird"
+	if path.ends_with("flying_critter.tscn"):
+		return "enemy_critter"
+	return ""
+
+
+func _world_pos_to_tile(pos: Vector2) -> Vector2i:
+	return Vector2i(int(pos.x / 16.0), int(pos.y / 16.0))
 
 
 func _parse_freq_type(s: String) -> int:

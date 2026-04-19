@@ -11,7 +11,7 @@ powershell -ExecutionPolicy Bypass -File scripts/generate_level.ps1
 
 # Generate a specific seed with tuned parameters.
 powershell -ExecutionPolicy Bypass -File scripts/generate_level.ps1 `
-    -Seed 42 -Width 80 -Height 48 -Budget 10 -Platforms 12
+    -Seed 42 -Width 80 -Height 48 -Chambers 6 -PlatformsPerChamber 2
 
 # Validate an existing generated level.
 powershell -ExecutionPolicy Bypass -File scripts/adjust_level.ps1 -Op validate
@@ -35,25 +35,40 @@ file (change back when done).
 
 ## Pipeline
 
-1. `ProcgenLayoutPlanner` writes an arena (INDESTRUCTIBLE border,
-   thick primary floor, N floating platforms of assorted
-   frequencies). Picks spawn (left) + destination (right) standable
-   tiles.
-2. `ProcgenSetPieceLibrary` stamps a budget of set-pieces:
-   - `pool_sand_trap` — liquid basin + thin SAND shell + rim.
-   - `web_tunnel` — horizontal corridor with WEB tiles and a paired
-     Spider spawner hint placed outside the tunnel.
-   - `enemy_pocket` — alcove + one enemy spawner (Spider / Coyote on
-     ground, Bird / Critter in air).
-   - `bug_region` — no terrain change; a tagged `BugSpawnRegion`.
-3. One bug region per gameplay frequency is always emitted so the
-   player can't get stuck on a frequency with no matching bugs.
-4. A `Destination` node is placed at the chosen goal tile.
-5. `ProcgenValidator` runs the lint list; errors → regen with a
-   different seed. Warnings ship.
-6. `ProcgenTileMapWriter` writes cells to the `Tiles` TileMapLayer
+1. `ProcgenLayoutPlanner` plans a chamber sequence:
+   - Divides the level into `chamber_count` equal-width chambers in
+     a single row, wrapped in an INDESTRUCTIBLE border.
+   - Assigns per-chamber themes: chamber 0 = `entry`, chamber N-1 =
+     `exit`, interior chambers cycle through
+     `config.interior_themes` (default `transit`, `combat`,
+     `hazard`).
+   - Carves INDESTRUCTIBLE inter-chamber walls with a 2-tile-tall
+     doorway at floor level so the player walks between chambers.
+   - Carves a noise-jittered floor in each chamber (all chambers
+     share the same base Y so doorways line up).
+   - Runs the theme handler for each chamber, which stamps its
+     gameplay beat and emits entity hints:
+     - `entry` / `exit` — plain floor + 1 decorative platform.
+     - `transit` — `platforms_per_chamber` floating platforms + a
+       bug region.
+     - `combat` — 1 platform + an `enemy_pocket` set-piece (blob
+       cavity with a Spider / Coyote / Bird / Critter spawner).
+     - `hazard` — a `pool_sand_trap` (elliptical basin + SAND shell)
+       OR a `web_tunnel` (rectangular corridor with WEB gates and a
+       Spider spawner).
+2. `ProcgenLevel` adds one bug region per gameplay frequency that
+   wasn't already covered by a chamber — guarantees no
+   frequency-lock.
+3. Smoothing pass (`ProcgenShapes.smooth_once` × 2) rounds off
+   jagged corners on colored + hazard types. INDESTRUCTIBLE and the
+   perimeter are skipped so the anchor contract is preserved.
+4. Spawn + destination tiles are guaranteed standable
+   (`_ensure_standable`) in case smoothing shaved the stand cell.
+5. `Destination` is placed by the `exit` theme.
+6. `ProcgenValidator` runs; errors → regen with a derived seed.
+7. `ProcgenTileMapWriter` writes cells to the `Tiles` TileMapLayer
    and spawns the hint nodes as children of the level root.
-7. `PackedScene.pack` + `ResourceSaver.save` writes the output.
+8. `PackedScene.pack` + `ResourceSaver.save` writes the output.
 
 ## Validator checks
 
@@ -104,10 +119,12 @@ Type names: `RED`, `GREEN`, `BLUE`, `YELLOW`, `LIQUID`, `SAND`,
 Every adjust that mutates the scene re-runs the full validator;
 errors cause the save to be refused.
 
-## Known limitations (v1 → v2 backlog)
+## Known limitations (v2 → v3 backlog)
 
-- **Arena layout only.** Room-graph macro (Spelunky / Dead Cells
-  style) is planned for v2.
+- **1D chamber sequence only.** Full 2D room-graph (Spelunky /
+  Dead Cells / Isaac-style) with branching + vertical transitions
+  is v3. Current layout is a left-to-right corridor of themed
+  chambers.
 - **Simplified reachability.** Uses a single-tile-jump BFS rather
   than a full jump-arc graph; may miss some unreachability cases
   where a platform requires a 2-tile precision jump.

@@ -254,8 +254,15 @@ func _process(delta: float) -> void:
 				pulse_uv.y,
 				pulse.age_sec,
 				screen_speed)
-		packed_colors[active_count] = Frequency.color_of(
-				pulse.frequency)
+		# NONE (blank) pulses are "stipple-only": they still reveal
+		# the level but don't damage anything. The PALETTE entry for
+		# NONE is fully transparent, which would make the pulse ring
+		# invisible; substitute an opaque white so the stipple still
+		# renders. Non-NONE pulses get their palette color verbatim.
+		packed_colors[active_count] = (
+				Color(1.0, 1.0, 1.0, 1.0)
+				if pulse.frequency == Frequency.Type.NONE
+				else Frequency.color_of(pulse.frequency))
 		packed_cones[active_count] = Vector4(
 				pulse.arc_radians,
 				pulse.arc_direction_radians,

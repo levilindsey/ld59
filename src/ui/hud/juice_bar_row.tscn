@@ -1,0 +1,168 @@
+[gd_scene format=3 uid="uid://d2cvs8tm1kn0j"]
+
+[ext_resource type="Script" path="res://src/ui/hud/juice_bar_row.gd" id="1_row"]
+[ext_resource type="Script" path="res://src/ui/hud/selection_box.gd" id="2_sel"]
+
+[sub_resource type="StyleBoxFlat" id="Slot_none_bg"]
+bg_color = Color(0.1, 0.1, 0.12, 0.7)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.55, 0.55, 0.6, 0.5)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="Slot_none_fill"]
+bg_color = Color(0.55, 0.55, 0.6, 0.35)
+
+[sub_resource type="StyleBoxFlat" id="Slot_red_bg"]
+bg_color = Color(0.237, 0.095, 0.12, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.38, 0.48, 0.45)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="Slot_red_fill"]
+bg_color = Color(0.95, 0.38, 0.48, 1.0)
+
+[sub_resource type="StyleBoxFlat" id="Slot_green_bg"]
+bg_color = Color(0.07, 0.205, 0.162, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.28, 0.82, 0.65, 0.45)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="Slot_green_fill"]
+bg_color = Color(0.28, 0.82, 0.65, 1.0)
+
+[sub_resource type="StyleBoxFlat" id="Slot_blue_bg"]
+bg_color = Color(0.11, 0.2, 0.245, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.45, 0.80, 0.98, 0.45)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="Slot_blue_fill"]
+bg_color = Color(0.45, 0.80, 0.98, 1.0)
+
+[sub_resource type="StyleBoxFlat" id="Slot_yellow_bg"]
+bg_color = Color(0.245, 0.175, 0.062, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.98, 0.70, 0.25, 0.45)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="Slot_yellow_fill"]
+bg_color = Color(0.98, 0.70, 0.25, 1.0)
+
+[sub_resource type="StyleBoxEmpty" id="ProgressBar_empty_bg"]
+
+[sub_resource type="StyleBoxEmpty" id="ProgressBar_empty_fg"]
+
+[node name="JuiceBarRow" type="HBoxContainer"]
+custom_minimum_size = Vector2(150, 60)
+theme_override_constants/separation = 6
+script = ExtResource("1_row")
+
+[node name="SlotNone" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(24, 60)
+theme_override_styles/panel = SubResource("Slot_none_bg")
+
+[node name="Bar" type="ProgressBar" parent="SlotNone"]
+custom_minimum_size = Vector2(16, 52)
+size_flags_horizontal = 4
+size_flags_vertical = 4
+fill_mode = 3
+show_percentage = false
+max_value = 1.0
+value = 1.0
+theme_override_styles/background = SubResource("ProgressBar_empty_bg")
+theme_override_styles/fill = SubResource("Slot_none_fill")
+
+[node name="SlotRed" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(24, 60)
+theme_override_styles/panel = SubResource("Slot_red_bg")
+
+[node name="Bar" type="ProgressBar" parent="SlotRed"]
+custom_minimum_size = Vector2(16, 52)
+size_flags_horizontal = 4
+size_flags_vertical = 4
+fill_mode = 3
+show_percentage = false
+max_value = 10.0
+value = 0.0
+theme_override_styles/background = SubResource("ProgressBar_empty_bg")
+theme_override_styles/fill = SubResource("Slot_red_fill")
+
+[node name="SlotGreen" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(24, 60)
+theme_override_styles/panel = SubResource("Slot_green_bg")
+
+[node name="Bar" type="ProgressBar" parent="SlotGreen"]
+custom_minimum_size = Vector2(16, 52)
+size_flags_horizontal = 4
+size_flags_vertical = 4
+fill_mode = 3
+show_percentage = false
+max_value = 10.0
+value = 0.0
+theme_override_styles/background = SubResource("ProgressBar_empty_bg")
+theme_override_styles/fill = SubResource("Slot_green_fill")
+
+[node name="SlotBlue" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(24, 60)
+theme_override_styles/panel = SubResource("Slot_blue_bg")
+
+[node name="Bar" type="ProgressBar" parent="SlotBlue"]
+custom_minimum_size = Vector2(16, 52)
+size_flags_horizontal = 4
+size_flags_vertical = 4
+fill_mode = 3
+show_percentage = false
+max_value = 10.0
+value = 0.0
+theme_override_styles/background = SubResource("ProgressBar_empty_bg")
+theme_override_styles/fill = SubResource("Slot_blue_fill")
+
+[node name="SlotYellow" type="PanelContainer" parent="."]
+custom_minimum_size = Vector2(24, 60)
+theme_override_styles/panel = SubResource("Slot_yellow_bg")
+
+[node name="Bar" type="ProgressBar" parent="SlotYellow"]
+custom_minimum_size = Vector2(16, 52)
+size_flags_horizontal = 4
+size_flags_vertical = 4
+fill_mode = 3
+show_percentage = false
+max_value = 10.0
+value = 0.0
+theme_override_styles/background = SubResource("ProgressBar_empty_bg")
+theme_override_styles/fill = SubResource("Slot_yellow_fill")
+
+[node name="SelectionBox" type="Control" parent="."]
+custom_minimum_size = Vector2(0, 0)
+mouse_filter = 2
+script = ExtResource("2_sel")

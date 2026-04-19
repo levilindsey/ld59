@@ -39,6 +39,17 @@ const _MAX_REJECTION_TRIES := 8
 ## spawn counts if the player stays in a high-rate region forever.
 @export_range(1, 64) var max_concurrent_per_frequency := 12
 
+## Probability denominator for big bugs: on each spawn, a
+## `randi() % N == 0` roll becomes BIG, else SMALL. Default 4 gives
+## a ~25% big-bug rate — "big bugs spawn 1/4 as often" per the
+## design ask.
+@export_range(1, 16) var big_bug_ratio_denominator: int = 4
+
+## Seeded RNG for the big/small roll. Kept separate from global
+## `randi()` so other per-spawn randomness (spawn position,
+## lifetime jitter) doesn't shift if we tune this ratio.
+var _size_rng := RandomNumberGenerator.new()
+
 ## Floor rate (bugs/sec) applied after region stacking, per
 ## frequency. Prevents "player is stuck on the wrong frequency with
 ## no matching bugs anywhere nearby" soft-locks. Dictionary of
@@ -77,6 +88,7 @@ func _exit_tree() -> void:
 
 
 func _ready() -> void:
+	_size_rng.randomize()
 	for freq: int in _SPAWN_FREQUENCIES:
 		_phases[freq] = 0.0
 		_thresholds[freq] = _sample_exp_threshold()
@@ -133,6 +145,11 @@ func _try_spawn(freq: int) -> void:
 
 	var bug: Bug = bug_scene.instantiate()
 	bug.frequency = freq
+	# Pick size BEFORE `add_child` so the setter's scale/collision/
+	# juice_grant re-application lands before `_ready` runs.
+	var is_big := _size_rng.randi() % maxi(1, big_bug_ratio_denominator) == 0
+	bug.size_variant = (
+			Bug.SizeVariant.BIG if is_big else Bug.SizeVariant.SMALL)
 	bug.global_position = spawn_pos
 	add_child(bug)
 	_alive_counts[freq] += 1

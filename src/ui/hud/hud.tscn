@@ -5,7 +5,7 @@
 [ext_resource type="Texture2D" uid="uid://g8krq86co53s" path="res://assets/images/scratch/title.png" id="8_bpdxj"]
 [ext_resource type="Texture2D" uid="uid://3iakxs6hl0gt" path="res://assets/images/scratch/controls.png" id="9_qtkbr"]
 [ext_resource type="PackedScene" uid="uid://cl9y3k4m7vq8x" path="res://src/ui/hud/health_bar.tscn" id="10_hb"]
-[ext_resource type="PackedScene" uid="uid://dv6n3jxk9pzmt" path="res://src/ui/hud/frequency_chip.tscn" id="11_chip"]
+[ext_resource type="PackedScene" uid="uid://d2cvs8tm1kn0j" path="res://src/ui/hud/juice_bar_row.tscn" id="11_juice"]
 
 [node name="Hud" type="PanelContainer"]
 anchors_preset = 15
@@ -32,7 +32,7 @@ mouse_filter = 2
 
 [node name="LeftContent" type="VBoxContainer" parent="MarginContainer/GameState"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 0)
+custom_minimum_size = Vector2(160, 0)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
@@ -41,7 +41,7 @@ theme_override_constants/separation = 4
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="FrequencyChip" parent="MarginContainer/GameState/LeftContent" instance=ExtResource("11_chip")]
+[node name="JuiceBarRow" parent="MarginContainer/GameState/LeftContent" instance=ExtResource("11_juice")]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
