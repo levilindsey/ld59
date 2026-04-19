@@ -28,6 +28,14 @@ const _MAX_TAGGED_SPRITES := 32
 ## Uniform cost: MAX_PINGS × 2 vec4 = 256 vec4s; well within WebGL2
 ## limits when combined with the other uniform arrays.
 const _MAX_PINGS := 128
+## Maximum world-px distance the ping scheduler scans for surfaces.
+## Decoupled from `pulse.max_radius_px` because the visible stipple
+## wave fades out well before the pulse's damage radius (usually
+## ~400 px on screen at typical zoom), so ping lines beyond this
+## cap don't register visually anyway. Capping the scan gives a
+## large speedup: bbox area scales as radius², so cutting from
+## 1000 → 600 is a ~2.8× reduction in cells inspected.
+const _PING_SCAN_MAX_RADIUS_PX := 600.0
 ## How long (seconds) each visual ping stays on screen after firing.
 const _PING_LIFETIME_SEC := 0.5
 ## Minimum dot(outward_normal, toward_pulse) required to keep a
@@ -622,11 +630,16 @@ func _schedule_pings_for_pulse(pulse: EchoPulse) -> void:
 	if type_w <= 0 or type_h <= 0:
 		return
 
+	# Clamp the scan radius so we never inspect more of the world than
+	# the visible stipple wave cares about, even if the pulse's damage
+	# reaches farther.
+	var scan_radius_px: float = minf(
+			pulse.max_radius_px, _PING_SCAN_MAX_RADIUS_PX)
 	var pulse_cell_x: int = (int(floor(pulse.center.x / cell_size))
 			- origin_cells.x)
 	var pulse_cell_y: int = (int(floor(pulse.center.y / cell_size))
 			- origin_cells.y)
-	var radius_cells: int = int(ceil(pulse.max_radius_px / cell_size))
+	var radius_cells: int = int(ceil(scan_radius_px / cell_size))
 	var min_cx: int = maxi(0, pulse_cell_x - radius_cells)
 	var max_cx: int = mini(type_w - 1, pulse_cell_x + radius_cells)
 	var min_cy: int = maxi(0, pulse_cell_y - radius_cells)
@@ -638,7 +651,7 @@ func _schedule_pings_for_pulse(pulse: EchoPulse) -> void:
 	var cos_half_arc: float = cos(pulse.arc_radians * 0.5)
 	var aim_x: float = cos(pulse.arc_direction_radians)
 	var aim_y: float = sin(pulse.arc_direction_radians)
-	var radius_sq: float = pulse.max_radius_px * pulse.max_radius_px
+	var radius_sq: float = scan_radius_px * scan_radius_px
 
 	# NORTH faces — cell solid, cell above (cy - 1) empty. Outward
 	# normal points -y (up in screen coords). Segments on top edge.
