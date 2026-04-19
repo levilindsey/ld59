@@ -131,6 +131,87 @@ void refresh_corners_after_clear(
 	}
 }
 
+// Free the existing per-triangle shape RIDs on a chunk. The body's
+// shape list is cleared separately by the caller via
+// `body_clear_shapes` before new shapes are added.
+void free_shape_rids(PhysicsServer2D *ps, terrain::Chunk *chunk) {
+	for (const RID &rid : chunk->shape_rids) {
+		if (rid.is_valid()) {
+			ps->free_rid(rid);
+		}
+	}
+	chunk->shape_rids.clear();
+}
+
+// Replace the chunk's static-body shape list with one
+// ConvexPolygonShape2D per fully-solid cell. We use axis-aligned
+// quads (not the marching-squares triangulation) so there are no
+// diagonal internal edges for Godot's depenetration to push against.
+// Fan-triangulating a case-15 cell from one corner produces two
+// right triangles sharing a diagonal — when the player penetrates,
+// the diagonal pushes the character sideways instead of straight up,
+// and the two triangles' opposing normals can trap the character at
+// "half-penetrated" equilibrium.
+//
+// With binary 0/255 density and iso=255, only case 15 (all 4 corners
+// inside) has any interior area. Partial cases (1..14) collapse to
+// degenerate zero-area interiors, so skipping them loses no collision
+// surface.
+void rebuild_collision_cells(
+		PhysicsServer2D *ps,
+		terrain::Chunk *chunk,
+		const std::vector<uint8_t> &density,
+		int cells,
+		float cell_size_px,
+		Vector2 origin_px,
+		uint8_t iso) {
+	if (chunk->static_body_rid.is_valid()) {
+		ps->body_clear_shapes(chunk->static_body_rid);
+	}
+	free_shape_rids(ps, chunk);
+
+	const int stride = cells + 1;
+	chunk->shape_rids.reserve(cells * cells);
+
+	PackedVector2Array quad;
+	quad.resize(4);
+
+	int count = 0;
+	for (int y = 0; y < cells; y++) {
+		for (int x = 0; x < cells; x++) {
+			const uint8_t d_bl = density[(y + 1) * stride + x];
+			const uint8_t d_br = density[(y + 1) * stride + (x + 1)];
+			const uint8_t d_tr = density[y * stride + (x + 1)];
+			const uint8_t d_tl = density[y * stride + x];
+			if (d_bl < iso || d_br < iso || d_tr < iso || d_tl < iso) {
+				continue;
+			}
+
+			const float x0 = origin_px.x + x * cell_size_px;
+			const float y0 = origin_px.y + y * cell_size_px;
+			const float x1 = x0 + cell_size_px;
+			const float y1 = y0 + cell_size_px;
+
+			// CW in Godot's Y-down coord system: TL → TR → BR → BL.
+			quad[0] = Vector2(x0, y0);
+			quad[1] = Vector2(x1, y0);
+			quad[2] = Vector2(x1, y1);
+			quad[3] = Vector2(x0, y1);
+
+			RID shape = ps->convex_polygon_shape_create();
+			ps->shape_set_data(shape, quad);
+			ps->body_add_shape(chunk->static_body_rid, shape);
+			chunk->shape_rids.push_back(shape);
+			count++;
+		}
+	}
+	UtilityFunctions::print(
+			String("kbterrain rebuild_collision_cells: chunk=")
+			+ String::num(chunk->coords.x) + String(",")
+			+ String::num(chunk->coords.y) + String(" cells=")
+			+ String::num(count));
+}
+
 } // namespace
 
 TerrainWorld::TerrainWorld() {
@@ -435,16 +516,9 @@ void TerrainWorld::_update_collision_sync(
 			}
 		}
 	}
-	if (!chunk->shape_rid.is_valid()) {
-		chunk->shape_rid = ps->concave_polygon_shape_create();
-		ps->body_add_shape(chunk->static_body_rid, chunk->shape_rid);
-	}
-	PackedVector2Array seg_array;
-	seg_array.resize(coll_mesh.boundary_segments.size());
-	for (size_t i = 0; i < coll_mesh.boundary_segments.size(); i++) {
-		seg_array[i] = coll_mesh.boundary_segments[i];
-	}
-	ps->shape_set_data(chunk->shape_rid, seg_array);
+	rebuild_collision_cells(
+			ps, chunk, collision_density, cells, cell_size_px,
+			origin_px, iso);
 }
 
 void TerrainWorld::_queue_remesh_and_neighbors(Chunk *chunk) {
@@ -568,17 +642,11 @@ void TerrainWorld::_integrate_one(const RemeshResult &r) {
 				}
 			}
 		}
-		if (!chunk->shape_rid.is_valid()) {
-			chunk->shape_rid = ps->concave_polygon_shape_create();
-			ps->body_add_shape(chunk->static_body_rid, chunk->shape_rid);
+		if (!r.collision_density.empty()) {
+			rebuild_collision_cells(
+					ps, chunk, r.collision_density, r.cells,
+					r.cell_size_px, r.origin_px, r.iso);
 		}
-
-		PackedVector2Array seg_array;
-		seg_array.resize(r.collision_segments.size());
-		for (size_t i = 0; i < r.collision_segments.size(); i++) {
-			seg_array[i] = r.collision_segments[i];
-		}
-		ps->shape_set_data(chunk->shape_rid, seg_array);
 	}
 
 	_dirty_chunks.erase(chunk->coords);
@@ -596,10 +664,12 @@ void TerrainWorld::_free_chunk_rids(Chunk *chunk) {
 		ps->free_rid(chunk->static_body_rid);
 		chunk->static_body_rid = RID();
 	}
-	if (chunk->shape_rid.is_valid()) {
-		ps->free_rid(chunk->shape_rid);
-		chunk->shape_rid = RID();
+	for (const RID &rid : chunk->shape_rids) {
+		if (rid.is_valid()) {
+			ps->free_rid(rid);
+		}
 	}
+	chunk->shape_rids.clear();
 }
 
 void TerrainWorld::_on_process() {
@@ -1380,7 +1450,4 @@ Ref<Image> TerrainWorld::build_type_image() const {
 		}
 	}
 	return Image::create_from_data(
-			width, height, false, Image::FORMAT_R8, data);
-}
-
-} // namespace godot
+			

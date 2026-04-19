@@ -10,11 +10,14 @@ void process_remesh_job(const RemeshJob &job, RemeshResult &out) {
 	out.coords = job.coords;
 	out.submitted_generation = job.submitted_generation;
 	out.mesh.clear();
-	out.collision_segments.clear();
+	out.collision_density.clear();
+	out.cells = job.cells;
+	out.cell_size_px = job.cell_size_px;
+	out.origin_px = job.origin_px;
+	out.iso = job.iso;
 
 	// Render pass: emit triangles + boundary from the real density
-	// field. Boundary segments from this pass are ignored because
-	// they include the water-air interface.
+	// field.
 	mesh_chunk(
 			job.density_snapshot.data(),
 			job.cells,
@@ -28,34 +31,12 @@ void process_remesh_job(const RemeshJob &job, RemeshResult &out) {
 					? nullptr : job.type_to_color_rgba.data(),
 			out.mesh);
 
-	// Collision pass: main thread pre-built `collision_density_snapshot`
-	// with cross-chunk boundary visibility so seams match. Run MS on
-	// it to get the collision boundary (water surfaces + pure-water
-	// regions become invisible to physics).
-	if (!job.collision_density_snapshot.empty()) {
-		MeshResult collision_mesh;
-		mesh_chunk(
-				job.collision_density_snapshot.data(),
-				job.cells,
-				job.cell_size_px,
-				job.origin_px,
-				job.iso,
-				0xFFFFFFFF,
-				nullptr,
-				nullptr,
-				collision_mesh);
-		out.mesh.boundary_segments =
-				std::move(collision_mesh.boundary_segments);
-	}
-
-	// Use the raw boundary segments for collision. Douglas-Peucker
-	// simplification was causing intermittent floor holes at chunk
-	// boundaries: each chunk simplified its side of the seam
-	// independently, and the two endpoints could shift by a small
-	// amount, leaving a gap the player could squeeze through. A few
-	// hundred extra short segments per chunk is cheap in Godot's
-	// concave shape.
-	out.collision_segments = out.mesh.boundary_segments;
+	// Forward the collision density to the main thread so it can
+	// build one ConvexPolygonShape2D per fully-solid cell when the
+	// result integrates. We used to run marching_squares on the
+	// collision density here too, but per-cell quads with no diagonal
+	// edges give more robust depenetration than the triangulated mesh.
+	out.collision_density = job.collision_density_snapshot;
 }
 
 

@@ -287,6 +287,16 @@ uniform sampler2D surface_atlas : source_color, repeat_disable,
 uniform int atlas_slot_count = 8;
 uniform float interior_scale_px : hint_range(4.0, 128.0) = 32.0;
 uniform float surface_scale_along_px : hint_range(4.0, 128.0) = 32.0;
+// RGB distance from the expected terrain palette color above which
+// the near-field atlas override is skipped and the scene pixel (c0)
+// is kept instead. The composite classifies terrain by world-space
+// `type_tex`, not by what's actually drawn at the screen pixel, so
+// a player / bug / enemy sprite overlapping a terrain cell (e.g.,
+// the player swimming in LIQUID) gets repainted as terrain unless
+// this check lets it through. Tolerance is chroma distance in sRGB
+// 0..1 space.
+uniform float overlay_sprite_diff_threshold : hint_range(0.0, 1.0)
+		= 0.08;
 // Screen→world transform. Assumes DRAG_CENTER Camera2D; Y-down.
 uniform vec2 world_origin = vec2(0.0, 0.0);
 uniform float world_per_screen_px = 1.0;
@@ -729,8 +739,19 @@ void fragment() {
 		// Only terrain tiles (is_bg_tile) get atlas texturing — bug
 		// sprites, player, HUD pass through c0 so they look like
 		// themselves under the near-field reveal.
+		//
+		// `is_bg_tile` is classified from world-space `type_tex`, so a
+		// pixel where a non-terrain sprite (player swimming in LIQUID,
+		// bug on a tile) is drawn in front of terrain also reports
+		// true. Guard with a palette-color diff: if the actual rendered
+		// pixel (c0) is far from the terrain's flat palette color, an
+		// overlay sprite owns this pixel and we keep c0 instead of
+		// overwriting it with the atlas texture.
 		vec3 textured_rgb = c0;
-		if (is_bg_tile) {
+		bool overlay_sprite_here = is_bg_tile
+				&& distance(c0, bg_type_color)
+						> overlay_sprite_diff_threshold;
+		if (is_bg_tile && !overlay_sprite_here) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
 			float u_base = float(bg_type_id) / slot_count_f;
 			float u_width = 1.0 / slot_count_f;

@@ -23,7 +23,6 @@ animator = NodePath("PlayerAnimator")
 movement_settings = ExtResource("2_244u8")
 
 [node name="PlayerAnimator" parent="." unique_id=2095922939 instance=ExtResource("2_mf2ua")]
-visible = false
 position = Vector2(-5, 0)
 animation = "idle_floor"
 

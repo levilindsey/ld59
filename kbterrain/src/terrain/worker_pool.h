@@ -51,8 +51,13 @@ struct RemeshResult {
 	Vector2i coords;
 	uint64_t submitted_generation;
 	MeshResult mesh;
-	// DP-simplified collision segment soup.
-	std::vector<Vector2> collision_segments;
+	// Collision density snapshot forwarded from the job. Used to emit
+	// one ConvexPolygonShape2D per fully-solid cell at integrate time.
+	std::vector<uint8_t> collision_density;
+	int cells = 0;
+	float cell_size_px = 0.0f;
+	Vector2 origin_px;
+	uint8_t iso = 0;
 };
 
 // Run the meshing + simplification pipeline for one job and write
