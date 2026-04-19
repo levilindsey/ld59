@@ -53,12 +53,12 @@ const _DAMAGE_FLASH_FRAMES := 40
 ## the renderer's `_process`. Shader renders them as solid colored
 ## disks, sampled with either the tile atlas (near-field) or flat
 ## palette color (outside).
-const _MAX_PARTICLES := 128
-const _PARTICLES_PER_DESTROYED_CELL := 4
-const _PARTICLE_LIFETIME_SEC := 0.6
+const _MAX_PARTICLES := 256
+const _PARTICLES_PER_DESTROYED_CELL := 6
+const _PARTICLE_LIFETIME_SEC := 0.9
 const _PARTICLE_BURST_SPEED_PX_PER_SEC := 40.0
 const _PARTICLE_GRAVITY_PX_PER_SEC2 := 220.0
-const _PARTICLE_RADIUS_PX := 1.5
+const _PARTICLE_RADIUS_PX := 2.5
 ## Halo radius for a bug's frequency tag, in WORLD pixels (the
 ## renderer scales this by canvas_scale before passing to the
 ## shader, so it tracks camera zoom). 6 = the radius of the bug's
@@ -333,9 +333,11 @@ func _process(delta: float) -> void:
 	var packed_pulses: Array[Vector4] = []
 	var packed_colors: Array[Color] = []
 	var packed_cones: Array[Vector4] = []
+	var packed_freqs: PackedInt32Array = PackedInt32Array()
 	packed_pulses.resize(_MAX_PULSES)
 	packed_colors.resize(_MAX_PULSES)
 	packed_cones.resize(_MAX_PULSES)
+	packed_freqs.resize(_MAX_PULSES)
 
 	var active_count := 0
 	for i in range(_MAX_PULSES):
@@ -382,11 +384,13 @@ func _process(delta: float) -> void:
 				pulse.arc_radians,
 				pulse.arc_direction_radians,
 				0.0, 0.0)
+		packed_freqs[active_count] = pulse.frequency
 		active_count += 1
 
 	_shader_mat.set_shader_parameter("pulses", packed_pulses)
 	_shader_mat.set_shader_parameter("pulse_colors", packed_colors)
 	_shader_mat.set_shader_parameter("pulse_cones", packed_cones)
+	_shader_mat.set_shader_parameter("pulse_freqs", packed_freqs)
 	_shader_mat.set_shader_parameter("pulse_count", active_count)
 
 	# Pack tagged sprites (bugs now, enemies later) into the tag-halo

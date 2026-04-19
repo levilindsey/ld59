@@ -172,17 +172,24 @@ func _connect_pulse_damage() -> void:
 			G.echo.pulse_emitted.connect(_on_pulse_emitted)
 
 
-## Distance-attenuated pulse damage. Full-damage band is half the
-## player's near-visible radius so the player has to be close to
-## reliably break tiles; max range tracks the composite shader's
-## stipple_fade_end_px. Falloff is ease-out (quadratic) in C++:
-## damage drops fast just past the full radius, then asymptotes
-## slowly toward `_DAMAGE_MIN_AMOUNT` near the edge of the visible
-## range. Min halved again so the very edge takes ~24 hits.
+## Two-component pulse damage:
+## - "Surface" component: long-range, linear falloff, gated by
+##   surface-only + player-facing inside C++ `_apply_damage_to_cell`.
+##   This is the pickier precision damage — erodes exposed surfaces
+##   of matching cells.
+## - "Proximity" component: short-range, cubic-ease-out falloff,
+##   applied UNCONDITIONALLY to every matching cell in range
+##   (including interior). Sharp drop just past the close radius, so
+##   far cells get nearly none. Lets pulses dig a bit into chunky
+##   terrain near the player without long-range spray.
 const _DAMAGE_FULL_RADIUS_PX := 40.0
 const _DAMAGE_MAX_RADIUS_PX := 5040.0
 const _DAMAGE_FULL_AMOUNT := 256
-const _DAMAGE_MIN_AMOUNT := 22
+const _DAMAGE_MIN_AMOUNT := 96
+const _PROXIMITY_DAMAGE_FULL_RADIUS_PX := 40.0
+const _PROXIMITY_DAMAGE_MAX_RADIUS_PX := 280.0
+const _PROXIMITY_DAMAGE_FULL_AMOUNT := 96
+const _PROXIMITY_DAMAGE_MIN_AMOUNT := 8
 
 
 func _on_pulse_emitted(pulse: EchoPulse) -> void:
@@ -204,6 +211,10 @@ func _on_pulse_emitted(pulse: EchoPulse) -> void:
 			_DAMAGE_FULL_RADIUS_PX,
 			_DAMAGE_FULL_AMOUNT,
 			_DAMAGE_MIN_AMOUNT,
+			_PROXIMITY_DAMAGE_MAX_RADIUS_PX,
+			_PROXIMITY_DAMAGE_FULL_RADIUS_PX,
+			_PROXIMITY_DAMAGE_FULL_AMOUNT,
+			_PROXIMITY_DAMAGE_MIN_AMOUNT,
 			mask)
 
 

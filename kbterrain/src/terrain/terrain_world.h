@@ -42,13 +42,33 @@ public:
 	// --- Gameplay API ----
 	void damage(Vector2 world_pos, float radius_px, int damage,
 			int frequency_mask);
-	// Distance-attenuated variant: cells inside `full_radius_px` take
-	// `full_dmg`; cells from `full_radius_px` out to `radius_px` linearly
-	// interpolate down to `min_dmg`. Cells past `radius_px` take 0.
-	// Used by the echo pulse so close cells are 1-shot-killed and far
-	// cells take many hits.
-	void damage_with_falloff(Vector2 world_pos, float radius_px,
-			float full_radius_px, int full_dmg, int min_dmg,
+	// Two-component distance-attenuated damage for an echo pulse:
+	//
+	// 1. "Surface" component — linear radial falloff from
+	//    `surface_full_dmg` at `surface_full_radius_px` down to
+	//    `surface_min_dmg` at `surface_max_radius_px`. Gated by the
+	//    surface-only + player-facing logic inside
+	//    `_apply_damage_to_cell`, so it erodes exposed cells.
+	//
+	// 2. "Proximity" component — short-range radial damage with a
+	//    cubic ease-out from `proximity_full_dmg` at
+	//    `proximity_full_radius_px` down to `proximity_min_dmg` at
+	//    `proximity_max_radius_px`. UNCONDITIONAL — applies to every
+	//    cell in range including interior cells, bypassing the
+	//    surface check. Lets pulses dig into chunky terrain, but
+	//    only close to the emitter and only a bit.
+	//
+	// Per-cell total = surface_component + proximity_component.
+	void damage_with_falloff(
+			Vector2 world_pos,
+			float surface_max_radius_px,
+			float surface_full_radius_px,
+			int surface_full_dmg,
+			int surface_min_dmg,
+			float proximity_max_radius_px,
+			float proximity_full_radius_px,
+			int proximity_full_dmg,
+			int proximity_min_dmg,
 			int frequency_mask);
 	void carve(Vector2 world_pos, float radius_px, float strength);
 	void fill(Vector2 world_pos, float radius_px, float strength);
@@ -190,7 +210,8 @@ private:
 	// / `out_world_cy` are set if non-null. Pass nullptr when the
 	// caller doesn't need the destroyed-cell coord.
 	bool _apply_damage_to_cell(terrain::Chunk *chunk, int cx, int cy,
-			int damage, int frequency_mask,
+			int surface_damage, int proximity_damage,
+			int frequency_mask,
 			Vector2 emitter_world_pos, Vector2 cell_world_pos,
 			std::unordered_set<int64_t> *destroyed_this_pulse = nullptr,
 			int32_t *out_world_cx = nullptr,
