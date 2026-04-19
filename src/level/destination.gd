@@ -20,7 +20,7 @@ const _EDITOR_LABEL_MARGIN_PX := 4.0
 
 
 ## Frequency tint; cosmetic only (does not gate the win).
-@export var frequency: int = Frequency.Type.YELLOW:
+@export var frequency: Frequency.Type = Frequency.Type.YELLOW:
 	set(value):
 		frequency = value
 		queue_redraw()

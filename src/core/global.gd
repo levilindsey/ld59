@@ -36,6 +36,19 @@ var terrain: Node
 # dependency at autoload parse time; actual type is BugSpawner.
 var bugs: Node2D
 
+# Enemy system. Assigned in EnemySystem._enter_tree so spawn points
+# can resolve `Enemy.Kind -> PackedScene` via the level-local
+# registry. Typed as Node for the same class_name-dependency reason;
+# actual type is EnemySystem.
+var enemies: Node
+
+# Convenience proxy for `log.is_verbose`. Declared here with the
+# other autoload variables to keep the variable/function ordering
+# clean for linters.
+var is_verbose: bool:
+	get:
+		return log.is_verbose
+
 
 func _enter_tree() -> void:
 	if Engine.is_editor_hint():

@@ -1,13 +1,17 @@
 @tool
 class_name EnemySpawnPoint
 extends Node2D
-## Single-shot enemy spawn. Spawns one `enemy_scene` at this node's
-## world position on _ready. Use RespawningEnemySpawnPoint for
-## continuous/capped respawns.
+## Single-shot enemy spawn. Spawns one enemy of `kind` at this
+## node's world position on _ready. Use RespawningEnemySpawnPoint
+## for continuous/capped respawns.
+##
+## The concrete PackedScene for each `Enemy.Kind` is registered on
+## the level's `EnemySystem` node, so authored spawn points declare
+## only the kind and never hold a direct scene reference.
 ##
 ## In the editor, draws a crosshair marker tinted by
 ## `frequency_override` (neutral gray if NONE) and labels the spawn
-## with the enemy scene's filename.
+## with the enemy kind's name.
 
 
 ## Radii and widths for the in-editor marker.
@@ -20,16 +24,16 @@ const _EDITOR_LABEL_MARGIN_PX := 4.0
 const _EDITOR_NO_FREQ_COLOR := Color(0.85, 0.85, 0.85, 1.0)
 
 
-## Scene instantiated on spawn. Typically one of
-## `monster_bird.tscn`, `spider.tscn`, `flying_critter.tscn`.
-@export var enemy_scene: PackedScene:
+## Which enemy to instantiate. Resolved to a PackedScene at spawn
+## time via `G.enemies.scene_for(kind)`.
+@export var kind: Enemy.Kind = Enemy.Kind.SPIDER:
 	set(value):
-		enemy_scene = value
+		kind = value
 		queue_redraw()
 
 ## Optional override for the spawned enemy's frequency. If left as
 ## `Frequency.Type.NONE` the scene's baked-in frequency is kept.
-@export var frequency_override: int = Frequency.Type.NONE:
+@export var frequency_override: Frequency.Type = Frequency.Type.NONE:
 	set(value):
 		frequency_override = value
 		queue_redraw()
@@ -63,16 +67,21 @@ func _draw() -> void:
 	_draw_label(color)
 
 
-## Instantiate `enemy_scene`, position it at this node, and parent
-## it here so level reset tears it down with the spawn point.
-## Returns the new Enemy or null on failure.
+## Instantiate the scene registered for `kind`, position it at this
+## node, and parent it here so level reset tears it down with the
+## spawn point. Returns the new Enemy or null on failure.
 func spawn_one() -> Enemy:
 	if not G.ensure_valid(
-			enemy_scene,
-			"EnemySpawnPoint.enemy_scene is unset"):
+			G.enemies,
+			"EnemySpawnPoint requires an EnemySystem in the scene"):
+		return null
+	var scene: PackedScene = (G.enemies as EnemySystem).scene_for(kind)
+	if not G.ensure_valid(
+			scene,
+			"EnemySystem has no scene for Enemy.Kind=%d" % kind):
 		return null
 
-	var enemy: Enemy = enemy_scene.instantiate()
+	var enemy: Enemy = scene.instantiate()
 	if frequency_override != Frequency.Type.NONE:
 		enemy.frequency = frequency_override
 	add_child(enemy)
@@ -109,6 +118,4 @@ func _draw_label(color: Color) -> void:
 
 ## Overridden by subclasses to add extra info to the editor label.
 func _editor_label_text() -> String:
-	if enemy_scene == null or enemy_scene.resource_path.is_empty():
-		return "enemy?"
-	return enemy_scene.resource_path.get_file().get_basename()
+	return Enemy.Kind.keys()[kind].to_lower()

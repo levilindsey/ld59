@@ -40,7 +40,7 @@ const _BIG_HEAL := 75
 
 ## Frequency type (see Frequency.Type). Drives tint and the juice
 ## pool filled on consumption.
-@export var frequency: int = Frequency.Type.GREEN:
+@export var frequency: Frequency.Type = Frequency.Type.GREEN:
 	set(value):
 		frequency = value
 		_apply_frequency_tint()

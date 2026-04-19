@@ -92,12 +92,6 @@ func _apply_and_save(
 			"res://src/enemies/enemy_spawn_point.gd")
 	var respawning_enemy_spawn_point_script := load(
 			"res://src/enemies/respawning_enemy_spawn_point.gd")
-	var enemy_scenes := {
-		"spider": load("res://src/enemies/spider.tscn"),
-		"coyote": load("res://src/enemies/coyote.tscn"),
-		"monster_bird": load("res://src/enemies/monster_bird.tscn"),
-		"flying_critter": load("res://src/enemies/flying_critter.tscn"),
-	}
 
 	var added := ProcgenTileMapWriter.apply(
 			root,
@@ -106,8 +100,7 @@ func _apply_and_save(
 			destination_scene,
 			bug_spawn_region_script,
 			enemy_spawn_point_script,
-			respawning_enemy_spawn_point_script,
-			enemy_scenes)
+			respawning_enemy_spawn_point_script)
 	print("Added %d entity children" % added.size())
 
 	var packed_out := PackedScene.new()
@@ -300,42 +293,36 @@ func _scan_scene_for_hints(root: Node) -> Array:
 
 
 func _hint_for_node(node: Node) -> Variant:
-	# Enemy spawn point: Node2D with `enemy_scene: PackedScene`
-	# property set by the writer.
-	if node is Node2D and not (node is Area2D):
-		var es: Variant = node.get("enemy_scene")
-		if es is PackedScene:
-			var kind := _enemy_kind_from_scene_path(
-					(es as PackedScene).resource_path)
-			if kind != "":
-				var hint := ProcgenSetPieceLibrary.EntityHint.new()
-				hint.kind = kind
-				hint.tile = _world_pos_to_tile(
-						(node as Node2D).global_position)
-				return hint
-	# Bug region: Area2D with `frequency` + `rate_delta`.
-	if node is Area2D:
-		var freq_var: Variant = node.get("frequency")
-		var rate_var: Variant = node.get("rate_delta")
-		if freq_var != null and rate_var != null:
-			var hint := ProcgenSetPieceLibrary.EntityHint.new()
-			hint.kind = "bug_region"
-			hint.tile = _world_pos_to_tile(
-					(node as Area2D).global_position)
-			hint.frequency = int(freq_var)
-			return hint
+	# Bug region: Node2D carrying the BugSpawnRegion script.
+	if node is BugSpawnRegion:
+		var region := node as BugSpawnRegion
+		var region_hint := ProcgenSetPieceLibrary.EntityHint.new()
+		region_hint.kind = "bug_region"
+		region_hint.tile = _world_pos_to_tile(region.global_position)
+		region_hint.frequency = region.frequency
+		return region_hint
+	# Enemy spawn point: Node2D carrying the EnemySpawnPoint script.
+	if node is EnemySpawnPoint:
+		var spawn := node as EnemySpawnPoint
+		var kind_string := _hint_string_from_enemy_kind(spawn.kind)
+		if kind_string != "":
+			var spawn_hint := ProcgenSetPieceLibrary.EntityHint.new()
+			spawn_hint.kind = kind_string
+			spawn_hint.tile = _world_pos_to_tile(spawn.global_position)
+			return spawn_hint
 	return null
 
 
-func _enemy_kind_from_scene_path(path: String) -> String:
-	if path.ends_with("spider.tscn"):
-		return "enemy_spider"
-	if path.ends_with("coyote.tscn"):
-		return "enemy_coyote"
-	if path.ends_with("monster_bird.tscn"):
-		return "enemy_bird"
-	if path.ends_with("flying_critter.tscn"):
-		return "enemy_critter"
+func _hint_string_from_enemy_kind(kind: Enemy.Kind) -> String:
+	match kind:
+		Enemy.Kind.SPIDER:
+			return "enemy_spider"
+		Enemy.Kind.COYOTE:
+			return "enemy_coyote"
+		Enemy.Kind.MONSTER_BIRD:
+			return "enemy_bird"
+		Enemy.Kind.FLYING_CRITTER:
+			return "enemy_critter"
 	return ""
 
 

@@ -13,6 +13,15 @@
 [ext_resource type="Script" uid="uid://dgi7hjpa5klr0" path="res://src/bugs/bug_spawn_region.gd" id="13_kqo85"]
 [ext_resource type="PackedScene" uid="uid://cb8y2r7l4nrak" path="res://src/enemies/flying_critter.tscn" id="13_nl8s0"]
 [ext_resource type="PackedScene" uid="uid://dxm1qaht8n6rq" path="res://src/level/destination.tscn" id="15_lby5r"]
+[ext_resource type="Texture2D" uid="uid://rihqreb0nh5o" path="res://assets/images/scratch/kittenbaticorn.png" id="16_kitten"]
+[ext_resource type="Script" path="res://src/level/editor_placeholder_sprite.gd" id="17_placeholder"]
+[ext_resource type="PackedScene" path="res://src/enemies/spider.tscn" id="18_spider"]
+[ext_resource type="PackedScene" path="res://src/enemies/coyote.tscn" id="19_coyote"]
+[ext_resource type="PackedScene" path="res://src/enemies/monster_bird.tscn" id="20_bird"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_spawn"]
+atlas = ExtResource("16_kitten")
+region = Rect2(1088, 0, 34, 36)
 
 [node name="TerrainLevel" type="Node2D" unique_id=1888346517]
 script = ExtResource("1_xe7kk")
@@ -38,6 +47,11 @@ tile_set = ExtResource("7_1jjqb")
 unique_name_in_owner = true
 position = Vector2(72, 520)
 
+[node name="PlaceholderSprite" type="Sprite2D" parent="PlayerSpawnPoint"]
+position = Vector2(-5, -5)
+texture = SubResource("AtlasTexture_player_spawn")
+script = ExtResource("17_placeholder")
+
 [node name="Camera2D" type="Camera2D" parent="PlayerSpawnPoint" unique_id=937342632]
 unique_name_in_owner = true
 zoom = Vector2(2, 2)
@@ -51,6 +65,10 @@ bug_scene = ExtResource("9_pb4la")
 
 [node name="EnemySystem" type="Node" parent="." unique_id=259719197]
 script = ExtResource("10_h2pw0")
+spider_scene = ExtResource("18_spider")
+coyote_scene = ExtResource("19_coyote")
+monster_bird_scene = ExtResource("20_bird")
+flying_critter_scene = ExtResource("13_nl8s0")
 
 [node name="BugSpawnRegion_(21, 29)" type="Node2D" parent="." unique_id=219226921]
 position = Vector2(344, 472)
@@ -60,7 +78,7 @@ script = ExtResource("13_kqo85")
 position = Vector2(552, 472)
 script = ExtResource("11_eh26e")
 max_active = 2
-enemy_scene = ExtResource("13_nl8s0")
+kind = 3
 frequency_override = 7
 
 [node name="Destination" parent="." unique_id=1585058356 instance=ExtResource("15_lby5r")]

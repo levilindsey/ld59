@@ -19,6 +19,17 @@ const _TILE_SET_SOURCE_ID := 2
 ## mappings authored in `default_tile_set.tres`. Row 0 atlas col = type.
 ## Exposed (no underscore) because the adjust path in
 ## `procgen_autoload.gd` also needs to invert it.
+## Map from EntityHint.kind strings to Enemy.Kind enum values.
+## Kept as a file-level constant so set_piece_library and the
+## writer stay in sync on the hint vocabulary.
+const _HINT_TO_ENEMY_KIND := {
+	"enemy_spider": Enemy.Kind.SPIDER,
+	"enemy_coyote": Enemy.Kind.COYOTE,
+	"enemy_bird": Enemy.Kind.MONSTER_BIRD,
+	"enemy_critter": Enemy.Kind.FLYING_CRITTER,
+}
+
+
 const TYPE_TO_ATLAS_COORD := {
 	Frequency.Type.INDESTRUCTIBLE: Vector2i(1, 0),
 	Frequency.Type.RED: Vector2i(2, 0),
@@ -45,8 +56,7 @@ static func apply(
 		destination_scene: PackedScene,
 		bug_spawn_region_script: Script,
 		enemy_spawn_point_script: Script,
-		respawning_enemy_spawn_point_script: Script,
-		enemy_scenes: Dictionary) -> Array[Node]:
+		respawning_enemy_spawn_point_script: Script) -> Array[Node]:
 	clear_and_write_tilemap(tml, result.grid)
 	_reposition_spawn(level_root, result.spawn_tile)
 	return _spawn_entity_hints(
@@ -55,8 +65,7 @@ static func apply(
 			destination_scene,
 			bug_spawn_region_script,
 			enemy_spawn_point_script,
-			respawning_enemy_spawn_point_script,
-			enemy_scenes)
+			respawning_enemy_spawn_point_script)
 
 
 static func clear_and_write_tilemap(
@@ -91,8 +100,7 @@ static func _spawn_entity_hints(
 		destination_scene: PackedScene,
 		bug_spawn_region_script: Script,
 		enemy_spawn_point_script: Script,
-		respawning_enemy_spawn_point_script: Script,
-		enemy_scenes: Dictionary) -> Array[Node]:
+		respawning_enemy_spawn_point_script: Script) -> Array[Node]:
 	var added: Array[Node] = []
 	for raw in result.entity_hints:
 		var h: ProcgenSetPieceLibrary.EntityHint = raw
@@ -101,8 +109,7 @@ static func _spawn_entity_hints(
 				destination_scene,
 				bug_spawn_region_script,
 				enemy_spawn_point_script,
-				respawning_enemy_spawn_point_script,
-				enemy_scenes)
+				respawning_enemy_spawn_point_script)
 		if node == null:
 			continue
 		level_root.add_child(node)
@@ -117,38 +124,22 @@ static func _spawn_for_hint(
 		destination_scene: PackedScene,
 		bug_spawn_region_script: Script,
 		enemy_spawn_point_script: Script,
-		respawning_enemy_spawn_point_script: Script,
-		enemy_scenes: Dictionary) -> Node:
-	match h.kind:
-		"destination":
-			if destination_scene == null:
-				return null
-			var d := destination_scene.instantiate()
-			if d is Destination and h.frequency != Frequency.Type.NONE:
-				(d as Destination).frequency = h.frequency
-			return d
-		"bug_region":
-			return _make_bug_region(h, bug_spawn_region_script)
-		"enemy_spider":
-			return _make_enemy_spawn(h,
-					enemy_scenes.get("spider"),
-					enemy_spawn_point_script,
-					respawning_enemy_spawn_point_script)
-		"enemy_coyote":
-			return _make_enemy_spawn(h,
-					enemy_scenes.get("coyote"),
-					enemy_spawn_point_script,
-					respawning_enemy_spawn_point_script)
-		"enemy_bird":
-			return _make_enemy_spawn(h,
-					enemy_scenes.get("monster_bird"),
-					enemy_spawn_point_script,
-					respawning_enemy_spawn_point_script)
-		"enemy_critter":
-			return _make_enemy_spawn(h,
-					enemy_scenes.get("flying_critter"),
-					enemy_spawn_point_script,
-					respawning_enemy_spawn_point_script)
+		respawning_enemy_spawn_point_script: Script) -> Node:
+	if h.kind == "destination":
+		if destination_scene == null:
+			return null
+		var d := destination_scene.instantiate()
+		if d is Destination and h.frequency != Frequency.Type.NONE:
+			(d as Destination).frequency = h.frequency
+		return d
+	if h.kind == "bug_region":
+		return _make_bug_region(h, bug_spawn_region_script)
+	if _HINT_TO_ENEMY_KIND.has(h.kind):
+		return _make_enemy_spawn(
+				h,
+				_HINT_TO_ENEMY_KIND[h.kind],
+				enemy_spawn_point_script,
+				respawning_enemy_spawn_point_script)
 	return null
 
 
@@ -171,11 +162,9 @@ static func _make_bug_region(
 
 static func _make_enemy_spawn(
 		h: ProcgenSetPieceLibrary.EntityHint,
-		enemy_scene: Variant,
+		kind: Enemy.Kind,
 		enemy_spawn_point_script: Script,
 		respawning_enemy_spawn_point_script: Script) -> Node:
-	if enemy_scene == null:
-		return null
 	var respawn := bool(h.params.get("respawn", false))
 	var spawn := Node2D.new()
 	spawn.name = "%sSpawn_%s" % [h.kind.capitalize(), h.tile]
@@ -186,7 +175,7 @@ static func _make_enemy_spawn(
 	if script == null:
 		return null
 	spawn.set_script(script)
-	spawn.set("enemy_scene", enemy_scene)
+	spawn.set("kind", kind)
 	if h.frequency != Frequency.Type.NONE:
 		spawn.set("frequency_override", h.frequency)
 	if respawn:

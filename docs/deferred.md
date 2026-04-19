@@ -99,10 +99,10 @@ as "sheared off" rather than "dissolved into tiles."
 
 ### 1.11 Enemy spawn point wiring for Coyote
 `Coyote.tscn` is implemented but no level scene currently references
-it via an `EnemySpawnPoint.enemy_scene` export. First level that
-wants coyotes needs to drag the scene onto a spawn point (single-shot
-or respawning). Same gap applies if additional web-tile clusters are
-authored before the TileMap custom-data route is fully playtested.
+it. First level that wants coyotes needs a spawn point with
+`EnemySpawnPoint.kind = COYOTE` (single-shot or respawning). Same gap
+applies if additional web-tile clusters are authored before the
+TileMap custom-data route is fully playtested.
 
 ### 1.12 FallingCell landing at spawn position "restores" the chunk
 If a detached chunk's bottom row is resting against non-INDESTRUCTIBLE

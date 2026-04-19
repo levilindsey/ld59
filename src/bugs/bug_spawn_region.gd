@@ -23,7 +23,7 @@ const _EDITOR_LABEL_FONT_SIZE := 12
 const _EDITOR_LABEL_OFFSET := Vector2(4, 14)
 
 
-@export var frequency: int = Frequency.Type.GREEN:
+@export var frequency: Frequency.Type = Frequency.Type.GREEN:
 	set(value):
 		frequency = value
 		queue_redraw()

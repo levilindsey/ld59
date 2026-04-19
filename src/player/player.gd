@@ -149,8 +149,61 @@ func destroy() -> void:
 	queue_free()
 
 
+## Debug overlay comparing visual vs physics terrain around the player.
+## - Magenta line: top of the first collidable cell below the body.
+## - Cyan cell outlines: cells with type != NONE (visually drawn).
+## - Green cell outlines: cells that are collidable (physics-solid).
+## A cyan cell that is NOT wrapped in green = visible-but-not-collidable
+## (e.g. LIQUID type) — the most likely source of a perceived "sink".
+func _draw() -> void:
+	if not is_instance_valid(G.terrain) or G.terrain.settings == null:
+		return
+	var cs: float = G.terrain.settings.cell_size_px
+	# Magenta: first collidable cell top below the body origin.
+	const _MAX_STEPS := 8
+	for step in _MAX_STEPS:
+		var probe_y: float = global_position.y + step * cs
+		if G.terrain.is_cell_collidable(Vector2(global_position.x, probe_y)):
+			var cell_top_world: float = floorf(probe_y / cs) * cs
+			var line_y: float = cell_top_world - global_position.y
+			draw_line(
+					Vector2(-64.0, line_y),
+					Vector2(64.0, line_y),
+					Color(1, 0, 1, 0.9),
+					1.0)
+			break
+	# Outline all cells within a small window around the body.
+	const _GRID_RADIUS := 6
+	var player_cx: int = int(floorf(global_position.x / cs))
+	var player_cy: int = int(floorf(global_position.y / cs))
+	for dy in range(-_GRID_RADIUS, _GRID_RADIUS + 1):
+		for dx in range(-_GRID_RADIUS, _GRID_RADIUS + 1):
+			var cx: int = player_cx + dx
+			var cy: int = player_cy + dy
+			var cell_world_tl := Vector2(cx * cs, cy * cs)
+			var cell_center := cell_world_tl + Vector2(cs * 0.5, cs * 0.5)
+			var non_empty: bool = G.terrain.is_cell_non_empty(cell_center)
+			var collidable: bool = G.terrain.is_cell_collidable(cell_center)
+			if not non_empty and not collidable:
+				continue
+			var rect_tl_local: Vector2 = cell_world_tl - global_position
+			var color: Color
+			if non_empty and collidable:
+				color = Color(0, 1, 0, 0.5)
+			elif non_empty:
+				color = Color(0, 1, 1, 0.8)
+			else:
+				color = Color(1, 0, 0, 0.8)
+			draw_rect(
+					Rect2(rect_tl_local, Vector2(cs, cs)),
+					color,
+					false,
+					1.0)
+
+
 func _process(delta: float) -> void:
 	super._process(delta)
+	queue_redraw()
 	if _echo_cooldown_sec > 0.0:
 		_echo_cooldown_sec = maxf(0.0, _echo_cooldown_sec - delta)
 	_tick_invincibility(delta)
