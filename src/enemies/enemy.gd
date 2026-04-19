@@ -45,8 +45,6 @@ const _DEATH_PULSE_DURATION_SEC := 0.8
 const _DEATH_PULSE_MAX_RADIUS_PX := 18.0
 const _DEATH_PULSE_WIDTH_PX := 5.0
 const _DEATH_PULSE_ALPHA := 0.9
-const _DEATH_FLASH_COLOR := Color(1.0, 0.2, 0.2)
-const _DEATH_PULSE_COLOR := Color(1.0, 0.3, 0.3)
 
 
 @export var frequency: Frequency.Type = Frequency.Type.RED
@@ -80,7 +78,23 @@ func _ready() -> void:
 	monitorable = true
 	_health = max_health
 	_apply_frequency_tint()
+	_apply_damage_shader_colors()
 	body_entered.connect(_on_body_entered)
+
+
+func _apply_damage_shader_colors() -> void:
+	if G.settings == null:
+		return
+	var sprite := get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	if sprite == null:
+		return
+	var material := sprite.material as ShaderMaterial
+	if material == null:
+		return
+	material.set_shader_parameter(
+			"flash_color", G.settings.color_damage_flash)
+	material.set_shader_parameter(
+			"pulse_color", G.settings.color_damage_pulse)
 
 
 func _process(delta: float) -> void:
@@ -185,8 +199,11 @@ func _play_death_pulse() -> void:
 	if mat == null:
 		queue_free()
 		return
-	mat.set_shader_parameter("flash_color", _DEATH_FLASH_COLOR)
-	mat.set_shader_parameter("pulse_color", _DEATH_PULSE_COLOR)
+	if G.settings != null:
+		mat.set_shader_parameter(
+				"flash_color", G.settings.color_damage_flash)
+		mat.set_shader_parameter(
+				"pulse_color", G.settings.color_damage_pulse)
 	mat.set_shader_parameter("flash_strength", _DEATH_FLASH_PEAK)
 	mat.set_shader_parameter("pulse_width_px", _DEATH_PULSE_WIDTH_PX)
 	mat.set_shader_parameter("pulse_radius_px", 1.0)

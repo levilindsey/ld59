@@ -106,8 +106,17 @@ func _ready() -> void:
 	# are guaranteed up-to-date even if the setter's early call ran
 	# before they existed.
 	_apply_size_variant()
+	_apply_glow_modulate()
 	modulate.a = 0.0
 	body_entered.connect(_on_body_entered)
+
+
+func _apply_glow_modulate() -> void:
+	if G.settings == null:
+		return
+	var glow := get_node_or_null("Glow") as CanvasItem
+	if glow != null:
+		glow.modulate = G.settings.color_bug_glow_modulate
 
 
 func _process(delta: float) -> void:

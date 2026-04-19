@@ -19,23 +19,23 @@ radius = 6.0
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_spider_idle"]
 atlas = ExtResource("2_tex")
-region = Rect2(0, 0, 24, 24)
+region = Rect2(0, 0, 41, 40)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_spider_walk0"]
 atlas = ExtResource("2_tex")
-region = Rect2(24, 0, 24, 24)
+region = Rect2(41, 0, 41, 40)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_spider_walk1"]
 atlas = ExtResource("2_tex")
-region = Rect2(48, 0, 24, 24)
+region = Rect2(82, 0, 41, 40)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_spider_walk2"]
 atlas = ExtResource("2_tex")
-region = Rect2(72, 0, 24, 24)
+region = Rect2(123, 0, 41, 40)
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_spider_walk3"]
 atlas = ExtResource("2_tex")
-region = Rect2(96, 0, 24, 24)
+region = Rect2(164, 0, 41, 40)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_spider"]
 animations = [{

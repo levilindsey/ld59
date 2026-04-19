@@ -15,6 +15,29 @@ func _ready() -> void:
 	await get_tree().process_frame
 
 	self.visible = G.settings.show_hud
+	_apply_credits_colors()
+
+
+## Pushes `Settings.color_credits_*` into every Label under the
+## credits group so the scene's authored font / outline colors
+## can be tuned centrally.
+func _apply_credits_colors() -> void:
+	if G.settings == null:
+		return
+	var font: Color = G.settings.color_credits_font
+	var outline: Color = G.settings.color_credits_outline
+	for label in _find_credits_labels(%Credits):
+		label.add_theme_color_override("font_color", font)
+		label.add_theme_color_override("font_outline_color", outline)
+
+
+func _find_credits_labels(root: Node) -> Array[Label]:
+	var out: Array[Label] = []
+	for child in root.get_children():
+		if child is Label:
+			out.append(child as Label)
+		out.append_array(_find_credits_labels(child))
+	return out
 
 
 func fade_in(node: CanvasItem) -> void:

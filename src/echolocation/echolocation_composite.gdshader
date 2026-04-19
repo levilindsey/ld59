@@ -791,20 +791,8 @@ void fragment() {
 		float d_here_outer = texture(
 				density_tex, world_to_density_uv(world_pos)).r;
 		bool inside_solid_cell = d_here_outer >= 0.99;
-		// `type_tex` is nearest-sampled with a +0.5 offset so its
-		// classification of "bg_tile" bleeds half a cell past the
-		// authored solid boundary. Any c0 sample in that bleed
-		// region is non-terrain — it may carry a faint terrain tint
-		// from 2D edge anti-aliasing on the mesh triangles, which
-		// then reads as a solid-looking color band sitting outside
-		// the cell grid. Wipe those fragments so only pixels that
-		// are actually inside solid (per the density gate) paint
-		// terrain color into the near-field reveal. Non-bg
-		// fragments (sky / sprites / particles) pass through
-		// untouched.
-		if (is_bg_tile && !inside_solid_cell) {
-			textured_rgb = vec3(0.0);
-		}
+		// (zero-out intentionally omitted so we can see raw c0 and
+		// identify where the teal band actually comes from.)
 		if (is_bg_tile && !overlay_sprite_here && inside_solid_cell) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
 			float u_base = float(bg_type_id) / slot_count_f;
