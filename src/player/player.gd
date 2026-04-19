@@ -6,8 +6,14 @@ extends Character
 ## player's WebSensor.
 const _WEB_SPEED_MULTIPLIER := 0.25
 
-## Fluid velocity magnitude (px/sec) at which fluid begins to damage
-## the player. Below this the player can wade through liquid safely.
+## Damage per second applied while the player overlaps any LIQUID
+## terrain, regardless of flow. Flowing water above the speed
+## threshold ramps damage above this base rate.
+const _WATER_BASE_DAMAGE_PER_SEC := 10.0
+
+## Fluid velocity magnitude (px/sec) above which fluid damage scales
+## up past the base water rate. Below this, the player still takes
+## base water damage but without a flow bonus.
 const _FLUID_DAMAGE_SPEED_THRESHOLD := 120.0
 
 ## Damage per second applied at the max fluid speed; scales linearly
@@ -260,19 +266,19 @@ func _sample_water_overlap() -> void:
 
 
 func _apply_fluid_damage(delta: float) -> void:
-	if not is_instance_valid(G.terrain):
-		return
-	var fluid_vel: Vector2 = G.terrain.sample_fluid_velocity(global_position)
-	var speed := fluid_vel.length()
-	if speed < _FLUID_DAMAGE_SPEED_THRESHOLD:
+	if not _is_in_water or not is_instance_valid(G.terrain):
 		_fluid_damage_accum_sec = 0.0
 		return
 	_fluid_damage_accum_sec += delta
 	if _fluid_damage_accum_sec < _FLUID_DAMAGE_TICK_SEC:
 		return
 	_fluid_damage_accum_sec -= _FLUID_DAMAGE_TICK_SEC
-	var over_threshold := speed - _FLUID_DAMAGE_SPEED_THRESHOLD
-	var dps := minf(_FLUID_DAMAGE_PER_SEC, over_threshold * 0.2)
+	var fluid_vel: Vector2 = G.terrain.sample_fluid_velocity(global_position)
+	var speed := fluid_vel.length()
+	var over_threshold := maxf(0.0, speed - _FLUID_DAMAGE_SPEED_THRESHOLD)
+	var dps := maxf(
+			_WATER_BASE_DAMAGE_PER_SEC,
+			minf(_FLUID_DAMAGE_PER_SEC, over_threshold * 0.2))
 	var tick_dmg := int(roundf(dps * _FLUID_DAMAGE_TICK_SEC))
 	if tick_dmg > 0:
 		apply_damage(tick_dmg)
