@@ -10,7 +10,16 @@ extends Enemy
 ## spider only adheres to floors.
 
 
-const _GROUND_RAY_LENGTH_PX := 18.0
+## Distance from the spider's origin down to the bottom of its
+## sprite. Used by `_snap_to_floor` so the sprite's feet rest on the
+## floor instead of its center. The spider's sprite is 40 px tall
+## and offset (0, 1) from origin, putting its bottom edge 21 px
+## below origin; 20 leaves a 1 px visual gap above the floor.
+const _FOOT_OFFSET_PX := 20.0
+## Ray length must exceed `_FOOT_OFFSET_PX` plus one frame's worth
+## of fall so the downward probe still finds the floor from a
+## resting pose.
+const _GROUND_RAY_LENGTH_PX := 40.0
 const _GRAVITY_PX_PER_SEC_SQ := 900.0
 const _MAX_FALL_SPEED_PX_PER_SEC := 500.0
 
@@ -91,6 +100,8 @@ func _snap_to_floor() -> void:
 		_is_grounded = false
 		return
 	_is_grounded = true
-	# Rest just above the hit point so the ray keeps contact next
-	# frame without clipping into the surface.
-	global_position.y = hit["position"].y - 1.0
+	# Align the sprite's feet (offset by `_FOOT_OFFSET_PX` from the
+	# node origin) with the floor surface. The ray starts at the
+	# origin and is long enough to still hit the floor next frame
+	# from this rest pose.
+	global_position.y = hit["position"].y - _FOOT_OFFSET_PX

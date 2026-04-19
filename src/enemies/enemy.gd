@@ -34,6 +34,19 @@ const _INVINCIBILITY_SEC := 0.6
 ## Blink period while invincible.
 const _BLINK_PERIOD_SEC := 0.1
 
+## Width of the frequency-color outline rendered by
+## `player_damage_flash.gdshader` around the enemy silhouette.
+const _FREQUENCY_OUTLINE_WIDTH_PX := 1.0
+
+## Matching-frequency pulse damage at the pulse center, as a
+## fraction of `max_health`. 1.0 means a point-blank pulse is
+## enough to kill any enemy in one hit.
+const _CLOSE_RANGE_DAMAGE_FRACTION := 1.0
+## Matching-frequency pulse damage at the pulse's max radius, as
+## a fraction of `max_health`. 1/5 means five matching pulses at
+## the edge of the shell are needed to kill any enemy.
+const _FAR_RANGE_DAMAGE_FRACTION := 0.2
+
 ## Death pulse — big, slow, red outline that expands outward from
 ## the enemy's sprite silhouette. Mirrors the player's death pulse
 ## so downed enemies and the downed player share the same visual
@@ -53,6 +66,14 @@ const _DEATH_PULSE_ALPHA := 0.9
 
 ## Knockback impulse magnitude applied on a matching-frequency pulse.
 @export_range(0.0, 2000.0) var knockback_impulse_px_per_sec := 320.0
+
+## World-space radius of the echolocation tag halo. Read by
+## `EcholocationRenderer` to synthesize an always-on pointillist
+## silhouette around this enemy so pulses reveal it at range even
+## when the pulse wave hasn't swept across the sprite yet. Mirrors
+## the bug tag-halo mechanic. Tune per-scene to roughly match the
+## enemy's visible body radius.
+@export_range(2.0, 48.0) var tag_radius_px: float = 12.0
 
 @export_node_path("CollisionShape2D") var collision_shape_path: NodePath
 
@@ -78,23 +99,26 @@ func _ready() -> void:
 	monitorable = true
 	_health = max_health
 	_apply_frequency_tint()
-	_apply_damage_shader_colors()
+	_apply_sprite_shader_parameters()
 	body_entered.connect(_on_body_entered)
 
 
-func _apply_damage_shader_colors() -> void:
-	if G.settings == null:
-		return
+func _apply_sprite_shader_parameters() -> void:
 	var sprite := get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
 	if sprite == null:
 		return
 	var material := sprite.material as ShaderMaterial
 	if material == null:
 		return
+	if G.settings != null:
+		material.set_shader_parameter(
+				"flash_color", G.settings.color_damage_flash)
+		material.set_shader_parameter(
+				"pulse_color", G.settings.color_damage_pulse)
 	material.set_shader_parameter(
-			"flash_color", G.settings.color_damage_flash)
+			"outline_color", Frequency.color_of(frequency))
 	material.set_shader_parameter(
-			"pulse_color", G.settings.color_damage_pulse)
+			"outline_width_px", _FREQUENCY_OUTLINE_WIDTH_PX)
 
 
 func _process(delta: float) -> void:
@@ -137,17 +161,23 @@ func _update_behavior(_delta: float, _player: Player) -> void:
 ## Called by EnemySystem in response to G.echo.pulse_emitted. Raises
 ## perception unconditionally if the pulse reaches us; applies damage
 ## and knockback only when `pulse_frequency` matches this enemy.
+## Damage is attenuated by distance from the pulse center: a
+## point-blank matching pulse kills in one hit, a max-radius matching
+## pulse takes five hits to kill (per `_*_DAMAGE_FRACTION`). The
+## caller's `pulse_damage` is intentionally ignored — the shell is
+## lethal based on proximity, not the pulse's authored damage.
 func receive_pulse(
 		pulse_frequency: int,
 		pulse_center: Vector2,
 		pulse_max_radius_px: float,
-		pulse_damage: int,
+		_pulse_damage: int,
 ) -> void:
 	if _is_dead:
 		return
 
 	var offset := global_position - pulse_center
-	if offset.length_squared() > pulse_max_radius_px * pulse_max_radius_px:
+	var max_radius_sq := pulse_max_radius_px * pulse_max_radius_px
+	if offset.length_squared() > max_radius_sq:
 		return
 
 	_perception = 1.0
@@ -158,7 +188,16 @@ func receive_pulse(
 	var direction := offset.normalized() if offset != Vector2.ZERO else (
 			Vector2.from_angle(randf() * TAU))
 	_knockback_velocity += direction * knockback_impulse_px_per_sec
-	_apply_damage(pulse_damage)
+
+	var distance := offset.length()
+	var t := clampf(
+			distance / maxf(pulse_max_radius_px, 1.0), 0.0, 1.0)
+	var fraction := lerpf(
+			_CLOSE_RANGE_DAMAGE_FRACTION,
+			_FAR_RANGE_DAMAGE_FRACTION,
+			t)
+	var attenuated_damage := int(ceil(float(max_health) * fraction))
+	_apply_damage(attenuated_damage)
 
 
 func apply_damage(amount: int) -> void:
