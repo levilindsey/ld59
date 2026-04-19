@@ -656,7 +656,8 @@ void TerrainWorld::fill(Vector2 world_pos, float radius_px, float strength) {
 }
 
 bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
-		int dmg, int frequency_mask, Vector2 world_pos,
+		int dmg, int frequency_mask, Vector2 emitter_world_pos,
+		Vector2 cell_world_pos,
 		int32_t *out_world_cx, int32_t *out_world_cy) {
 	if (cx < 0 || cy < 0 || cx >= chunk->cells || cy >= chunk->cells) {
 		return false;
@@ -675,12 +676,61 @@ bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
 			return false;
 		}
 	}
-	int hp = chunk->health_per_cell[idx] - dmg;
+
+	// Surface-only + player-facing damage gating. Mirrors the visual
+	// stipple / ping-line rules: pulses erode what they can "see".
+	const int cells = chunk->cells;
+	const int32_t wcx = chunk->coords.x * cells + cx;
+	const int32_t wcy = chunk->coords.y * cells + cy;
+	auto is_open = [](uint8_t t) {
+		return t == TerrainSettings::TYPE_NONE
+				|| t == TerrainSettings::TYPE_LIQUID;
+	};
+	const uint8_t n_n = world_cell_type(*_manager, cells, wcx, wcy - 1);
+	const uint8_t n_s = world_cell_type(*_manager, cells, wcx, wcy + 1);
+	const uint8_t n_w = world_cell_type(*_manager, cells, wcx - 1, wcy);
+	const uint8_t n_e = world_cell_type(*_manager, cells, wcx + 1, wcy);
+	const bool is_surface = is_open(n_n) || is_open(n_s)
+			|| is_open(n_w) || is_open(n_e);
+	if (!is_surface) {
+		return false;
+	}
+
+	// Composite outward normal = sum of directions where the neighbor
+	// is open, normalized. Cells exposed on multiple sides get the
+	// average of those directions (corner cells face diagonally).
+	Vector2 outward(0.0f, 0.0f);
+	if (is_open(n_n)) { outward.y -= 1.0f; }
+	if (is_open(n_s)) { outward.y += 1.0f; }
+	if (is_open(n_w)) { outward.x -= 1.0f; }
+	if (is_open(n_e)) { outward.x += 1.0f; }
+	if (outward.length_squared() > 1e-6f) {
+		outward = outward.normalized();
+	}
+
+	const Vector2 to_emitter_vec = emitter_world_pos - cell_world_pos;
+	const float to_emitter_len = to_emitter_vec.length();
+	float facing = 0.0f;
+	if (to_emitter_len > 1e-3f) {
+		const float dot_v = outward.dot(to_emitter_vec / to_emitter_len);
+		facing = dot_v > 0.0f ? dot_v : 0.0f;
+	}
+	// Back-facing (or perpendicular) surfaces take 30% damage; fully
+	// front-facing take 100%. Keeps back-of-wall erosion possible but
+	// slow, so the player has to approach surfaces they want gone.
+	const float facing_mult = 0.3f + 0.7f * facing;
+	const int adjusted_dmg = static_cast<int>(
+			std::round(static_cast<float>(dmg) * facing_mult));
+	if (adjusted_dmg <= 0) {
+		return false;
+	}
+
+	int hp = chunk->health_per_cell[idx] - adjusted_dmg;
 	if (hp <= 0) {
 		chunk->health_per_cell[idx] = 0;
 		chunk->type_per_cell[idx] = TerrainSettings::TYPE_NONE;
 		refresh_corners_after_clear(chunk, cx, cy);
-		emit_signal("tile_destroyed", world_pos, type);
+		emit_signal("tile_destroyed", cell_world_pos, type);
 		if (out_world_cx) {
 			*out_world_cx = chunk->coords.x * chunk->cells + cx;
 		}
@@ -742,7 +792,7 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 				int32_t w_cx = 0, w_cy = 0;
 				const bool destroyed = _apply_damage_to_cell(
 						chunk, cx, cy, dmg, frequency_mask,
-						cell_center, &w_cx, &w_cy);
+						world_pos, cell_center, &w_cx, &w_cy);
 				if (destroyed) {
 					destroyed_flat.push_back(w_cx);
 					destroyed_flat.push_back(w_cy);
@@ -1014,7 +1064,7 @@ void TerrainWorld::damage_with_falloff(
 				int32_t w_cx = 0, w_cy = 0;
 				const bool destroyed = _apply_damage_to_cell(
 						chunk, cx, cy, cell_dmg,
-						frequency_mask, cell_center,
+						frequency_mask, world_pos, cell_center,
 						&w_cx, &w_cy);
 				if (destroyed) {
 					destroyed_flat.push_back(w_cx);
