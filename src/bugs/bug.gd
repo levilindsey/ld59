@@ -56,15 +56,22 @@ const _BIG_HEAL := 75
 @export_range(1.0, 60.0) var lifetime_sec := 12.0
 @export_range(0.0, 64.0) var drift_speed_px_per_sec := 10.0
 
-## Juice granted to the matching-frequency pool on eat. Set by
-## `_apply_size_variant`.
-var juice_grant: int = 1
-
 ## HP restored to the player on consumption. Set by
 ## `_apply_size_variant`. Exposed as an `@export` only as a
 ## maintenance affordance — runtime writes always go via
 ## `size_variant`'s setter.
 @export_range(0, 200) var heal_amount: int = 15
+
+## Juice granted to the matching-frequency pool on eat. Set by
+## `_apply_size_variant`.
+var juice_grant: int = 1
+
+## When true the bug never times out and never fades out (the initial
+## fade-in still plays). Drift is leashed to `anchor_position` by
+## `leash_radius_px`. Set by PersistentBugSpawn before `add_child`.
+var is_persistent := false
+var anchor_position := Vector2.ZERO
+var leash_radius_px := 48.0
 
 var _age_sec := 0.0
 var _drift_velocity := Vector2.ZERO
@@ -96,7 +103,7 @@ func _process(delta: float) -> void:
 		return
 
 	_age_sec += delta
-	if _age_sec >= lifetime_sec:
+	if not is_persistent and _age_sec >= lifetime_sec:
 		queue_free()
 		return
 
@@ -105,9 +112,15 @@ func _process(delta: float) -> void:
 	_drift_reroll_countdown -= delta
 	if _drift_reroll_countdown <= 0.0:
 		_drift_reroll_countdown = _DRIFT_REROLL_INTERVAL_SEC
-		var jitter := randf_range(
-				-_DRIFT_JITTER_RADIANS, _DRIFT_JITTER_RADIANS)
-		_drift_velocity = _drift_velocity.rotated(jitter)
+		var offset := global_position - anchor_position
+		if is_persistent and offset.length() > leash_radius_px:
+			# Outside the leash: point drift back at the anchor.
+			_drift_velocity = (
+					-offset.normalized() * drift_speed_px_per_sec)
+		else:
+			var jitter := randf_range(
+					-_DRIFT_JITTER_RADIANS, _DRIFT_JITTER_RADIANS)
+			_drift_velocity = _drift_velocity.rotated(jitter)
 
 	_update_opacity()
 
@@ -128,14 +141,15 @@ func _consume(player: Player) -> void:
 
 
 func _update_opacity() -> void:
-	var fade_out_start := lifetime_sec * (1.0 - _FADE_OUT_FRACTION)
 	var alpha := 1.0
 	if _age_sec < _FADE_IN_SEC:
 		alpha = _age_sec / _FADE_IN_SEC
-	elif _age_sec > fade_out_start:
-		var remaining := lifetime_sec - _age_sec
-		var fade_window := lifetime_sec - fade_out_start
-		alpha = clampf(remaining / fade_window, 0.0, 1.0)
+	elif not is_persistent:
+		var fade_out_start := lifetime_sec * (1.0 - _FADE_OUT_FRACTION)
+		if _age_sec > fade_out_start:
+			var remaining := lifetime_sec - _age_sec
+			var fade_window := lifetime_sec - fade_out_start
+			alpha = clampf(remaining / fade_window, 0.0, 1.0)
 	modulate.a = alpha
 
 
