@@ -28,27 +28,8 @@ const _MAX_TAGGED_SPRITES := 32
 ## Uniform cost: MAX_PINGS × 2 vec4 = 256 vec4s; well within WebGL2
 ## limits when combined with the other uniform arrays.
 const _MAX_PINGS := 128
-## Maximum world-px distance the ping scheduler scans for surfaces.
-## Decoupled from `pulse.max_radius_px` because the visible stipple
-## wave fades out well before the pulse's damage radius (usually
-## ~400 px on screen at typical zoom), so ping lines beyond this
-## cap don't register visually anyway. Capping the scan gives a
-## large speedup: bbox area scales as radius², so cutting from
-## 1000 → 600 is a ~2.8× reduction in cells inspected.
-const _PING_SCAN_MAX_RADIUS_PX := 600.0
 ## How long (seconds) each visual ping stays on screen after firing.
 const _PING_LIFETIME_SEC := 0.5
-## Minimum dot(outward_normal, toward_pulse) required to keep a
-## segment. Segments whose normal points AWAY from the pulse (i.e.,
-## back-of-wall surfaces hidden from the player) get culled. 0.0
-## keeps everything ≥ perpendicular; positive values tighten to
-## only strongly-facing surfaces.
-const _PING_PLAYER_FACING_THRESHOLD := 0.0
-## Safety cap on LoS DDA walk length (in grid cells crossed). A miss
-## past this length is treated as "not occluded" so the segment
-## schedules. At cell_size=8 px, 200 cells = 1600 px — more than any
-## pulse radius we actually use.
-const _PING_LOS_MAX_STEPS := 200
 ## Fallback cell-size-px when G.terrain.settings isn't available at
 ## raycast time. Matches TerrainSettings default.
 const _DEFAULT_CELL_SIZE_PX := 8.0
@@ -170,15 +151,15 @@ var _terrain_textures_dirty: bool = false
 ## the textures get built. Default matches TerrainSettings default.
 var _density_cell_size_px: float = 8.0
 
-## Cached type-image bytes + dimensions + origin, used by the ping
-## scheduler's bulk surface scan. Updated in `_rebuild_terrain_textures`
-## alongside the corresponding GPU texture. Scanning the CPU-side
-## PackedByteArray is ~O(1) per cell access, making it cheap to walk
-## all visible surfaces every pulse without C++ cross-calls.
-var _type_image_bytes: PackedByteArray
-var _type_image_width: int = 0
-var _type_image_height: int = 0
-var _type_image_origin_cells: Vector2i = Vector2i.ZERO
+## Owns the per-pulse surface-segment enumeration + per-segment
+## ping allocation. Holds its own CPU-side type-image cache that we
+## re-sync on every terrain rebuild.
+var _ping_scheduler: EcholocationPingScheduler
+
+## Cached world-cell origin of the terrain grid, kept in sync with
+## the scheduler. Used by `_on_tile_destroyed` to translate a world-
+## space hit into damage-age cell coordinates.
+var _terrain_origin_cells := Vector2i.ZERO
 
 ## Per-cell R8 texture marking "damage age" for each world cell. 255
 ## = just damaged; decays to 0 in `_DAMAGE_FLASH_FRAMES` frames. Shader
@@ -214,6 +195,8 @@ func _ready() -> void:
 	_pool.resize(_MAX_PULSES)
 	_ping_pool.resize(_MAX_PINGS)
 	_particle_pool.resize(_MAX_PARTICLES)
+
+	_ping_scheduler = EcholocationPingScheduler.new()
 
 	_shader_mat = %Mask.material as ShaderMaterial
 	G.ensure_valid(_shader_mat, "EcholocationRenderer: Mask missing ShaderMaterial")
@@ -424,10 +407,10 @@ func _process(delta: float) -> void:
 	_shader_mat.set_shader_parameter("pulse_freqs", packed_freqs)
 	_shader_mat.set_shader_parameter("pulse_count", active_count)
 
-	# Pack tagged sprites (bugs + enemies) into the tag-halo uniform.
-	# Each entry gives the shader a screen-space circle + a frequency
-	# id so pulse stipples can reveal the sprite even when its
-	# rendered pixels are too faint or small for palette-match to
+	# Pack tagged sprites (bugs now, enemies later) into the tag-halo
+	# uniform. Each entry gives the shader a screen-space circle + a
+	# frequency id so pulse stipples can reveal the sprite even when
+	# its rendered pixels are too faint or small for palette-match to
 	# catch. Radius scales with canvas zoom so the halo stays at a
 	# consistent visual size regardless of camera zoom.
 	var packed_tags: Array[Vector4] = []
@@ -453,23 +436,6 @@ func _process(delta: float) -> void:
 			# pointillist silhouette grows in / out with the sprite.
 			packed_tag_alphas[tag_count] = bug.modulate.a
 			tag_count += 1
-	for node in get_tree().get_nodes_in_group("enemies"):
-		if tag_count >= _MAX_TAGGED_SPRITES:
-			break
-		var enemy := node as Enemy
-		if enemy == null:
-			continue
-		var enemy_screen_px: Vector2 = (enemy
-				.get_global_transform_with_canvas().origin)
-		var enemy_radius_px: float = (enemy.tag_radius_px
-				* absf(canvas_scale.x))
-		packed_tags[tag_count] = Vector4(
-				enemy_screen_px.x,
-				enemy_screen_px.y,
-				enemy_radius_px,
-				float(enemy.frequency))
-		packed_tag_alphas[tag_count] = enemy.modulate.a
-		tag_count += 1
 	_shader_mat.set_shader_parameter("tagged_sprites", packed_tags)
 	_shader_mat.set_shader_parameter(
 			"tagged_sprite_alphas", packed_tag_alphas)
@@ -619,7 +585,8 @@ func emit_pulse(
 		return null
 
 	_pool[slot] = pulse
-	_schedule_pings_for_pulse(pulse)
+	_ping_scheduler.schedule_pings_for_pulse(
+			pulse, _ping_pool, _elapsed_sec, ping_delay_scale)
 	pulse_emitted.emit(pulse)
 	return pulse
 
@@ -629,329 +596,6 @@ func _find_free_slot() -> int:
 		if _pool[i] == null:
 			return i
 	return -1
-
-
-func _find_free_ping_slot() -> int:
-	for i in range(_MAX_PINGS):
-		if _ping_pool[i] == null:
-			return i
-	return -1
-
-
-## Enumerate every outward-facing surface segment near `pulse.center`
-## and schedule a ping per segment. Much cheaper than raycasting —
-## we walk the cached `_type_image_bytes` (PackedByteArray access is
-## O(1) per cell, no C++ crossings), find contiguous runs of solid
-## cells whose same-direction neighbor is empty, and build one segment
-## per run. Each ping's scheduled time follows the same `2 × dist /
-## speed` rule; `world_pos` is the closest point on the segment to the
-## pulse center so the line grows outward from there.
-##
-## Cost scales with the pulse's damage-radius bounding box (in cells),
-## not with a fixed ray count — a 400px pulse at 8px/cell scans a
-## ~100×100 = 10k-cell window, four times, for ~40k byte reads +
-## minimal arithmetic. Sub-millisecond in practice.
-func _schedule_pings_for_pulse(pulse: EchoPulse) -> void:
-	if _type_image_bytes.is_empty():
-		return
-	var cell_size: float = _density_cell_size_px
-	if cell_size <= 0.0:
-		return
-	var origin_cells: Vector2i = _type_image_origin_cells
-	var type_w: int = _type_image_width
-	var type_h: int = _type_image_height
-	if type_w <= 0 or type_h <= 0:
-		return
-
-	# Clamp the scan radius so we never inspect more of the world than
-	# the visible stipple wave cares about, even if the pulse's damage
-	# reaches farther.
-	var scan_radius_px: float = minf(
-			pulse.max_radius_px, _PING_SCAN_MAX_RADIUS_PX)
-	var pulse_cell_x: int = (int(floor(pulse.center.x / cell_size))
-			- origin_cells.x)
-	var pulse_cell_y: int = (int(floor(pulse.center.y / cell_size))
-			- origin_cells.y)
-	var radius_cells: int = int(ceil(scan_radius_px / cell_size))
-	var min_cx: int = maxi(0, pulse_cell_x - radius_cells)
-	var max_cx: int = mini(type_w - 1, pulse_cell_x + radius_cells)
-	var min_cy: int = maxi(0, pulse_cell_y - radius_cells)
-	var max_cy: int = mini(type_h - 1, pulse_cell_y + radius_cells)
-	if min_cx > max_cx or min_cy > max_cy:
-		return
-
-	var is_full_circle: bool = pulse.arc_radians >= TAU - 0.01
-	var cos_half_arc: float = cos(pulse.arc_radians * 0.5)
-	var aim_x: float = cos(pulse.arc_direction_radians)
-	var aim_y: float = sin(pulse.arc_direction_radians)
-	var radius_sq: float = scan_radius_px * scan_radius_px
-
-	# NORTH faces — cell solid, cell above (cy - 1) empty. Outward
-	# normal points -y (up in screen coords). Segments on top edge.
-	var normal_north := Vector2(0.0, -1.0)
-	for cy in range(min_cy, max_cy + 1):
-		var run_start: int = -1
-		for cx in range(min_cx, max_cx + 2):
-			var has_face: bool = false
-			if cx <= max_cx and _type_byte_at(cx, cy) != 0:
-				if cy <= 0 or _type_byte_at(cx, cy - 1) == 0:
-					has_face = true
-			if has_face:
-				if run_start < 0:
-					run_start = cx
-			elif run_start >= 0:
-				var run_end: int = cx - 1
-				var sx: float = (
-						(run_start + origin_cells.x) * cell_size)
-				var ex: float = (
-						(run_end + 1 + origin_cells.x) * cell_size)
-				var y: float = (cy + origin_cells.y) * cell_size
-				if not _try_schedule_segment_ping(
-						pulse, Vector2(sx, y), Vector2(ex, y),
-						normal_north, is_full_circle, cos_half_arc,
-						aim_x, aim_y, radius_sq):
-					return
-				run_start = -1
-
-	# SOUTH faces — cell below (cy + 1) empty. Normal +y (down).
-	var normal_south := Vector2(0.0, 1.0)
-	for cy in range(min_cy, max_cy + 1):
-		var run_start: int = -1
-		for cx in range(min_cx, max_cx + 2):
-			var has_face: bool = false
-			if cx <= max_cx and _type_byte_at(cx, cy) != 0:
-				if (cy >= type_h - 1
-						or _type_byte_at(cx, cy + 1) == 0):
-					has_face = true
-			if has_face:
-				if run_start < 0:
-					run_start = cx
-			elif run_start >= 0:
-				var run_end: int = cx - 1
-				var sx: float = (
-						(run_start + origin_cells.x) * cell_size)
-				var ex: float = (
-						(run_end + 1 + origin_cells.x) * cell_size)
-				var y: float = ((cy + 1 + origin_cells.y)
-						* cell_size)
-				if not _try_schedule_segment_ping(
-						pulse, Vector2(sx, y), Vector2(ex, y),
-						normal_south, is_full_circle, cos_half_arc,
-						aim_x, aim_y, radius_sq):
-					return
-				run_start = -1
-
-	# WEST faces — cell to left (cx - 1) empty. Normal -x (left).
-	var normal_west := Vector2(-1.0, 0.0)
-	for cx in range(min_cx, max_cx + 1):
-		var run_start: int = -1
-		for cy in range(min_cy, max_cy + 2):
-			var has_face: bool = false
-			if cy <= max_cy and _type_byte_at(cx, cy) != 0:
-				if cx <= 0 or _type_byte_at(cx - 1, cy) == 0:
-					has_face = true
-			if has_face:
-				if run_start < 0:
-					run_start = cy
-			elif run_start >= 0:
-				var run_end: int = cy - 1
-				var sy: float = (
-						(run_start + origin_cells.y) * cell_size)
-				var ey: float = (
-						(run_end + 1 + origin_cells.y) * cell_size)
-				var x: float = (cx + origin_cells.x) * cell_size
-				if not _try_schedule_segment_ping(
-						pulse, Vector2(x, sy), Vector2(x, ey),
-						normal_west, is_full_circle, cos_half_arc,
-						aim_x, aim_y, radius_sq):
-					return
-				run_start = -1
-
-	# EAST faces — cell to right (cx + 1) empty. Normal +x (right).
-	var normal_east := Vector2(1.0, 0.0)
-	for cx in range(min_cx, max_cx + 1):
-		var run_start: int = -1
-		for cy in range(min_cy, max_cy + 2):
-			var has_face: bool = false
-			if cy <= max_cy and _type_byte_at(cx, cy) != 0:
-				if (cx >= type_w - 1
-						or _type_byte_at(cx + 1, cy) == 0):
-					has_face = true
-			if has_face:
-				if run_start < 0:
-					run_start = cy
-			elif run_start >= 0:
-				var run_end: int = cy - 1
-				var sy: float = (
-						(run_start + origin_cells.y) * cell_size)
-				var ey: float = (
-						(run_end + 1 + origin_cells.y) * cell_size)
-				var x: float = ((cx + 1 + origin_cells.x)
-						* cell_size)
-				if not _try_schedule_segment_ping(
-						pulse, Vector2(x, sy), Vector2(x, ey),
-						normal_east, is_full_circle, cos_half_arc,
-						aim_x, aim_y, radius_sq):
-					return
-				run_start = -1
-
-
-func _type_byte_at(cx: int, cy: int) -> int:
-	if (cx < 0 or cy < 0
-			or cx >= _type_image_width
-			or cy >= _type_image_height):
-		return 0
-	return _type_image_bytes[cy * _type_image_width + cx]
-
-
-## Return true when the straight line from `from_world` to `to_world`
-## passes through any non-empty cell between its origin and target.
-## Uses Amanatides-Woo grid DDA on `_type_image_bytes`, so no C++
-## crossings. The origin cell (whatever cell contains `from_world`)
-## and the target cell (whatever contains `to_world`) are NOT
-## checked — we only care about intermediate cells that would occlude
-## the pulse's line of sight. Out-of-bounds cells pass (treated as
-## empty, so segments near the world edge don't false-positive).
-func _los_occluded(from_world: Vector2, to_world: Vector2) -> bool:
-	if _type_image_bytes.is_empty():
-		return false
-	var cell_size: float = _density_cell_size_px
-	if cell_size <= 0.0:
-		return false
-
-	var from_cx_f: float = (from_world.x / cell_size
-			- float(_type_image_origin_cells.x))
-	var from_cy_f: float = (from_world.y / cell_size
-			- float(_type_image_origin_cells.y))
-	var to_cx_f: float = (to_world.x / cell_size
-			- float(_type_image_origin_cells.x))
-	var to_cy_f: float = (to_world.y / cell_size
-			- float(_type_image_origin_cells.y))
-
-	var target_cx: int = int(floor(to_cx_f))
-	var target_cy: int = int(floor(to_cy_f))
-	var cx: int = int(floor(from_cx_f))
-	var cy: int = int(floor(from_cy_f))
-
-	# Same cell — nothing between origin and target.
-	if cx == target_cx and cy == target_cy:
-		return false
-
-	var dx: float = to_cx_f - from_cx_f
-	var dy: float = to_cy_f - from_cy_f
-	var abs_dx: float = absf(dx)
-	var abs_dy: float = absf(dy)
-	var step_x: int = 0 if abs_dx < 1e-9 else (1 if dx > 0.0 else -1)
-	var step_y: int = 0 if abs_dy < 1e-9 else (1 if dy > 0.0 else -1)
-	if step_x == 0 and step_y == 0:
-		return false
-
-	var t_delta_x: float = INF if step_x == 0 else 1.0 / abs_dx
-	var t_delta_y: float = INF if step_y == 0 else 1.0 / abs_dy
-
-	var t_max_x: float = INF
-	if step_x > 0:
-		t_max_x = (float(cx + 1) - from_cx_f) / abs_dx
-	elif step_x < 0:
-		t_max_x = (from_cx_f - float(cx)) / abs_dx
-
-	var t_max_y: float = INF
-	if step_y > 0:
-		t_max_y = (float(cy + 1) - from_cy_f) / abs_dy
-	elif step_y < 0:
-		t_max_y = (from_cy_f - float(cy)) / abs_dy
-
-	for _step in range(_PING_LOS_MAX_STEPS):
-		if t_max_x < t_max_y:
-			cx += step_x
-			t_max_x += t_delta_x
-		else:
-			cy += step_y
-			t_max_y += t_delta_y
-		# Reached target — line of sight is clear.
-		if cx == target_cx and cy == target_cy:
-			return false
-		# Off the grid — treat as empty (not a blocker).
-		if (cx < 0 or cy < 0
-				or cx >= _type_image_width
-				or cy >= _type_image_height):
-			return false
-		# Intermediate cell is solid → blocks the ray.
-		if _type_byte_at(cx, cy) != 0:
-			return true
-	return false
-
-
-## Schedule a ping for the given surface segment if it's in range and
-## within the pulse's arc, and its outward normal faces the pulse
-## emitter. Returns false only when the ping pool is exhausted
-## (caller halts further scan).
-func _try_schedule_segment_ping(
-		pulse: EchoPulse,
-		seg_start: Vector2,
-		seg_end: Vector2,
-		normal: Vector2,
-		is_full_circle: bool,
-		cos_half_arc: float,
-		aim_x: float,
-		aim_y: float,
-		radius_sq: float,
-) -> bool:
-	var seg_vec: Vector2 = seg_end - seg_start
-	var seg_len_sq: float = seg_vec.length_squared()
-	if seg_len_sq < 1e-6:
-		return true
-
-	# Player-facing cull: the segment's outward normal must be
-	# pointing roughly toward the pulse emitter. Skips back-of-wall
-	# surfaces that are hidden from the player.
-	var seg_midpoint: Vector2 = seg_start + seg_vec * 0.5
-	var to_pulse: Vector2 = pulse.center - seg_midpoint
-	var to_pulse_len: float = to_pulse.length()
-	if to_pulse_len > 1e-3:
-		var facing: float = normal.dot(to_pulse) / to_pulse_len
-		if facing < _PING_PLAYER_FACING_THRESHOLD:
-			return true
-
-	var to_start: Vector2 = pulse.center - seg_start
-	var proj_t: float = to_start.dot(seg_vec) / seg_len_sq
-	proj_t = clampf(proj_t, 0.0, 1.0)
-	var closest: Vector2 = seg_start + seg_vec * proj_t
-	var dx: float = closest.x - pulse.center.x
-	var dy: float = closest.y - pulse.center.y
-	var dist_sq: float = dx * dx + dy * dy
-	if dist_sq > radius_sq:
-		return true
-	var dist: float = sqrt(dist_sq)
-	if not is_full_circle and dist > 1e-3:
-		var cos_ang: float = (dx * aim_x + dy * aim_y) / dist
-		if cos_ang < cos_half_arc:
-			return true
-
-	# Line-of-sight: skip segments whose closest-point can't be
-	# reached in a straight line from the pulse emitter (some
-	# intermediate solid cell blocks the path).
-	if _los_occluded(pulse.center, closest):
-		return true
-
-	var slot: int = _find_free_ping_slot()
-	if slot < 0:
-		return false
-
-	var ping := EchoPing.new()
-	ping.world_pos = closest
-	ping.segment_start = seg_start
-	ping.segment_end = seg_end
-	ping.segment_normal = normal
-	ping.frequency = pulse.frequency
-	ping.hit_angle_rad = atan2(dy, dx)
-	ping.hit_distance_px = dist
-	ping.scheduled_time_sec = (_elapsed_sec
-			+ 2.0 * dist / pulse.speed_px_per_sec
-			* ping_delay_scale)
-	ping.age_sec = -1.0
-	_ping_pool[slot] = ping
-	return true
 
 
 ## Shared world→screen-UV conversion for packing ping positions +
@@ -982,9 +626,9 @@ func _on_tile_destroyed(world_pos: Vector2, type: int) -> void:
 	if cell_size <= 0.0:
 		return
 	var cx: int = (int(floor(world_pos.x / cell_size))
-			- _type_image_origin_cells.x)
+			- _terrain_origin_cells.x)
 	var cy: int = (int(floor(world_pos.y / cell_size))
-			- _type_image_origin_cells.y)
+			- _terrain_origin_cells.y)
 	if (cx < 0 or cy < 0
 			or cx >= _damage_age_width
 			or cy >= _damage_age_height):
@@ -1120,13 +764,15 @@ func _rebuild_terrain_textures() -> void:
 			origin_cells.x * _density_cell_size_px,
 			origin_cells.y * _density_cell_size_px)
 
-	# Cache type bytes + dimensions for the ping scheduler's bulk
-	# surface scan (one PackedByteArray copy per chunk_modified event,
-	# not per pulse).
-	_type_image_bytes = type_image.get_data()
-	_type_image_width = size_cells.x
-	_type_image_height = size_cells.y
-	_type_image_origin_cells = origin_cells
+	# Push the new type image into the ping scheduler's cache (one
+	# PackedByteArray copy per chunk_modified event, not per pulse).
+	_terrain_origin_cells = origin_cells
+	_ping_scheduler.sync_terrain_state(
+			type_image.get_data(),
+			size_cells.x,
+			size_cells.y,
+			origin_cells,
+			_density_cell_size_px)
 	_shader_mat.set_shader_parameter("density_tex", _density_texture)
 	_shader_mat.set_shader_parameter("type_tex", _type_texture)
 	_shader_mat.set_shader_parameter(
@@ -1158,13 +804,13 @@ func _rebuild_terrain_textures() -> void:
 func _build_bayer_texture() -> Texture2D:
 	# 8x8 ordered-dither Bayer matrix, values 0..63.
 	var bayer := PackedByteArray([
-		0, 32,  8, 40,  2, 34, 10, 42,
+		0, 32, 8, 40, 2, 34, 10, 42,
 		48, 16, 56, 24, 50, 18, 58, 26,
-		12, 44,  4, 36, 14, 46,  6, 38,
+		12, 44, 4, 36, 14, 46, 6, 38,
 		60, 28, 52, 20, 62, 30, 54, 22,
-		 3, 35, 11, 43,  1, 33,  9, 41,
+		3, 35, 11, 43, 1, 33, 9, 41,
 		51, 19, 59, 27, 49, 17, 57, 25,
-		15, 47,  7, 39, 13, 45,  5, 37,
+		15, 47, 7, 39, 13, 45, 5, 37,
 		63, 31, 55, 23, 61, 29, 53, 21,
 	])
 	# Scale 0..63 into 0..255 so it fills the u8 range, then shift

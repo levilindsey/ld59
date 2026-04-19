@@ -108,7 +108,6 @@
     - Spider
     - Bird
 - Test:
-    - Falling cell, liquid, sand damage.
     - Game end (win/lose), restart
 - Level generation:
     - 

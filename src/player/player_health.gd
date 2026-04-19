@@ -19,7 +19,7 @@ signal health_changed(current: int, max: int)
 signal died
 
 
-@export_range(1, 500) var max_health: int = 100
+@export_range(1, 500) var max_health: int = 50
 ## Starting health. Defaults to `max_health` if left negative.
 @export_range(-1, 500) var starting_health: int = -1
 

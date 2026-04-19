@@ -99,6 +99,11 @@ const _DEATH_PULSE_ALPHA := 0.9
 const _DAMAGE_FLASH_COLOR := Color(1.0, 0.2, 0.2)
 const _DAMAGE_PULSE_COLOR := Color(1.0, 0.35, 0.35)
 
+## Delay between the player's "death" sound and the follow-up
+## "failure" cadence. Synced with the destination win cadence offset
+## so both fail/success feedback have the same rhythm.
+const _FAILURE_CADENCE_DELAY_SEC := 0.9
+
 ## Post-jump stuck detection: if `move_and_slide` produced less total
 ## displacement than this after the jump impulse, we consider the
 ## player wedged.
@@ -623,6 +628,7 @@ func _emit_echo_pulse() -> void:
 			_NONE_ECHO_COOLDOWN_SEC if is_none else _ECHO_COOLDOWN_SEC)
 	_echo_cooldown_sec = _current_cooldown_duration
 	G.echo.emit_pulse(global_position, current_frequency)
+	play_sound("echo", true)
 	if not is_none:
 		_auto_advance_if_empty()
 
@@ -736,6 +742,7 @@ func apply_damage(amount: int) -> void:
 		_play_damage_pulse_death()
 	else:
 		_play_damage_pulse_hit()
+		play_sound("damage", true)
 		_invincibility_remaining_sec = _INVINCIBILITY_SEC
 		_blink_accum_sec = 0.0
 
@@ -812,8 +819,19 @@ func apply_heal(amount: int) -> void:
 
 
 func _on_died() -> void:
+	# Halt input/physics on this frame so no stray tick fires in the
+	# window between now and queue_free taking effect at end-of-frame.
+	set_process(false)
+	set_physics_process(false)
+	set_process_unhandled_input(false)
+	# Route death + trailing failure cadence through AudioMain so the
+	# cadence outlives queue_free on this node.
+	if is_instance_valid(G.audio):
+		G.audio.play_player_sound("death", true)
+		G.audio.play_player_sound_delayed("failure", _FAILURE_CADENCE_DELAY_SEC)
 	if is_instance_valid(G.level):
 		G.level.game_over()
+	destroy()
 
 
 func _update_actions() -> void:
@@ -853,6 +871,7 @@ func _enter_attached_idle(lockout_sec: float) -> void:
 ## the player-layer bit so bugs/enemies can detect the player again.
 func _exit_attached_idle() -> void:
 	_is_attached_idle = false
+	play_sound("detach", true)
 	if _attached_sprite_offset_applied:
 		animator.animated_sprite.position.y -= (
 				_ATTACHED_IDLE_SPRITE_Y_OFFSET_PX)

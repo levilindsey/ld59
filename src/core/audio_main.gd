@@ -10,9 +10,15 @@ extends Node2D
 @export var menu_theme_volume := 0.0
 
 @onready var STREAM_PLAYERS_BY_NAME := {
-	"main_theme" = %GirlTheme,
-	"menu_theme" = %GirlTheme,
-	"girl_jump" = %GirlJump,
+	"main_theme" = %MainTheme,
+	"menu_theme" = %MainTheme,
+	"player_jump" = %PlayerJump,
+	"player_land" = %PlayerLand,
+	"player_death" = %PlayerDeath,
+	"player_little_meow" = %PlayerLittleMeow,
+	"player_damage" = %PlayerDamage,
+	"player_echo" = %PlayerEcho,
+	"player_eat_bug" = %PlayerEatBug,
 	"click" = %ClickStreamPlayer,
 	"godot_splash" = %ClickStreamPlayer,
 	"scg_splash" = %SnoringCatStreamPlayer,
@@ -123,10 +129,32 @@ func play_player_sound(
 		"spawn":
 			#play.call("spawn")
 			pass
+		"success":
+			play.call("success")
+			pass
+		"failure":
+			play.call("failure")
+			pass
+		"detach":
+			play.call("player_little_meow")
+			pass
 		"jump":
-			play.call("girl_jump")
+			play.call("player_jump")
 			pass
 		"land":
+			play.call("player_land")
+			pass
+		"damage":
+			play.call("player_damage")
+			pass
+		"death":
+			play.call("player_death")
+			pass
+		"eat_bug":
+			play.call("player_eat_bug")
+			pass
+		"echo":
+			play.call("player_echo")
 			pass
 		"walk":
 			pass
@@ -138,3 +166,15 @@ func stop_player_sound(sound_name: String) -> void:
 	match sound_name:
 		"walk":
 			pass
+
+
+## Plays a player sound after a delay, running the timer on
+## AudioMain itself so the sound fires even if the originating node
+## (e.g. the player on death) has been queue_freed in the interim.
+func play_player_sound_delayed(
+		sound_name: String,
+		delay_sec: float,
+		force_restart := true) -> void:
+	if delay_sec > 0.0:
+		await get_tree().create_timer(delay_sec, true).timeout
+	play_player_sound(sound_name, force_restart)

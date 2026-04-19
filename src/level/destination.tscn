@@ -1,7 +1,8 @@
-[gd_scene load_steps=4 format=3 uid="uid://dxm1qaht8n6rq"]
+[gd_scene load_steps=5 format=3 uid="uid://dxm1qaht8n6rq"]
 
 [ext_resource type="Script" path="res://src/level/destination.gd" id="1_dest"]
 [ext_resource type="PackedScene" uid="uid://br1b7cse0hxmt" path="res://src/player/player_animator.tscn" id="2_animator"]
+[ext_resource type="AudioStream" uid="uid://bioq4mwf012dt" path="res://assets/audio/BigMeow.wav" id="3_bigmeow"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_dest"]
 radius = 16.0
@@ -14,3 +15,8 @@ shape = SubResource("CircleShape2D_dest")
 
 [node name="Mama" parent="." instance=ExtResource("2_animator")]
 scale = Vector2(2, 2)
+
+[node name="BigMeowPlayer" type="AudioStreamPlayer2D" parent="." unique_id=1923764501]
+unique_name_in_owner = true
+stream = ExtResource("3_bigmeow")
+bus = &"SFX"
