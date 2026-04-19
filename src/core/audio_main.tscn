@@ -1,15 +1,15 @@
-[gd_scene load_steps=16 format=3 uid="uid://diqnxd2kabxfk"]
+[gd_scene format=3 uid="uid://diqnxd2kabxfk"]
 
 [ext_resource type="Script" uid="uid://b5hrwox1n2lt0" path="res://src/core/audio_main.gd" id="1_tdp82"]
+[ext_resource type="AudioStream" uid="uid://buqcjobb2kxpn" path="res://assets/audio/Themes/Main.wav" id="2_q1bt0"]
 [ext_resource type="AudioStream" uid="uid://505pi6oqhfst" path="res://assets/audio/Click/Click-cm-02.wav" id="3_seawu"]
-[ext_resource type="AudioStream" uid="uid://quskyvue0u85" path="res://assets/audio/Themes/GGJ_GirlTheme_03.mp3" id="3_y6b5k"]
 [ext_resource type="AudioStream" uid="uid://dmh678v0gek8c" path="res://assets/audio/Click/Click-cm-04.wav" id="4_wywav"]
 [ext_resource type="AudioStream" uid="uid://b3achb3rytv11" path="res://assets/audio/Click/Click-cm-06.wav" id="5_wtepx"]
 [ext_resource type="AudioStream" uid="uid://qk2yfhofcotd" path="res://assets/audio/Click/Click-cm-07.wav" id="6_24bi3"]
 [ext_resource type="AudioStream" uid="uid://b1dhtp12y2qox" path="res://assets/audio/old/single_cat_snore.wav" id="8_o2pvq"]
+[ext_resource type="AudioStream" uid="uid://dn0ymn1trgwyv" path="res://assets/audio/Themes/DeathCadence.wav" id="9_q1bt0"]
 [ext_resource type="AudioStream" uid="uid://byhc1v5pobgjj" path="res://assets/audio/old/cadence_win.wav" id="9_wtepx"]
-[ext_resource type="AudioStream" uid="uid://dngmn1trd45h2" path="res://assets/audio/old/cadence_lose.wav" id="10_24bi3"]
-[ext_resource type="AudioStream" uid="uid://cycmr81xwq5rj" path="res://assets/audio/old/achievement.wav" id="11_q1bt0"]
+[ext_resource type="AudioStream" uid="uid://d373neh1o4of3" path="res://assets/audio/Themes/WinCadence.wav" id="10_0ah1i"]
 [ext_resource type="AudioStream" uid="uid://v3uempe1wjse" path="res://assets/audio/GirlJump/Girl Voice.dup1.01.cm1-02.wav" id="49_3itvs"]
 [ext_resource type="AudioStream" uid="uid://bf6kea2504jqh" path="res://assets/audio/GirlJump/Girl Voice.dup1.01.cm1-04.wav" id="50_6iqo1"]
 [ext_resource type="AudioStream" uid="uid://cnkxtgkyup4pa" path="res://assets/audio/GirlJump/Girl Voice.dup1.01.cm1-05.wav" id="51_wo8yk"]
@@ -28,42 +28,42 @@ stream_0/stream = ExtResource("49_3itvs")
 stream_1/stream = ExtResource("50_6iqo1")
 stream_2/stream = ExtResource("51_wo8yk")
 
-[node name="AudioMain" type="Node2D"]
+[node name="AudioMain" type="Node2D" unique_id=1190513098]
 process_mode = 3
 script = ExtResource("1_tdp82")
 main_theme_volume = -8.0
 menu_theme_volume = 2.247
 
-[node name="GirlTheme" type="AudioStreamPlayer" parent="."]
+[node name="GirlTheme" type="AudioStreamPlayer" parent="." unique_id=194850655]
 unique_name_in_owner = true
 process_mode = 3
-stream = ExtResource("3_y6b5k")
+stream = ExtResource("2_q1bt0")
 bus = &"Music"
 
-[node name="ClickStreamPlayer" type="AudioStreamPlayer" parent="."]
+[node name="ClickStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1593144270]
 unique_name_in_owner = true
 process_mode = 3
 stream = SubResource("AudioStreamRandomizer_2b2qe")
 volume_db = -2.919
 bus = &"SFX"
 
-[node name="SnoringCatStreamPlayer" type="AudioStreamPlayer" parent="."]
+[node name="SnoringCatStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=213182475]
 unique_name_in_owner = true
 stream = ExtResource("8_o2pvq")
 
-[node name="SuccessCadenceStreamPlayer" type="AudioStreamPlayer" parent="."]
+[node name="SuccessCadenceStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1543703679]
 unique_name_in_owner = true
 stream = ExtResource("9_wtepx")
 
-[node name="FailureCadenceStreamPlayer" type="AudioStreamPlayer" parent="."]
+[node name="FailureCadenceStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=2058591118]
 unique_name_in_owner = true
-stream = ExtResource("10_24bi3")
+stream = ExtResource("9_q1bt0")
 
-[node name="AchievementStreamPlayer" type="AudioStreamPlayer" parent="."]
+[node name="AchievementStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1111936372]
 unique_name_in_owner = true
-stream = ExtResource("11_q1bt0")
+stream = ExtResource("10_0ah1i")
 
-[node name="GirlJump" type="AudioStreamPlayer" parent="."]
+[node name="GirlJump" type="AudioStreamPlayer" parent="." unique_id=1854852917]
 unique_name_in_owner = true
 stream = SubResource("AudioStreamRandomizer_tffn8")
 pitch_scale = 1.1
