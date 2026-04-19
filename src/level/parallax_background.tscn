@@ -1,9 +1,15 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/level/parallax_background.gd" id="1_bg"]
+[ext_resource type="Texture2D" uid="uid://c5ri377v1lylw" path="res://assets/images/placeholders/parallax_far.png" id="2_far"]
+[ext_resource type="Texture2D" uid="uid://cgc4bmevlemf0" path="res://assets/images/placeholders/parallax_mid.png" id="3_mid"]
+[ext_resource type="Texture2D" uid="uid://c326cmvdf8p6m" path="res://assets/images/placeholders/parallax_near.png" id="4_near"]
 
 [node name="ParallaxBackground" type="Node2D"]
 script = ExtResource("1_bg")
+far_texture = ExtResource("2_far")
+mid_texture = ExtResource("3_mid")
+near_texture = ExtResource("4_near")
 z_index = -100
 z_as_relative = false
 

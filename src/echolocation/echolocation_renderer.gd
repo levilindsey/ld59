@@ -71,6 +71,15 @@ const _BUG_TAG_RADIUS_PX := 6.0
 ## G.level.player once available.
 @export var follow_target: Node2D
 
+## Terrain art atlases sampled in the composite shader's near-field.
+## Regenerate defaults with `scripts/dump_placeholder_textures.ps1`.
+## `interior_atlas` and `surface_atlas` are horizontal strips of
+## `Frequency.ATLAS_SLOT_COUNT` slots; `damage_tier_atlas` is a strip
+## of `PlaceholderTerrainTextures.DAMAGE_TIER_COUNT` crack tiers.
+@export var interior_atlas: Texture2D
+@export var surface_atlas: Texture2D
+@export var damage_tier_atlas: Texture2D
+
 @export_range(0.0, 512.0) var near_radius_px := 80.0
 @export_range(0.0, 128.0) var near_fade_px := 32.0
 
@@ -199,15 +208,10 @@ func _ready() -> void:
 	# flat palette color; the composite shader overlays these atlases
 	# in the near-field only, so close-by terrain has real art while
 	# pulse stipples outside the near-field stay flat palette color.
+	_shader_mat.set_shader_parameter("interior_atlas", interior_atlas)
+	_shader_mat.set_shader_parameter("surface_atlas", surface_atlas)
 	_shader_mat.set_shader_parameter(
-			"interior_atlas",
-			PlaceholderTerrainTextures.make_interior_atlas())
-	_shader_mat.set_shader_parameter(
-			"surface_atlas",
-			PlaceholderTerrainTextures.make_surface_atlas())
-	_shader_mat.set_shader_parameter(
-			"damage_tier_atlas",
-			PlaceholderTerrainTextures.make_damage_tier_atlas())
+			"damage_tier_atlas", damage_tier_atlas)
 	_shader_mat.set_shader_parameter(
 			"damage_tier_count",
 			PlaceholderTerrainTextures.DAMAGE_TIER_COUNT)
