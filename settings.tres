@@ -10,3 +10,4 @@ pauses_on_focus_out = false
 default_gravity_acceleration = 1400.0
 player_scene = ExtResource("2_legvn")
 default_level_scene = ExtResource("1_legvn")
+start_with_full_juice = true
