@@ -1,7 +1,18 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://src/enemies/owl.gd" id="1_owl"]
 [ext_resource type="Texture2D" uid="uid://bm00xmdl2g0up" path="res://assets/images/scratch/owl.png" id="2_tex"]
+[ext_resource type="Shader" path="res://src/player/player_damage_flash.gdshader" id="3_damage_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_owl_damage"]
+resource_local_to_scene = true
+shader = ExtResource("3_damage_shader")
+shader_parameter/flash_color = Color(1, 0.2, 0.2, 1)
+shader_parameter/flash_strength = 0.0
+shader_parameter/pulse_color = Color(1, 0.3, 0.3, 1)
+shader_parameter/pulse_radius_px = 0.0
+shader_parameter/pulse_width_px = 5.0
+shader_parameter/pulse_alpha = 0.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_owl"]
 radius = 7.0
@@ -51,6 +62,7 @@ knockback_impulse_px_per_sec = 240.0
 shape = SubResource("CircleShape2D_owl")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+material = SubResource("ShaderMaterial_owl_damage")
 sprite_frames = SubResource("SpriteFrames_owl")
 animation = &"fly"
 autoplay = "fly"

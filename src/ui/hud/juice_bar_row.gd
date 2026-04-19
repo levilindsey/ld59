@@ -20,13 +20,47 @@ const _SLOT_ORDER: Array[int] = [
 	Frequency.Type.YELLOW,
 ]
 
+## Echo icon modulate = lerp(base_hue, WHITE, _ECHO_ICON_PASTEL_T).
+## Higher t reads as lighter + less saturated.
+const _ECHO_ICON_PASTEL_T := 0.4
+
+## Fallback hue used for the NONE slot's echo icon (the slot is
+## gray-themed, not driven by a Frequency palette entry).
+const _ECHO_ICON_NONE_BASE := Color(0.55, 0.55, 0.6, 1.0)
+
 
 var _slots: Dictionary = {}
+
 @onready var _selection_box: Control = $SelectionBox
 
 
 func _ready() -> void:
 	_collect_slots()
+	_apply_echo_icon_tints()
+
+
+## Per-slot echo icon modulate = that slot's hue lerped toward
+## white so the icon reads as a lighter / less-saturated tint of
+## the slot color.
+func _apply_echo_icon_tints() -> void:
+	for freq: int in _SLOT_ORDER:
+		var slot: PanelContainer = _slots.get(freq, null)
+		if slot == null:
+			continue
+		var bar := slot.get_node_or_null("Bar") as ProgressBar
+		if bar == null:
+			continue
+		var icon := bar.get_node_or_null("EchoIcon") as CanvasItem
+		if icon == null:
+			continue
+		var base := _echo_icon_base_color(freq)
+		icon.modulate = base.lerp(Color.WHITE, _ECHO_ICON_PASTEL_T)
+
+
+func _echo_icon_base_color(freq: int) -> Color:
+	if freq == Frequency.Type.NONE:
+		return _ECHO_ICON_NONE_BASE
+	return Frequency.color_of(freq)
 
 
 func _collect_slots() -> void:

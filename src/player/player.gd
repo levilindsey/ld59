@@ -74,16 +74,30 @@ const _INVINCIBILITY_SEC := 0.8
 ## this many seconds.
 const _BLINK_PERIOD_SEC := 0.12
 
-## Duration of the red-flash tint on the player sprite body.
-const _DAMAGE_FLASH_DURATION_SEC := 0.35
-## Duration of the outline-pulse ring expanding outward from the
-## sprite's 1-pixel silhouette after a hit.
-const _DAMAGE_PULSE_DURATION_SEC := 0.5
-## Final radius the pulse ring reaches before fading. Bounded by how
-## much transparent border exists in the sprite's frame quad — the
-## kittenbaticorn frames have a few pixels of padding, so ~6 px
-## reads as a soft halo before it clips.
-const _DAMAGE_PULSE_MAX_RADIUS_PX := 6.0
+## Peak body-tint strength at the start of a damage/death flash. Both
+## hit and death animations tween this down to zero.
+const _DAMAGE_FLASH_PEAK := 0.85
+
+## Damage-hit pulse — short, farther, thicker, translucent outline
+## that snaps outward on every non-fatal hit.
+const _DAMAGE_FLASH_DURATION_SEC := 0.25
+const _DAMAGE_PULSE_DURATION_SEC := 0.3
+const _DAMAGE_PULSE_MAX_RADIUS_PX := 10.0
+const _DAMAGE_PULSE_WIDTH_PX := 3.5
+const _DAMAGE_PULSE_ALPHA := 0.7
+
+## Death pulse — same shape, bigger and slower, plays once on the
+## fatal hit. Final radius is bounded by how much transparent border
+## the sprite's frame quad has; the kittenbaticorn frames clip past
+## ~20 px, which still leaves a dramatic halo.
+const _DEATH_FLASH_DURATION_SEC := 0.55
+const _DEATH_PULSE_DURATION_SEC := 0.8
+const _DEATH_PULSE_MAX_RADIUS_PX := 18.0
+const _DEATH_PULSE_WIDTH_PX := 5.0
+const _DEATH_PULSE_ALPHA := 0.9
+
+const _DAMAGE_FLASH_COLOR := Color(1.0, 0.2, 0.2)
+const _DAMAGE_PULSE_COLOR := Color(1.0, 0.35, 0.35)
 
 ## Post-jump stuck detection: if `move_and_slide` produced less total
 ## displacement than this after the jump impulse, we consider the
@@ -643,19 +657,52 @@ func get_current_cooldown_duration() -> float:
 func apply_damage(amount: int) -> void:
 	if _invincibility_remaining_sec > 0.0:
 		return
+	if %PlayerHealth.is_dead():
+		return
 	%PlayerHealth.apply_damage(amount)
-	_play_damage_hit_animation()
-	if not %PlayerHealth.is_dead():
+	if %PlayerHealth.is_dead():
+		_play_damage_pulse_death()
+	else:
+		_play_damage_pulse_hit()
 		_invincibility_remaining_sec = _INVINCIBILITY_SEC
 		_blink_accum_sec = 0.0
 
 
-## Kick off the red-flash + outward-pulse animation on the sprite's
+func _play_damage_pulse_hit() -> void:
+	_play_damage_pulse(
+			_DAMAGE_FLASH_COLOR,
+			_DAMAGE_PULSE_COLOR,
+			_DAMAGE_FLASH_DURATION_SEC,
+			_DAMAGE_PULSE_DURATION_SEC,
+			_DAMAGE_PULSE_MAX_RADIUS_PX,
+			_DAMAGE_PULSE_WIDTH_PX,
+			_DAMAGE_PULSE_ALPHA)
+
+
+func _play_damage_pulse_death() -> void:
+	_play_damage_pulse(
+			_DAMAGE_FLASH_COLOR,
+			_DAMAGE_PULSE_COLOR,
+			_DEATH_FLASH_DURATION_SEC,
+			_DEATH_PULSE_DURATION_SEC,
+			_DEATH_PULSE_MAX_RADIUS_PX,
+			_DEATH_PULSE_WIDTH_PX,
+			_DEATH_PULSE_ALPHA)
+
+
+## Kick off the body flash + outward outline pulse on the sprite's
 ## ShaderMaterial. The material lives on the PlayerAnimator's
 ## AnimatedSprite2D and exposes `flash_strength`, `pulse_radius_px`,
-## and `pulse_alpha` uniforms. Re-hitting cancels any in-flight
-## tween so the animation restarts cleanly.
-func _play_damage_hit_animation() -> void:
+## `pulse_alpha`, and `pulse_width_px` uniforms. Re-hitting cancels
+## any in-flight tween so the animation restarts cleanly.
+func _play_damage_pulse(
+		flash_color: Color,
+		pulse_color: Color,
+		flash_duration: float,
+		pulse_duration: float,
+		max_radius_px: float,
+		width_px: float,
+		alpha: float) -> void:
 	if animator == null:
 		return
 	var sprite: AnimatedSprite2D = animator.animated_sprite
@@ -666,24 +713,25 @@ func _play_damage_hit_animation() -> void:
 		return
 	if _damage_hit_tween != null and _damage_hit_tween.is_valid():
 		_damage_hit_tween.kill()
+	mat.set_shader_parameter("flash_color", flash_color)
+	mat.set_shader_parameter("pulse_color", pulse_color)
+	mat.set_shader_parameter("flash_strength", _DAMAGE_FLASH_PEAK)
+	mat.set_shader_parameter("pulse_width_px", width_px)
+	mat.set_shader_parameter("pulse_radius_px", 1.0)
+	mat.set_shader_parameter("pulse_alpha", alpha)
 	_damage_hit_tween = create_tween()
 	_damage_hit_tween.set_parallel(true)
-	# Body tint: peak immediately, decay fast.
-	mat.set_shader_parameter("flash_strength", 0.85)
 	_damage_hit_tween.tween_property(
 			mat, "shader_parameter/flash_strength",
-			0.0, _DAMAGE_FLASH_DURATION_SEC
+			0.0, flash_duration
 	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	# Outline pulse: ring radius grows from 1 → max, alpha fades to 0.
-	mat.set_shader_parameter("pulse_radius_px", 1.0)
-	mat.set_shader_parameter("pulse_alpha", 1.0)
 	_damage_hit_tween.tween_property(
 			mat, "shader_parameter/pulse_radius_px",
-			_DAMAGE_PULSE_MAX_RADIUS_PX, _DAMAGE_PULSE_DURATION_SEC
+			max_radius_px, pulse_duration
 	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_damage_hit_tween.tween_property(
 			mat, "shader_parameter/pulse_alpha",
-			0.0, _DAMAGE_PULSE_DURATION_SEC
+			0.0, pulse_duration
 	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 

@@ -1,7 +1,18 @@
-[gd_scene load_steps=18 format=3 uid="uid://ck8v0fmnuap7q"]
+[gd_scene load_steps=20 format=3 uid="uid://ck8v0fmnuap7q"]
 
 [ext_resource type="Script" path="res://src/enemies/coyote.gd" id="1_coyote"]
 [ext_resource type="Texture2D" uid="uid://70badbq75sgf" path="res://assets/images/scratch/coyote.png" id="2_tex"]
+[ext_resource type="Shader" path="res://src/player/player_damage_flash.gdshader" id="3_damage_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_coyote_damage"]
+resource_local_to_scene = true
+shader = ExtResource("3_damage_shader")
+shader_parameter/flash_color = Color(1, 0.2, 0.2, 1)
+shader_parameter/flash_strength = 0.0
+shader_parameter/pulse_color = Color(1, 0.3, 0.3, 1)
+shader_parameter/pulse_radius_px = 0.0
+shader_parameter/pulse_width_px = 5.0
+shader_parameter/pulse_alpha = 0.0
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_coyote"]
 radius = 9.0
@@ -94,6 +105,7 @@ knockback_impulse_px_per_sec = 260.0
 shape = SubResource("CircleShape2D_coyote")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+material = SubResource("ShaderMaterial_coyote_damage")
 sprite_frames = SubResource("SpriteFrames_coyote")
 animation = &"idle"
 autoplay = "idle"
