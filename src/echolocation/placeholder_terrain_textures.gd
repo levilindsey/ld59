@@ -20,6 +20,13 @@ extends RefCounted
 const TILE_PX := 32
 const SURFACE_HEIGHT_PX := 12
 
+## Damage-tier atlas: horizontal strip of `DAMAGE_TIER_COUNT` tiles,
+## each showing progressively heavier cracks. Tier 0 is pristine
+## (pure black = no cracks), tier N-1 is fully shattered. The shader
+## samples `.r` as crack alpha and darkens the tile's interior art.
+const DAMAGE_TIER_COUNT := 5
+const DAMAGE_TIER_TILE_PX := 32
+
 
 # ---- Per-type interior palettes (dark / mid / light) ---------------
 
@@ -170,6 +177,63 @@ static func make_surface_atlas() -> ImageTexture:
 
 	# Water gets a "shine" treatment instead of moss.
 	_draw_liquid_shine_surface(img, int(Frequency.Type.LIQUID))
+
+	return ImageTexture.create_from_image(img)
+
+
+## Generate a horizontal-strip atlas of progressive damage tiers.
+## Tier 0: pristine (black = no cracks).
+## Tier 1: scratched — a few short cracks.
+## Tier 2: cracked — more.
+## Tier 3: chipped — many cracks and scatter pixels.
+## Tier 4: shattering — heavy coverage.
+##
+## Shader samples `.r` as crack intensity (0 = clean, 1 = full crack)
+## and darkens the tile's interior_rgb by that amount.
+static func make_damage_tier_atlas() -> ImageTexture:
+	var tile: int = DAMAGE_TIER_TILE_PX
+	var width: int = tile * DAMAGE_TIER_COUNT
+	var img := Image.create(width, tile, false, Image.FORMAT_L8)
+	img.fill(Color(0.0, 0.0, 0.0, 1.0))
+
+	# Tier 0 stays pristine. Draw cracks for tiers 1..N-1.
+	for tier in range(1, DAMAGE_TIER_COUNT):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 0xD4A + tier
+		var tile_x_offset: int = tier * tile
+		# Crack count scales roughly quadratically with tier (3, 12,
+		# 27, 48) so late tiers look convincingly shattered.
+		var crack_count: int = tier * tier * 3
+		for _c in range(crack_count):
+			var x: int = rng.randi() % tile
+			var y: int = rng.randi() % tile
+			var length: int = 3 + rng.randi() % 5
+			var dx: int = (rng.randi() % 3) - 1
+			var dy: int = (rng.randi() % 3) - 1
+			if dx == 0 and dy == 0:
+				dy = 1
+			for _step in range(length):
+				if (x < 0 or y < 0
+						or x >= tile or y >= tile):
+					break
+				img.set_pixel(
+						tile_x_offset + x, y,
+						Color(1.0, 1.0, 1.0, 1.0))
+				# Occasional direction jitter keeps cracks jagged.
+				if rng.randf() < 0.3:
+					dx = (rng.randi() % 3) - 1
+					dy = (rng.randi() % 3) - 1
+					if dx == 0 and dy == 0:
+						dy = 1
+				x += dx
+				y += dy
+		# Scatter chip pixels scaling with tier.
+		for _p in range(tier * 8):
+			var x: int = rng.randi() % tile
+			var y: int = rng.randi() % tile
+			img.set_pixel(
+					tile_x_offset + x, y,
+					Color(1.0, 1.0, 1.0, 1.0))
 
 	return ImageTexture.create_from_image(img)
 

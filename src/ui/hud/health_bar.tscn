@@ -14,9 +14,17 @@ corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hb_fill"]
+bg_color = Color(0.3, 0.85, 0.3, 1)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
 [node name="HealthBar" type="ProgressBar"]
 custom_minimum_size = Vector2(120, 12)
 theme_override_styles/background = SubResource("StyleBoxFlat_hb_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_hb_fill")
 min_value = 0.0
 max_value = 100.0
 value = 100.0

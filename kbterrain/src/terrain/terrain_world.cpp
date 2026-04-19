@@ -294,6 +294,8 @@ void TerrainWorld::_bind_methods() {
 			&TerrainWorld::build_density_image);
 	ClassDB::bind_method(D_METHOD("build_type_image"),
 			&TerrainWorld::build_type_image);
+	ClassDB::bind_method(D_METHOD("build_health_image"),
+			&TerrainWorld::build_health_image);
 	ClassDB::bind_method(D_METHOD("get_world_cell_origin"),
 			&TerrainWorld::get_world_cell_origin);
 	ClassDB::bind_method(D_METHOD("get_world_cell_size"),
@@ -737,7 +739,8 @@ bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
 		int frequency_mask, Vector2 emitter_world_pos,
 		Vector2 cell_world_pos,
 		std::unordered_set<int64_t> *destroyed_this_pulse,
-		int32_t *out_world_cx, int32_t *out_world_cy) {
+		int32_t *out_world_cx, int32_t *out_world_cy,
+		bool *out_took_damage) {
 	if (cx < 0 || cy < 0 || cx >= chunk->cells || cy >= chunk->cells) {
 		return false;
 	}
@@ -839,9 +842,15 @@ bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
 		if (out_world_cy) {
 			*out_world_cy = chunk->coords.y * chunk->cells + cy;
 		}
+		if (out_took_damage) {
+			*out_took_damage = true;
+		}
 		return true;
 	} else {
 		chunk->health_per_cell[idx] = static_cast<uint8_t>(hp);
+		if (out_took_damage) {
+			*out_took_damage = true;
+		}
 	}
 	return false;
 }
@@ -885,6 +894,7 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 		}
 
 		bool any_change = false;
+		bool any_damage = false;
 		const float r_sq = radius_px * radius_px;
 		for (int cy = min_y; cy <= max_y; cy++) {
 			for (int cx = min_x; cx <= max_x; cx++) {
@@ -897,15 +907,19 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 					continue;
 				}
 				int32_t w_cx = 0, w_cy = 0;
+				bool took_damage = false;
 				const bool destroyed = _apply_damage_to_cell(
 						chunk, cx, cy, dmg, 0,
 						frequency_mask,
 						world_pos, cell_center, &destroyed_this_pulse,
-						&w_cx, &w_cy);
+						&w_cx, &w_cy, &took_damage);
 				if (destroyed) {
 					destroyed_flat.push_back(w_cx);
 					destroyed_flat.push_back(w_cy);
 					any_change = true;
+				}
+				if (took_damage) {
+					any_damage = true;
 				}
 			}
 		}
@@ -913,6 +927,11 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 		if (any_change) {
 			chunk->generation.fetch_add(1);
 			_queue_remesh_and_neighbors(chunk);
+		} else if (any_damage) {
+			// Partial damage (no destruction) — skip the expensive
+			// remesh but still notify listeners so health_tex etc.
+			// re-upload with the new per-cell health values.
+			emit_signal("chunk_modified", chunk->coords);
 		}
 	}
 
@@ -1150,6 +1169,7 @@ void TerrainWorld::damage_with_falloff(
 		}
 
 		bool any_change = false;
+		bool any_damage = false;
 		const float outer_r_sq = outer_radius_px * outer_radius_px;
 		const float surface_r_sq =
 				surface_max_radius_px * surface_max_radius_px;
@@ -1223,16 +1243,20 @@ void TerrainWorld::damage_with_falloff(
 					continue;
 				}
 				int32_t w_cx = 0, w_cy = 0;
+				bool took_damage = false;
 				const bool destroyed = _apply_damage_to_cell(
 						chunk, cx, cy,
 						surface_cell_dmg, proximity_cell_dmg,
 						frequency_mask, world_pos, cell_center,
 						&destroyed_this_pulse,
-						&w_cx, &w_cy);
+						&w_cx, &w_cy, &took_damage);
 				if (destroyed) {
 					destroyed_flat.push_back(w_cx);
 					destroyed_flat.push_back(w_cy);
 					any_change = true;
+				}
+				if (took_damage) {
+					any_damage = true;
 				}
 			}
 		}
@@ -1240,6 +1264,10 @@ void TerrainWorld::damage_with_falloff(
 		if (any_change) {
 			chunk->generation.fetch_add(1);
 			_queue_remesh_and_neighbors(chunk);
+		} else if (any_damage) {
+			// Partial damage only — skip remesh but notify so
+			// listeners re-upload health_tex etc.
+			emit_signal("chunk_modified", chunk->coords);
 		}
 	}
 
@@ -1508,6 +1536,43 @@ Ref<Image> TerrainWorld::build_type_image() const {
 			std::memcpy(
 					raw + dst_row,
 					chunk->type_per_cell.data() + src_row,
+					cells);
+		}
+	}
+	return Image::create_from_data(
+			width, height, false, Image::FORMAT_R8, data);
+}
+
+
+Ref<Image> TerrainWorld::build_health_image() const {
+	if (!_manager) {
+		return Ref<Image>();
+	}
+	Vector2i mn, mx;
+	if (!_chunk_coord_bounds(*_manager, mn, mx)) {
+		return Ref<Image>();
+	}
+	const int cells = _cells_cached;
+	const int width = (mx.x - mn.x + 1) * cells;
+	const int height = (mx.y - mn.y + 1) * cells;
+	PackedByteArray data;
+	data.resize(width * height);
+	uint8_t *raw = data.ptrw();
+	// Default 0 = "no cell here"; the shader reads 0 as full damage
+	// but the per-pixel branch only runs when `is_bg_tile`, so empty
+	// pixels never pick up a false-damage tint.
+	std::fill(raw, raw + width * height, static_cast<uint8_t>(0));
+	for (const auto &kv : _manager->all()) {
+		const terrain::Chunk *chunk = kv.second.get();
+		const int base_x = (chunk->coords.x - mn.x) * cells;
+		const int base_y = (chunk->coords.y - mn.y) * cells;
+		for (int y = 0; y < cells; y++) {
+			const int dst_y = base_y + y;
+			const int dst_row = dst_y * width + base_x;
+			const int src_row = y * cells;
+			std::memcpy(
+					raw + dst_row,
+					chunk->health_per_cell.data() + src_row,
 					cells);
 		}
 	}
