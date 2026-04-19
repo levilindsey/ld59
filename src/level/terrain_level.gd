@@ -188,9 +188,16 @@ const _DAMAGE_MIN_AMOUNT := 11
 func _on_pulse_emitted(pulse: EchoPulse) -> void:
 	if not is_instance_valid(G.terrain):
 		return
-	var mask: int = 0
-	if pulse.frequency > 0 and pulse.frequency <= 30:
-		mask = 1 << pulse.frequency
+	# Only the four colored frequencies carve terrain. NONE (blank
+	# "stipple-only" pulse) and any other non-gameplay value skips
+	# the damage dispatch entirely. Without this guard, a NONE pulse
+	# would pass mask=0 to the C++ `_apply_damage_to_cell`, whose
+	# "if mask != 0" early-gate treats 0 as "no filter" and damages
+	# every cell in range — a latent pre-existing issue.
+	if pulse.frequency < Frequency.Type.RED \
+			or pulse.frequency > Frequency.Type.YELLOW:
+		return
+	var mask := 1 << pulse.frequency
 	G.terrain.damage_with_falloff(
 			pulse.center,
 			_DAMAGE_MAX_RADIUS_PX,

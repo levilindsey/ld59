@@ -83,8 +83,8 @@ func _input(event: InputEvent) -> void:
 		event.is_action_pressed("move_left") or
 		event.is_action_pressed("move_right") or
 		event.is_action_pressed("jump") or
-		event.is_action_pressed("scroll_left") or
-		event.is_action_pressed("scroll_right")
+		event.is_action_pressed("select_prev_frequency") or
+		event.is_action_pressed("select_next_frequency")
 	):
 		start_game()
 

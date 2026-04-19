@@ -16,12 +16,23 @@ extends Resource
 ## Thickness of the INDESTRUCTIBLE border that wraps the play area.
 @export_range(1, 6) var border_tiles: int = 2
 
-## Number of internal platforms the layout planner tries to place.
-@export_range(0, 40) var platform_count: int = 8
+## Number of chambers in the sequence. Spawn lands in chamber 0,
+## destination in chamber N-1; the middle chambers carry themed
+## gameplay beats (transit / combat / hazard). 2 = minimal
+## spawn-to-goal with nothing in between; 4–6 is the sweet spot.
+@export_range(2, 10) var chamber_count: int = 5
 
-## Number of set-pieces (pools, web-tunnels, enemy pockets) to stamp
-## into the level. Budget is soft; some attempts will fail placement.
-@export_range(0, 20) var set_piece_budget: int = 6
+## Per-chamber platform budget. Each chamber attempts up to this
+## many floating platforms on top of its themed content.
+@export_range(0, 8) var platforms_per_chamber: int = 2
+
+## Rotation of themes assigned to the interior chambers
+## (chambers 1..N-2). Entry (0) and Exit (N-1) are fixed. If the
+## level has more interior chambers than this array has entries,
+## the rotation repeats. Values: "transit", "combat", "hazard".
+@export var interior_themes: PackedStringArray = PackedStringArray([
+	"transit", "combat", "hazard",
+])
 
 ## Rough set-piece mix. Values are relative weights.
 @export var mix_pool_sand_trap: int = 3

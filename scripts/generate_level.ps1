@@ -13,8 +13,10 @@ param(
     [int]$Seed = -1,
     [int]$Width = 72,
     [int]$Height = 40,
-    [int]$Budget = 6,
-    [int]$Platforms = 8,
+    # Number of themed chambers (entry + interior + exit).
+    [int]$Chambers = 5,
+    # Platforms per themed chamber (interior only).
+    [int]$PlatformsPerChamber = 2,
     [string]$Template = "res://src/level/terrain_level.tscn",
     [string]$Output = "res://src/level/generated_level.tscn"
 )
@@ -37,8 +39,8 @@ try {
             --procgen-seed $Seed `
             --width $Width `
             --height $Height `
-            --budget $Budget `
-            --platforms $Platforms `
+            --chambers $Chambers `
+            --platforms-per $PlatformsPerChamber `
             --template $Template `
             --output $Output
     # Godot often exits with non-zero/null code even after successful

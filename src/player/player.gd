@@ -24,6 +24,7 @@ const _FLUID_DAMAGE_TICK_SEC := 0.25
 ## across frames at varying physics steps.
 const _WEB_MAX_VERTICAL_SPEED_PX_PER_SEC := 120.0
 
+<<<<<<< HEAD
 ## Horizontal speed multiplier while submerged in LIQUID terrain.
 const _WATER_SPEED_MULTIPLIER := 0.45
 ## Post-step cap on |velocity.y| while submerged. Keeps buoyancy and
@@ -37,7 +38,31 @@ const _WATER_GRAVITY_SCALE := 0.2
 const _WATER_SWIM_IMPULSE_PX_PER_SEC := 180.0
 
 ## Minimum interval between echo pulses (3 / second).
+=======
+## Minimum interval between echo pulses (3 / second) for colored pulses.
+>>>>>>> a2a916c (Update juice)
 const _ECHO_COOLDOWN_SEC := 1.0 / 3.0
+
+## Half-rate cooldown for the blank (NONE) reveal-only pulse.
+const _NONE_ECHO_COOLDOWN_SEC := _ECHO_COOLDOWN_SEC * 2.0
+
+## Maximum juice per frequency. Fills from eating bugs (+1 small,
+## +5 big); consumed at 1/echo.
+const MAX_JUICE := 10
+
+## Juice granted by each bug size (used by `Bug._consume`).
+const SMALL_JUICE_GRANT := 1
+const BIG_JUICE_GRANT := 5
+
+## Order the Q/E selection cursor walks. NONE is always selectable;
+## the four colored slots are skipped while their juice is 0.
+const _SELECTABLE_ORDER: Array[int] = [
+	Frequency.Type.NONE,
+	Frequency.Type.RED,
+	Frequency.Type.GREEN,
+	Frequency.Type.BLUE,
+	Frequency.Type.YELLOW,
+]
 
 ## Grace period after taking damage: further damage is ignored and
 ## the sprite blinks.
@@ -48,21 +73,35 @@ const _INVINCIBILITY_SEC := 0.8
 const _BLINK_PERIOD_SEC := 0.12
 
 
+signal juice_changed(frequency: int, new_value: int)
+signal frequency_selection_changed(frequency: int)
+
+
 var _is_in_web := false
 var _is_in_water := false
 var _fluid_damage_accum_sec := 0.0
 var _echo_cooldown_sec := 0.0
+## Cooldown duration that's currently in effect — either
+## `_ECHO_COOLDOWN_SEC` or `_NONE_ECHO_COOLDOWN_SEC`, depending on
+## which frequency the last pulse used. Used by the HUD to scale its
+## cooldown-ready animation against the right denominator.
+var _current_cooldown_duration := _ECHO_COOLDOWN_SEC
 var _invincibility_remaining_sec := 0.0
 var _blink_accum_sec := 0.0
 var _pre_step_velocity_y := 0.0
 
+## Per-frequency juice pool. Populated in `_ready()`; only the four
+## gameplay frequencies (RED/GREEN/BLUE/YELLOW) are keys.
+var _juice: Dictionary = {}
+
 
 var half_size := Vector2.INF
 
-## Player's active echolocation frequency. Changes when eating a
-## matching-frequency bug (Phase 3). Drives which tiles an emitted
-## pulse damages and the pulse's visual tint.
-var current_frequency: int = Frequency.Type.GREEN
+## Player's currently-selected echolocation frequency. Driven by
+## Q/E (or auto-advance when the active color runs dry). NONE is
+## "stipple-only" — no juice cost, half-rate cooldown, reveals the
+## level but interacts with no tiles or enemies.
+var current_frequency: int = Frequency.Type.NONE
 
 
 func _ready() -> void:
@@ -70,6 +109,13 @@ func _ready() -> void:
 	half_size = Geometry.calculate_half_width_height(
 		collision_shape.shape,
 		false)
+	_juice = {
+		Frequency.Type.RED: 0,
+		Frequency.Type.GREEN: 0,
+		Frequency.Type.BLUE: 0,
+		Frequency.Type.YELLOW: 0,
+	}
+	current_frequency = Frequency.Type.NONE
 	%PlayerHealth.died.connect(_on_died)
 
 
@@ -179,7 +225,11 @@ func _sample_web_overlap() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if G.level.has_won or G.level.has_finished:
 		return
-	if event.is_action_pressed("ability"):
+	if event.is_action_pressed("select_prev_frequency"):
+		select_prev_frequency()
+	elif event.is_action_pressed("select_next_frequency"):
+		select_next_frequency()
+	elif event.is_action_pressed("ability"):
 		_emit_echo_pulse()
 
 
@@ -188,12 +238,117 @@ func _emit_echo_pulse() -> void:
 		return
 	if _echo_cooldown_sec > 0.0:
 		return
-	_echo_cooldown_sec = _ECHO_COOLDOWN_SEC
+	if not can_select(current_frequency):
+		# Selection landed on an empty color (shouldn't normally
+		# happen — the scroll skips empties — but defend against
+		# stale cursor state).
+		return
+	var is_none := current_frequency == Frequency.Type.NONE
+	if not is_none:
+		consume_juice(current_frequency, 1)
+	_current_cooldown_duration = (
+			_NONE_ECHO_COOLDOWN_SEC if is_none else _ECHO_COOLDOWN_SEC)
+	_echo_cooldown_sec = _current_cooldown_duration
 	G.echo.emit_pulse(global_position, current_frequency)
+	if not is_none:
+		_auto_advance_if_empty()
 
 
+## Kept for compatibility with any external callers; the feature
+## intentionally drives `current_frequency` via Q/E + auto-advance
+## only. Bug `_consume` no longer calls this.
 func set_frequency(freq: int) -> void:
 	current_frequency = freq
+	frequency_selection_changed.emit(current_frequency)
+
+
+# ---- Juice pool API -------------------------------------------------------
+
+func get_juice(freq: int) -> int:
+	return int(_juice.get(freq, 0))
+
+
+func add_juice(freq: int, amount: int) -> int:
+	if not _juice.has(freq):
+		return 0
+	var before: int = _juice[freq]
+	var after: int = mini(MAX_JUICE, before + amount)
+	if after == before:
+		return 0
+	_juice[freq] = after
+	juice_changed.emit(freq, after)
+	return after - before
+
+
+func consume_juice(freq: int, amount: int) -> bool:
+	if freq == Frequency.Type.NONE:
+		return true
+	if not _juice.has(freq):
+		return false
+	if int(_juice[freq]) < amount:
+		return false
+	_juice[freq] = int(_juice[freq]) - amount
+	juice_changed.emit(freq, _juice[freq])
+	return true
+
+
+func has_juice(freq: int) -> bool:
+	if freq == Frequency.Type.NONE:
+		return true
+	return int(_juice.get(freq, 0)) > 0
+
+
+func can_select(freq: int) -> bool:
+	return has_juice(freq)
+
+
+# ---- Selection cursor -----------------------------------------------------
+
+func select_next_frequency() -> void:
+	_step_selection(1)
+
+
+func select_prev_frequency() -> void:
+	_step_selection(-1)
+
+
+func _step_selection(direction: int) -> void:
+	var order := _SELECTABLE_ORDER
+	var start_index := order.find(current_frequency)
+	if start_index < 0:
+		start_index = 0
+	var count := order.size()
+	for i in range(1, count + 1):
+		var idx := (start_index + direction * i) % count
+		if idx < 0:
+			idx += count
+		var candidate: int = order[idx]
+		if can_select(candidate):
+			if candidate != current_frequency:
+				current_frequency = candidate
+				frequency_selection_changed.emit(current_frequency)
+			return
+
+
+func _auto_advance_if_empty() -> void:
+	if can_select(current_frequency):
+		return
+	# Fall forward; NONE is always selectable so this terminates.
+	select_next_frequency()
+
+
+# ---- Cooldown read-outs for HUD -------------------------------------------
+
+## 0.0 = just fired, 1.0 = ready to fire.
+func get_cooldown_fraction() -> float:
+	if _current_cooldown_duration <= 0.0:
+		return 1.0
+	var remaining := clampf(_echo_cooldown_sec, 0.0, _current_cooldown_duration)
+	return 1.0 - remaining / _current_cooldown_duration
+
+
+func get_current_cooldown_duration() -> float:
+	return _current_cooldown_duration
 
 
 func apply_damage(amount: int) -> void:
