@@ -2,6 +2,8 @@
 
 #include "terrain_settings.h"
 
+#include <godot_cpp/variant/utility_functions.hpp>
+
 #include <algorithm>
 #include <cstdint>
 #include <deque>
@@ -144,8 +146,18 @@ std::vector<DetachedIsland> ConnectedComponents::detach_islands(
 			}
 
 			if (anchored || over_budget || found.empty()) {
+				if (!found.empty()) {
+					UtilityFunctions::print(
+							"[CC] skipping detach at seed (",
+							nx, ",", ny, ") — cells=", (int)found.size(),
+							" anchored=", anchored,
+							" over_budget=", over_budget);
+				}
 				continue;
 			}
+			UtilityFunctions::print(
+					"[CC] detaching island at seed (",
+					nx, ",", ny, ") — cells=", (int)found.size());
 
 			// Build the detached island. Compute bbox, fill local
 			// type + density buffers, and remove the cells from

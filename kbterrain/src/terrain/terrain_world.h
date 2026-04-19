@@ -124,17 +124,31 @@ private:
 
 	// How often to step the flow CA. 2 means every other frame
 	// (~30Hz at 60fps).
-	static constexpr uint32_t FLOW_STEP_INTERVAL = 1;
+	static constexpr uint32_t FLOW_STEP_INTERVAL = 2;
 
 	// Max island size the CC pass will detach. Larger stays as part
 	// of the main world. Prevents "half the level detaches" cascade.
-	static constexpr int MAX_DETACH_FLOOD = 5000;
+	// Budget for CC flood-fill search. If a BFS explores more cells
+	// than this without finding an anchor, the island is assumed
+	// "too big to detach safely" (guards against detaching the
+	// main world when a boundary cell is destroyed). Needs to be
+	// large enough for big authored chunks to fully explore —
+	// 50k cells = 800x800 px of contiguous terrain — without
+	// giving up prematurely.
+	static constexpr int MAX_DETACH_FLOOD = 50000;
 
 	void _ensure_initialized();
 	void _rebuild_type_lut();
 	int _frequency_to_bit(int freq) const;
 	void _queue_remesh(terrain::Chunk *chunk);
 	void _queue_remesh_and_neighbors(terrain::Chunk *chunk);
+	void _update_collision_sync(
+			terrain::Chunk *chunk,
+			const std::vector<uint8_t> &collision_density,
+			int cells,
+			float cell_size_px,
+			Vector2 origin_px,
+			uint8_t iso);
 	void _integrate_results();
 	void _integrate_one(const terrain::RemeshResult &result);
 	// Returns true if the cell was destroyed this call (type went to

@@ -150,37 +150,69 @@ func _try_evict_actor(body: Node) -> void:
 	var actor := body as Node2D
 	var cs := _cell_size_px
 
-	# Vertical half-extent of the actor's collision shape.
 	var actor_half_h := cs * 0.5
+	var actor_half_w := cs * 0.5
 	if "half_size" in actor:
 		var hs: Vector2 = actor.get("half_size")
 		if hs.y > 0.0:
 			actor_half_h = hs.y
+		if hs.x > 0.0:
+			actor_half_w = hs.x
 
-	var num_samples := int(ceil(actor_half_h * 2.0 / cs)) + 2
-	# Fast path: already clear at current y? No-op.
-	if _test_clear_at_y(actor, actor.global_position.y,
-			actor_half_h, num_samples):
+	# Direct AABB overlap between this painted cell and the actor.
+	# If no overlap, nothing to do.
+	var cell_top := global_position.y - cs * 0.5
+	var cell_bottom := global_position.y + cs * 0.5
+	var cell_left := global_position.x - cs * 0.5
+	var cell_right := global_position.x + cs * 0.5
+	var actor_top := actor.global_position.y - actor_half_h
+	var actor_bottom := actor.global_position.y + actor_half_h
+	var actor_left := actor.global_position.x - actor_half_w
+	var actor_right := actor.global_position.x + actor_half_w
+	if (actor_right <= cell_left
+			or actor_left >= cell_right
+			or actor_bottom <= cell_top
+			or actor_top >= cell_bottom):
 		return
 
-	# Search expanding rings around current y. Try both directions
-	# at each radius; first clear position wins. Prefer upward
-	# (-dir) as the tiebreaker since a sand cell landing on the
-	# player usually means the obstacle is at or below the player's
-	# center and they need to rise, but if sand came from above and
-	# the player was standing on ground, downward doesn't help and
-	# upward is the only escape. The symmetric search handles both.
-	for step in range(1, _STUCK_MAX_CELLS + 2):
-		for dir in [-1, 1]:
-			var candidate_y: float = actor.global_position.y + dir * step * cs
+	# Compute the two direct push-out targets — one that puts the
+	# actor fully above this cell, and one fully below. Small
+	# epsilon so the actor isn't boundary-touching.
+	const _EPS := 0.5
+	var num_samples := int(ceil(actor_half_h * 2.0 / cs)) + 2
+	var push_up_y := cell_top - actor_half_h - _EPS
+	var push_down_y := cell_bottom + actor_half_h + _EPS
+
+	# Try the smaller displacement direction first. If that target
+	# is blocked by other terrain, try the other direction. If both
+	# direct pushes are blocked, walk a few more cells in each
+	# direction from the target before killing.
+	var up_dist := absf(push_up_y - actor.global_position.y)
+	var down_dist := absf(push_down_y - actor.global_position.y)
+	var ordered := [
+		[push_up_y, -1.0],
+		[push_down_y, 1.0],
+	]
+	if down_dist < up_dist:
+		ordered = [
+			[push_down_y, 1.0],
+			[push_up_y, -1.0],
+		]
+
+	for entry in ordered:
+		var target_y: float = entry[0]
+		var dir: float = entry[1]
+		for step in range(_STUCK_MAX_CELLS + 1):
+			var try_y := target_y + dir * step * cs
 			if _test_clear_at_y(
-					actor, candidate_y, actor_half_h, num_samples):
+					actor, try_y, actor_half_h, num_samples):
 				actor.global_position = Vector2(
-						actor.global_position.x, candidate_y)
+						actor.global_position.x, try_y)
 				if "velocity" in actor:
 					var v: Vector2 = actor.get("velocity")
 					actor.set("velocity", Vector2(v.x, 0.0))
 				return
+
 	# No room within threshold: lethal.
 	if actor.has_method("apply_damage"):
 		actor.call("apply_damage", 999)
