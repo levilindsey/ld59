@@ -1,7 +1,10 @@
-[gd_scene format=4 uid="uid://cd816wn34iluf"]
+[gd_scene load_steps=6 format=4 uid="uid://cd816wn34iluf"]
 
 [ext_resource type="Script" uid="uid://bvs7gknqibepr" path="res://src/echolocation/echolocation_renderer.gd" id="1_renderer"]
 [ext_resource type="Shader" uid="uid://cs03m38fkgr7s" path="res://src/echolocation/echolocation_composite.gdshader" id="2_shader"]
+[ext_resource type="Texture2D" uid="uid://3f4hfnwcs77w" path="res://assets/images/placeholders/terrain_interior_atlas.png" id="3_interior"]
+[ext_resource type="Texture2D" uid="uid://c4seed5v74b1b" path="res://assets/images/placeholders/terrain_surface_atlas.png" id="4_surface"]
+[ext_resource type="Texture2D" uid="uid://df3ddg3t42o7d" path="res://assets/images/placeholders/terrain_damage_tier_atlas.png" id="5_damage"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_mask"]
 shader = ExtResource("2_shader")
@@ -35,6 +38,9 @@ shader_parameter/debug_show_anchor = false
 [node name="EcholocationRenderer" type="CanvasLayer" unique_id=1690411096]
 layer = 100
 script = ExtResource("1_renderer")
+interior_atlas = ExtResource("3_interior")
+surface_atlas = ExtResource("4_surface")
+damage_tier_atlas = ExtResource("5_damage")
 
 [node name="Mask" type="ColorRect" parent="." unique_id=196346029]
 unique_name_in_owner = true
