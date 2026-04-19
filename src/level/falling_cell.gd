@@ -73,27 +73,35 @@ func _physics_process(delta: float) -> void:
 	_velocity_y = minf(
 			_velocity_y + _GRAVITY_PX_PER_SEC2 * delta,
 			_MAX_SPEED_PX_PER_SEC)
-	global_position.y += _velocity_y * delta
-	_check_landing()
+	var pre_y := global_position.y
+	global_position.y = pre_y + _velocity_y * delta
+	_check_landing(pre_y)
 
 
-# Lands when the next terrain cell directly below is solid. Sample
-# at the midpoint of the cell below our current center.
-func _check_landing() -> void:
+# Scan every cell the falling cell would cross this frame (pre_y to
+# post-move y). Land in the first cell above a solid one. Avoids
+# tunneling at high speed and guarantees the cell actually moved
+# before landing.
+func _check_landing(pre_y: float) -> void:
 	if not is_instance_valid(G.terrain):
 		return
-	var probe := global_position + Vector2(0.0, _cell_size_px * 0.6)
-	if not G.terrain.is_solid(probe):
-		return
-	# Snap our y to the top of the cell we're about to sit in: the
-	# cell below the probe's solid cell.
 	var cs := _cell_size_px
-	var landing_cell_y := floorf(probe.y / cs) - 1.0
-	global_position.y = (landing_cell_y + 0.5) * cs
-	# Snap x to nearest cell center so merge-back is grid-aligned.
-	var landing_cell_x := floorf(global_position.x / cs)
-	global_position.x = (landing_cell_x + 0.5) * cs
-	_land()
+	var start_cy := int(floor(pre_y / cs))
+	var end_cy := int(floor(global_position.y / cs))
+	# Check cells strictly below the pre-move cell, up to and
+	# including the cell we ended in. A cell already adjacent to
+	# solid ground at spawn-time would otherwise land on frame 1
+	# with zero displacement.
+	for test_cy in range(start_cy + 1, end_cy + 2):
+		var probe_y := (test_cy + 0.5) * cs
+		var probe := Vector2(global_position.x, probe_y)
+		if G.terrain.is_solid(probe):
+			var landing_cy := test_cy - 1
+			global_position.y = (landing_cy + 0.5) * cs
+			var landing_cx := int(floor(global_position.x / cs))
+			global_position.x = (landing_cx + 0.5) * cs
+			_land()
+			return
 
 
 func _land() -> void:

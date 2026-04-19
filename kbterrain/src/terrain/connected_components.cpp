@@ -206,7 +206,8 @@ std::vector<DetachedIsland> ConnectedComponents::detach_islands(
 				}
 			}
 
-			// Clear the cells from the main world.
+			// Clear the cells from the main world (type first, so the
+			// corner-refresh pass below sees the final type state).
 			for (const auto &p : found) {
 				Chunk *chunk = nullptr;
 				int local_cx = 0, local_cy = 0;
@@ -222,19 +223,51 @@ std::vector<DetachedIsland> ConnectedComponents::detach_islands(
 				chunk->type_per_cell[cell_idx] =
 						TerrainSettings::TYPE_NONE;
 				chunk->health_per_cell[cell_idx] = 255;
-				// Zero all 4 corners, then any neighbor cell with a
-				// surviving type will restore its corner on its own
-				// refresh. For a localized post-damage flood-fill
-				// this is fine because we only detach cells with no
-				// surviving neighbors — corners they share don't
-				// belong to any non-NONE cell.
-				const int s = chunk_cells + 1;
-				chunk->density[local_cy * s + local_cx] = 0;
-				chunk->density[local_cy * s + local_cx + 1] = 0;
-				chunk->density[(local_cy + 1) * s + local_cx] = 0;
-				chunk->density[(local_cy + 1) * s + local_cx + 1] = 0;
 				chunk->generation.fetch_add(1);
 				affected_chunks_set.insert(chunk->coords);
+			}
+			// Recompute corner densities for every cleared cell based
+			// on the final type neighborhood. Corners shared with a
+			// surviving non-NONE cell stay 255; corners with only
+			// cleared / NONE neighbors go to 0. This is what keeps
+			// the ground under a detached island solid.
+			for (const auto &p : found) {
+				Chunk *chunk = nullptr;
+				int local_cx = 0, local_cy = 0;
+				cell_type_world(
+						manager, chunk_cells,
+						p.first, p.second,
+						&chunk, &local_cx, &local_cy);
+				if (chunk == nullptr) {
+					continue;
+				}
+				const int s = chunk_cells + 1;
+				for (int dyc = 0; dyc <= 1; dyc++) {
+					for (int dxc = 0; dxc <= 1; dxc++) {
+						const int corner_x = local_cx + dxc;
+						const int corner_y = local_cy + dyc;
+						bool any_solid = false;
+						for (int a = -1; a <= 0 && !any_solid; a++) {
+							for (int b = -1; b <= 0; b++) {
+								const int ncx = corner_x + b;
+								const int ncy = corner_y + a;
+								if (ncx < 0 || ncy < 0
+										|| ncx >= chunk_cells
+										|| ncy >= chunk_cells) {
+									continue;
+								}
+								if (chunk->type_per_cell[
+										ncy * chunk_cells + ncx]
+										!= TerrainSettings::TYPE_NONE) {
+									any_solid = true;
+									break;
+								}
+							}
+						}
+						chunk->density[corner_y * s + corner_x] =
+								any_solid ? 255 : 0;
+					}
+				}
 			}
 
 			islands.push_back(std::move(island));
