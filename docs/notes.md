@@ -65,12 +65,14 @@ gradient approximations.
   not ~30 unique tile sprites. The existing surface-prominence +
   facing math becomes the band-blend input between interior and
   surface textures.
-- [ ] **Density field as gradient source**: replace the luminance
-  Sobel with `texture(density_tex, world_uv).rg` read. Cleaner,
+- [x] **Density field as gradient source**: replaced the luminance
+  Sobel with a 2-tap central difference on `density_tex`. Cleaner,
   no noise from pixel-art internal detail, sub-pixel accuracy.
-- [ ] **True distance-from-surface**: density field gives a real SDF.
-  Use it to compute a proper surface-band width rather than
-  approximating via gradient magnitude.
+- [ ] **True distance-from-surface (sub-pixel band)**: the density
+  field gives a real SDF, but the current rendering still uses
+  `grad_mag` as a band proxy rather than solving for iso-line
+  distance. Exploit the density SDF for sub-pixel-accurate surface
+  band widths.
 - [ ] **Activate frequency palette gating**: populate the palette
   uniforms from Phase 3 tile art.
 - [ ] **Bug medium-range visibility**: bugs emit their own "signal,"

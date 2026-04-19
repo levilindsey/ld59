@@ -7,7 +7,6 @@
 shader = ExtResource("2_shader")
 shader_parameter/player_uv = Vector2(0.5, 0.5)
 shader_parameter/screen_size_px = Vector2(1152, 648)
-shader_parameter/gradient_tap_px = 12.0
 shader_parameter/near_radius_px = 80.0
 shader_parameter/near_fade_px = 32.0
 shader_parameter/pulses = PackedVector4Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)

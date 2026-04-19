@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace godot {
 
@@ -201,6 +202,14 @@ void TerrainWorld::_bind_methods() {
 			&TerrainWorld::get_surface_height);
 	ClassDB::bind_method(D_METHOD("get_stats"),
 			&TerrainWorld::get_stats);
+	ClassDB::bind_method(D_METHOD("build_density_image"),
+			&TerrainWorld::build_density_image);
+	ClassDB::bind_method(D_METHOD("build_type_image"),
+			&TerrainWorld::build_type_image);
+	ClassDB::bind_method(D_METHOD("get_world_cell_origin"),
+			&TerrainWorld::get_world_cell_origin);
+	ClassDB::bind_method(D_METHOD("get_world_cell_size"),
+			&TerrainWorld::get_world_cell_size);
 	ClassDB::bind_method(D_METHOD("sample_fluid_velocity", "world_pos"),
 			&TerrainWorld::sample_fluid_velocity);
 	ClassDB::bind_method(D_METHOD("clear_all"),
@@ -1167,6 +1176,130 @@ Dictionary TerrainWorld::get_stats() const {
 	d["pending_results"] = static_cast<int>(
 			_worker ? _worker->pending_results() : 0);
 	return d;
+}
+
+
+// Helper: compute chunk-coord bounding box. Returns false when no
+// chunks exist (image builders skip bind in that case).
+static bool _chunk_coord_bounds(
+		const terrain::ChunkManager &manager,
+		Vector2i &out_min,
+		Vector2i &out_max) {
+	if (manager.size() == 0) {
+		return false;
+	}
+	bool first = true;
+	for (const auto &kv : manager.all()) {
+		const Vector2i c = kv.first;
+		if (first) {
+			out_min = c;
+			out_max = c;
+			first = false;
+		} else {
+			out_min.x = std::min(out_min.x, c.x);
+			out_min.y = std::min(out_min.y, c.y);
+			out_max.x = std::max(out_max.x, c.x);
+			out_max.y = std::max(out_max.y, c.y);
+		}
+	}
+	return true;
+}
+
+
+Vector2i TerrainWorld::get_world_cell_origin() const {
+	if (!_manager) {
+		return Vector2i();
+	}
+	Vector2i mn, mx;
+	if (!_chunk_coord_bounds(*_manager, mn, mx)) {
+		return Vector2i();
+	}
+	return Vector2i(mn.x * _cells_cached, mn.y * _cells_cached);
+}
+
+
+Vector2i TerrainWorld::get_world_cell_size() const {
+	if (!_manager) {
+		return Vector2i();
+	}
+	Vector2i mn, mx;
+	if (!_chunk_coord_bounds(*_manager, mn, mx)) {
+		return Vector2i();
+	}
+	return Vector2i(
+			(mx.x - mn.x + 1) * _cells_cached,
+			(mx.y - mn.y + 1) * _cells_cached);
+}
+
+
+Ref<Image> TerrainWorld::build_density_image() const {
+	if (!_manager) {
+		return Ref<Image>();
+	}
+	Vector2i mn, mx;
+	if (!_chunk_coord_bounds(*_manager, mn, mx)) {
+		return Ref<Image>();
+	}
+	const int cells = _cells_cached;
+	const int width = (mx.x - mn.x + 1) * cells + 1;
+	const int height = (mx.y - mn.y + 1) * cells + 1;
+	PackedByteArray data;
+	data.resize(width * height);
+	// Zero-fill so any gap between chunks (sparse worlds) reads as
+	// empty density.
+	uint8_t *raw = data.ptrw();
+	std::fill(raw, raw + width * height, static_cast<uint8_t>(0));
+	const int chunk_samples = cells + 1;
+	for (const auto &kv : _manager->all()) {
+		const terrain::Chunk *chunk = kv.second.get();
+		const int base_x = (chunk->coords.x - mn.x) * cells;
+		const int base_y = (chunk->coords.y - mn.y) * cells;
+		for (int y = 0; y < chunk_samples; y++) {
+			const int dst_y = base_y + y;
+			const int dst_row = dst_y * width + base_x;
+			const int src_row = y * chunk_samples;
+			std::memcpy(
+					raw + dst_row,
+					chunk->density.data() + src_row,
+					chunk_samples);
+		}
+	}
+	return Image::create_from_data(
+			width, height, false, Image::FORMAT_R8, data);
+}
+
+
+Ref<Image> TerrainWorld::build_type_image() const {
+	if (!_manager) {
+		return Ref<Image>();
+	}
+	Vector2i mn, mx;
+	if (!_chunk_coord_bounds(*_manager, mn, mx)) {
+		return Ref<Image>();
+	}
+	const int cells = _cells_cached;
+	const int width = (mx.x - mn.x + 1) * cells;
+	const int height = (mx.y - mn.y + 1) * cells;
+	PackedByteArray data;
+	data.resize(width * height);
+	uint8_t *raw = data.ptrw();
+	std::fill(raw, raw + width * height, static_cast<uint8_t>(0));
+	for (const auto &kv : _manager->all()) {
+		const terrain::Chunk *chunk = kv.second.get();
+		const int base_x = (chunk->coords.x - mn.x) * cells;
+		const int base_y = (chunk->coords.y - mn.y) * cells;
+		for (int y = 0; y < cells; y++) {
+			const int dst_y = base_y + y;
+			const int dst_row = dst_y * width + base_x;
+			const int src_row = y * cells;
+			std::memcpy(
+					raw + dst_row,
+					chunk->type_per_cell.data() + src_row,
+					cells);
+		}
+	}
+	return Image::create_from_data(
+			width, height, false, Image::FORMAT_R8, data);
 }
 
 } // namespace godot

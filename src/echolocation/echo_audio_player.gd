@@ -1,15 +1,18 @@
 class_name EchoAudioPlayer
 extends Node
 ## Synthesizes and plays echolocation audio: an outgoing "chirp" on
-## every pulse emit, plus a delayed "return ping" simulating a
-## first-surface reflection. Streams are generated as AudioStreamWAV
+## every pulse emit, and one "ping" per bounce-back (fired by
+## `EcholocationRenderer.ping_fired`). Each return-ping plays at the
+## scheduled time computed from the pulse's ray-cast hit distance, so
+## nearby surfaces ping back sooner than distant ones. Volume is
+## attenuated by hit distance. Streams are generated as AudioStreamWAV
 ## resources at _ready so the project carries no authored audio
 ## dependencies for these sounds.
 ##
-## Uses a small round-robin pool of AudioStreamPlayers so overlapping
-## pulses don't cut each other off. Pitch is scaled by the pulse's
-## frequency enum so RED/GREEN/BLUE sound distinct without needing
-## multiple baked streams.
+## Uses small round-robin pools of AudioStreamPlayers so overlapping
+## pulses + pings don't cut each other off. Pitch is scaled by the
+## pulse's frequency enum so RED/GREEN/BLUE sound distinct without
+## needing multiple baked streams.
 
 
 const _SAMPLE_RATE := 22050
@@ -21,10 +24,23 @@ const _CHIRP_END_HZ := 220.0
 const _PING_DURATION_SEC := 0.12
 const _PING_HZ := 330.0
 
-## Delay after emit before the return ping plays.
-const _RETURN_DELAY_SEC := 0.28
+## Number of simultaneous outgoing chirp players.
+const _CHIRP_POOL_SIZE := 4
 
-const _POOL_SIZE := 4
+## Number of simultaneous ping players. A single pulse can schedule
+## up to 24 pings; while they're spread across ~1 second as the echo
+## travels + returns, 8 overlapping slots is plenty for typical
+## player pacing.
+const _PING_POOL_SIZE := 8
+
+## Attenuation reference distance (world px) for ping volume. Hits at
+## this range play at `return_volume_db`; closer hits play unchanged,
+## further hits drop by ~6 dB per doubling of distance.
+const _PING_ATTENUATION_REFERENCE_PX := 100.0
+
+## Floor for distance-attenuated ping volume, in dB below
+## `return_volume_db`. Prevents far-range pings from going silent.
+const _PING_ATTENUATION_FLOOR_DB := -18.0
 
 ## Pitch multipliers keyed by Frequency.Type. Missing keys fall back
 ## to 1.0 — the RED/GREEN/BLUE trio is the only set that matters.
@@ -43,7 +59,12 @@ var _chirp_stream: AudioStreamWAV
 var _return_stream: AudioStreamWAV
 
 var _chirp_pool: Array[AudioStreamPlayer] = []
-var _return_pool: Array[AudioStreamPlayer] = []
+## Return pings use `AudioStreamPlayer2D` so Godot's 2D audio engine
+## auto-pans based on the ping's `global_position` relative to the
+## scene Camera2D. Built-in distance attenuation is disabled
+## (`attenuation = 0`) so the custom `volume_db` curve in
+## `_on_ping_fired` stays the single source of distance-volume truth.
+var _return_pool: Array[AudioStreamPlayer2D] = []
 var _chirp_cursor: int = 0
 var _return_cursor: int = 0
 
@@ -53,11 +74,14 @@ func _ready() -> void:
 	_return_stream = _build_ping_stream()
 
 	var bus := "SFX" if AudioServer.get_bus_index("SFX") >= 0 else "Master"
-	_chirp_pool = _build_pool(_POOL_SIZE, _chirp_stream, bus, chirp_volume_db)
-	_return_pool = _build_pool(_POOL_SIZE, _return_stream, bus, return_volume_db)
+	_chirp_pool = _build_chirp_pool(
+			_CHIRP_POOL_SIZE, _chirp_stream, bus, chirp_volume_db)
+	_return_pool = _build_return_pool(
+			_PING_POOL_SIZE, _return_stream, bus, return_volume_db)
 
 	if is_instance_valid(G.echo):
 		G.echo.pulse_emitted.connect(_on_pulse_emitted)
+		G.echo.ping_fired.connect(_on_ping_fired)
 	else:
 		G.warning(
 				"EchoAudioPlayer: G.echo not ready; "
@@ -68,21 +92,32 @@ func _on_pulse_emitted(pulse: EchoPulse) -> void:
 	var pitch: float = _PITCH_BY_FREQUENCY.get(pulse.frequency, 1.0)
 
 	var chirp: AudioStreamPlayer = _chirp_pool[_chirp_cursor]
-	_chirp_cursor = (_chirp_cursor + 1) % _POOL_SIZE
+	_chirp_cursor = (_chirp_cursor + 1) % _CHIRP_POOL_SIZE
 	chirp.pitch_scale = pitch
 	chirp.play()
 
-	# Return ping is slightly higher-pitched and delayed. Use a
-	# one-shot timer so we don't block _on_pulse_emitted.
-	await get_tree().create_timer(_RETURN_DELAY_SEC, false).timeout
 
-	var ret: AudioStreamPlayer = _return_pool[_return_cursor]
-	_return_cursor = (_return_cursor + 1) % _POOL_SIZE
-	ret.pitch_scale = pitch * 1.1
+func _on_ping_fired(ping: EchoPing) -> void:
+	var pitch: float = _PITCH_BY_FREQUENCY.get(ping.frequency, 1.0) * 1.1
+	# Distance attenuation: log10(1 + dist/ref) * 20 dB gives a gentle
+	# curve — nearby hits stay near full volume, distant hits fade.
+	# Clamped at a floor so the very farthest hits stay audible.
+	var attenuation_db: float = -20.0 * log(
+			1.0 + ping.hit_distance_px / _PING_ATTENUATION_REFERENCE_PX
+	) / log(10.0)
+	attenuation_db = maxf(attenuation_db, _PING_ATTENUATION_FLOOR_DB)
+
+	var ret: AudioStreamPlayer2D = _return_pool[_return_cursor]
+	_return_cursor = (_return_cursor + 1) % _PING_POOL_SIZE
+	ret.pitch_scale = pitch
+	ret.volume_db = return_volume_db + attenuation_db
+	# Position in world — the 2D audio engine computes stereo pan
+	# from this relative to the active Camera2D's global_position.
+	ret.global_position = ping.world_pos
 	ret.play()
 
 
-func _build_pool(
+func _build_chirp_pool(
 		size: int,
 		stream: AudioStream,
 		bus: String,
@@ -95,6 +130,33 @@ func _build_pool(
 		player.stream = stream
 		player.bus = bus
 		player.volume_db = volume_db
+		add_child(player)
+		pool[i] = player
+	return pool
+
+
+func _build_return_pool(
+		size: int,
+		stream: AudioStream,
+		bus: String,
+		volume_db: float,
+) -> Array[AudioStreamPlayer2D]:
+	var pool: Array[AudioStreamPlayer2D] = []
+	pool.resize(size)
+	for i in range(size):
+		var player := AudioStreamPlayer2D.new()
+		player.stream = stream
+		player.bus = bus
+		player.volume_db = volume_db
+		# Disable the engine's built-in inverse-distance attenuation
+		# so our custom volume_db math in `_on_ping_fired` is the sole
+		# distance-volume source. Pan still auto-computes from
+		# global_position relative to the Camera2D.
+		player.attenuation = 0.0
+		# Generous max_distance so the hard cutoff at the edge of
+		# audible range doesn't clip pings we want to stay audible;
+		# our volume_db floor handles the quiet tail.
+		player.max_distance = 4000.0
 		add_child(player)
 		pool[i] = player
 	return pool

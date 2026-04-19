@@ -16,6 +16,7 @@ render_mode blend_mix, unshaded;
 const int MAX_PULSES = 8;
 const int MAX_PALETTE = 16;
 const int MAX_TAGGED_SPRITES = 32;
+const int MAX_PINGS = 32;
 
 uniform vec2 player_uv = vec2(0.5, 0.5);
 uniform vec2 screen_size_px = vec2(1152.0, 648.0);
@@ -23,24 +24,38 @@ uniform vec2 screen_size_px = vec2(1152.0, 648.0);
 // Backbuffer of the layer-0 content (tiles, player, bugs, enemies,
 // props). Pixel art — sample nearest. Used only for the near-field
 // visual reveal (textured_rgb fallback = c0). Type classification
-// and gradient sampling now use `tag_tex` instead, so player and
-// parallax pixels don't contaminate those signals.
+// and gradient sampling go through `density_tex` + `type_tex`, so
+// player and parallax pixels never contaminate those signals.
 uniform sampler2D screen_tex : hint_screen_texture,
 		repeat_disable, filter_nearest;
 
-// Frequency-tag viewport texture. A parallel SubViewport that
-// shares World2D with the scene but is rendered by a camera with
-// canvas_cull_mask = 2, so it only sees visibility-layer-2 items
-// (terrain is on layer 1|2; bugs/enemies/props can join later).
-// Every pixel is either transparent (no tagged content) or the
-// exact palette color of the tile/sprite sitting there — giving
-// the shader an unambiguous per-pixel type map.
-uniform sampler2D tag_tex : repeat_disable, filter_nearest;
+// World-spanning density field, R8 per cell (actually per density
+// sample, with one extra row/column per chunk for the shared edge).
+// Built from the C++ TerrainWorld::build_density_image(); re-uploaded
+// on `chunk_modified`. Bilinear filtered so the fragment shader gets
+// a smooth, sub-pixel-accurate distance-to-surface via its gradient
+// (replacing the 12-tap luminance-gradient hack that used to sample a
+// tag SubViewport).
+uniform sampler2D density_tex : filter_linear, repeat_disable;
+// World-spanning per-cell type id, R8. Bytes are Frequency.Type enum
+// values (0 = NONE = empty). Nearest filtering so the byte comes
+// through intact — no blending between cell types. Replaces the
+// palette-match path that used to run on `tag_tex`.
+uniform sampler2D type_tex : filter_nearest, repeat_disable;
+// Upper-left world-px position corresponding to pixel (0, 0) of the
+// density/type textures. Computed from the chunk-coord bounding box.
+uniform vec2 density_world_origin_px = vec2(0.0, 0.0);
+// Dimensions of the type texture in cells (width, height). The
+// density texture is (width + 1, height + 1).
+uniform vec2 density_world_cell_size = vec2(1.0, 1.0);
+// Cell size in world px. Matches TerrainSettings.cell_size_px.
+uniform float density_cell_size_px : hint_range(1.0, 64.0) = 8.0;
 
-// Offset in UV to use when taking gradient taps. A wider tap gives
-// a thicker "surface band" that fades into the interior, so pulse
-// stippling gets a spatial gradient instead of being a thin rim.
-uniform float gradient_tap_px : hint_range(0.5, 32.0) = 12.0;
+// Radius in world px of the central-difference tap used to compute
+// the density gradient (= inferred surface direction + distance
+// proxy). The density field is bilinear-filtered so a single 2-tap
+// central difference is sufficient — no multi-scale hack needed.
+uniform float density_grad_tap_px : hint_range(0.5, 16.0) = 4.0;
 
 // Near-field: always-on circular reveal around the player.
 uniform float near_radius_px : hint_range(0.0, 512.0) = 80.0;
@@ -61,6 +76,25 @@ uniform vec4 pulses[MAX_PULSES];
 uniform vec4 pulse_colors[MAX_PULSES];
 uniform vec4 pulse_cones[MAX_PULSES];
 uniform int pulse_count = 0;
+
+// Bounce-back pings. One entry per surface hit; scheduled by the
+// renderer when the pulse's ray cast finds a solid cell. Packing:
+//   pings[i]         = (hit_uv.xy, age_sec, frequency)
+//   ping_segments[i] = (start_uv.xy, end_uv.xy)
+// `hit_uv` is where the ray hit the surface; `start_uv`/`end_uv` are
+// the colinear surface segment that point lies on — each ping
+// animates as a line that grows outward from `hit_uv` toward both
+// endpoints, then fades.
+// `age_sec < 0` encodes "pending / skip" defensively.
+uniform vec4 pings[MAX_PINGS];
+uniform vec4 ping_segments[MAX_PINGS];
+uniform int ping_count = 0;
+
+// Ping visual tuning.
+uniform float ping_line_thickness_px : hint_range(0.5, 8.0) = 1.5;
+uniform float ping_line_glow_px : hint_range(0.0, 6.0) = 1.5;
+uniform float ping_grow_duration_frac : hint_range(0.05, 1.0) = 0.35;
+uniform float ping_lifetime_sec : hint_range(0.1, 2.0) = 0.5;
 
 // Pulse shape tuning.
 uniform float edge_width_px : hint_range(1.0, 64.0) = 12.0;
@@ -110,18 +144,13 @@ uniform sampler2D bayer_tex : source_color, repeat_enable,
 		filter_nearest;
 uniform float bayer_tile_px : hint_range(0.5, 16.0) = 2.0;
 
-// Frequency palette. Unused when palette_count == 0; in that mode
-// the shader treats every pixel as "matches." Populate in Phase 3.
+// Frequency palette. Used only for looking up the display color for
+// a type id produced by `type_tex` or by a tagged sprite. Unused when
+// `palette_count == 0` (in that mode every tagged pixel renders with
+// vec3(0) stipple color).
 uniform vec4 palette[MAX_PALETTE];
 uniform int palette_freqs[MAX_PALETTE];
 uniform int palette_count = 0;
-// Maximum RGB distance a pixel's color can be from a palette entry
-// to still count as "matches that type." Terrain meshes emit exact
-// palette colors, so a tight threshold is correct; too-loose lets
-// anti-aliased sprite pixels (player outline, bug edges) false-
-// match and render as flat palette color, producing a "ghost of the
-// sprite" artifact on nearby tiles.
-uniform float palette_match_threshold : hint_range(0.0, 1.5) = 0.02;
 
 // Tagged sprites: per-frame array of bugs (and future enemies)
 // whose screen position + frequency we need the shader to know
@@ -152,6 +181,28 @@ uniform float matching_brightness_boost : hint_range(1.0, 2.5)
 uniform float matching_saturation_boost : hint_range(1.0, 2.5)
 		= 1.35;
 
+// Stipple-density factor applied to non-matching tagged pixels.
+// Matching pixels stipple at full density (1.0); non-matching pixels
+// stipple at this fraction. Low values make the player's current
+// frequency dominate visually — other types are still visible as
+// fainter speckles so shape reads but the matching color pops.
+uniform float non_matching_stipple_factor : hint_range(0.0, 1.0)
+		= 0.2;
+
+// Cheap in-shader "bloom" applied to matching-type stipples:
+// - bayer tile is scaled up so each matching dot covers more pixels.
+// - Bayer threshold becomes a smoothstep so dot edges fall off softly
+//   (fake halo glow).
+// - The matching stipple color picks up one more brightness multiplier
+//   after the saturation boost, pushing past 1.0 for an HDR-ish
+//   overbright feel (clamps at the display).
+uniform float matching_bloom_size_multiplier : hint_range(1.0, 3.0)
+		= 1.5;
+uniform float matching_bloom_soft_width : hint_range(0.0, 0.5)
+		= 0.15;
+uniform float matching_bloom_brightness_bump : hint_range(1.0, 3.0)
+		= 1.4;
+
 // Stipple color override. When alpha > 0, pulse-revealed pixels are
 // painted this color instead of the tile / scene pixel underneath.
 // Default alpha=0 so dots match the underlying tile-type color;
@@ -179,11 +230,6 @@ uniform float back_facing_visibility : hint_range(0.0, 1.0) = 0.18;
 // Debug: bypass effects and draw a crosshair at player_uv so the
 // world→screen transform can be verified at a glance.
 uniform bool debug_show_anchor = false;
-// Debug: render the raw tag_tex contents so you can confirm the
-// frequency-tag SubViewport is rendering the terrain correctly.
-// Tile pixels should appear in their flat palette color; everything
-// else should be black/transparent.
-uniform bool debug_show_tag = false;
 
 // --- Procedural tile texturing (near-field only) ---------------------------
 // Tiles in the scene render as flat palette color (the simplest
@@ -262,36 +308,39 @@ float pulse_ring_glow(vec2 px, vec4 p, vec4 cone) {
 
 // ---- palette lookup -------------------------------------------------------
 
-// Finds the palette entry closest to `c`. Writes the matched
-// frequency id into `type_id` and the palette color into
-// `type_color`, and returns true when the match is within
-// `palette_match_threshold`. Pixels outside the threshold
-// (sprites, HUD, mid-gradient edges) return false and the outputs
-// stay zeroed — the caller treats those as non-tile.
-bool detect_frequency(vec3 c, out int type_id, out vec3 type_color) {
-	type_id = 0;
-	type_color = vec3(0.0);
-	if (palette_count <= 0) {
-		return false;
-	}
-	int best_i = 0;
-	float best_d = 1e9;
-	for (int i = 0; i < MAX_PALETTE; i++) {
-		if (i >= palette_count) {
+// Look up the palette color for a type id. Palette is small (≤16);
+// loop is cheap. Returns vec3(0) if the type id is not in the palette.
+vec3 palette_color_for_type(int type_id) {
+	for (int j = 0; j < MAX_PALETTE; j++) {
+		if (j >= palette_count) {
 			break;
 		}
-		float dd = distance(c, palette[i].rgb);
-		if (dd < best_d) {
-			best_d = dd;
-			best_i = i;
+		if (palette_freqs[j] == type_id) {
+			return palette[j].rgb;
 		}
 	}
-	if (best_d > palette_match_threshold) {
-		return false;
-	}
-	type_id = palette_freqs[best_i];
-	type_color = palette[best_i].rgb;
-	return true;
+	return vec3(0.0);
+}
+
+
+// ---- world ↔ density-texture coords ---------------------------------------
+
+// Convert world-px to density-texture UV. Density texture is
+// (cells_wide + 1, cells_high + 1) samples.
+vec2 world_to_density_uv(vec2 world_px) {
+	vec2 cell = (world_px - density_world_origin_px)
+			/ density_cell_size_px;
+	return cell / (density_world_cell_size + vec2(1.0));
+}
+
+
+// Convert world-px to type-texture UV. Type texture is
+// (cells_wide, cells_high). Offset by half a cell so nearest-filter
+// samples the cell that contains world_px, not its upper-left corner.
+vec2 world_to_type_uv(vec2 world_px) {
+	vec2 cell = (world_px - density_world_origin_px)
+			/ density_cell_size_px;
+	return (cell + vec2(0.5)) / density_world_cell_size;
 }
 
 
@@ -308,125 +357,70 @@ void fragment() {
 		// If they see black, it isn't.
 		vec3 dbg_scene = texture(screen_tex, SCREEN_UV).rgb;
 		COLOR = vec4(dbg_scene * vec3(0.3, 1.5, 0.3), 1.0);
-	} else if (debug_show_tag) {
-		vec4 tag_pixel = texture(tag_tex, SCREEN_UV);
-		COLOR = vec4(tag_pixel.rgb, 1.0);
 	} else {
 		// Sample scene color at center (for visual reveal).
 		vec3 c0 = texture(screen_tex, SCREEN_UV).rgb;
-		// Sample tag-viewport color at center (for type
-		// classification + gradient). Tag viewport only contains
-		// terrain (and later bug/enemy tags), so palette-matching
-		// and gradient sampling here are clean — no player or
-		// parallax contamination.
-		vec3 tag0 = texture(tag_tex, SCREEN_UV).rgb;
 		const vec3 luma = vec3(0.299, 0.587, 0.114);
 		float l0 = dot(c0, luma);
 
-		// --- Multi-scale gradient ---------------------------------
-		// A single central-difference tap gives a binary edge/no-
-		// edge response at `gradient_tap_px`, which produces a
-		// hard-edged stipple rim. Sample at three scales instead so
-		// pixels at increasing depth inside a tile detect edges at
-		// wider and wider radii, with decreasing weight — the result
-		// is a smooth surface→interior fade over ~a few cells.
-		// Close scale = strong contribution near the true surface;
-		// far scale = weak contribution from pixels several cells
-		// deep; in the deepest interior every scale returns zero
-		// and stippling drops to nothing.
-		// All gradient taps sample `tag_tex` so sprites and parallax
-		// can't skew the gradient direction or magnitude (which was
-		// the cause of the "gap under the player" artifact).
-		vec2 tap_close_uv = vec2(gradient_tap_px * 0.33,
-				gradient_tap_px * 0.33) / screen_size_px;
-		vec2 tap_mid_uv = vec2(gradient_tap_px, gradient_tap_px)
-				/ screen_size_px;
-		vec2 tap_far_uv = vec2(gradient_tap_px * 3.0,
-				gradient_tap_px * 3.0) / screen_size_px;
+		// World-space position of this fragment. Used for sampling
+		// the density + type textures (which live in world-px space,
+		// not screen-uv space).
+		vec2 world_pos = world_origin
+				+ UV * screen_size_px * world_per_screen_px;
 
-		vec3 cL_s = texture(tag_tex,
-				SCREEN_UV - vec2(tap_close_uv.x, 0.0)).rgb;
-		vec3 cR_s = texture(tag_tex,
-				SCREEN_UV + vec2(tap_close_uv.x, 0.0)).rgb;
-		vec3 cU_s = texture(tag_tex,
-				SCREEN_UV - vec2(0.0, tap_close_uv.y)).rgb;
-		vec3 cD_s = texture(tag_tex,
-				SCREEN_UV + vec2(0.0, tap_close_uv.y)).rgb;
+		// --- Density-field SDF gradient ---------------------------
+		// Sample the density texture on a 2-tap central difference
+		// in world-px. Density is bilinear-filtered, so a single
+		// scale gives a smooth gradient from empty (0) to solid
+		// (1). `density_grad_tap_px` sets the central-difference
+		// radius in world px; wider = thicker surface band that
+		// fades deeper into interior, narrower = tight surface rim.
+		//
+		// With true density as the source, there's no sprite /
+		// parallax contamination to filter out; we don't need the
+		// old multi-scale trick. Interior-fade still comes from the
+		// same tuning knobs (`grad_floor`, `gradient_gain`,
+		// `gradient_fade_curve`) applied to the 2-tap magnitude.
+		vec2 density_tap = vec2(density_grad_tap_px, density_grad_tap_px);
+		float d_L = texture(density_tex,
+				world_to_density_uv(world_pos - vec2(density_tap.x, 0.0))).r;
+		float d_R = texture(density_tex,
+				world_to_density_uv(world_pos + vec2(density_tap.x, 0.0))).r;
+		float d_U = texture(density_tex,
+				world_to_density_uv(world_pos - vec2(0.0, density_tap.y))).r;
+		float d_D = texture(density_tex,
+				world_to_density_uv(world_pos + vec2(0.0, density_tap.y))).r;
+		vec2 density_grad = vec2(d_R - d_L, d_D - d_U);
 
-		vec3 cL_m = texture(tag_tex,
-				SCREEN_UV - vec2(tap_mid_uv.x, 0.0)).rgb;
-		vec3 cR_m = texture(tag_tex,
-				SCREEN_UV + vec2(tap_mid_uv.x, 0.0)).rgb;
-		vec3 cU_m = texture(tag_tex,
-				SCREEN_UV - vec2(0.0, tap_mid_uv.y)).rgb;
-		vec3 cD_m = texture(tag_tex,
-				SCREEN_UV + vec2(0.0, tap_mid_uv.y)).rgb;
-
-		vec3 cL_l = texture(tag_tex,
-				SCREEN_UV - vec2(tap_far_uv.x, 0.0)).rgb;
-		vec3 cR_l = texture(tag_tex,
-				SCREEN_UV + vec2(tap_far_uv.x, 0.0)).rgb;
-		vec3 cU_l = texture(tag_tex,
-				SCREEN_UV - vec2(0.0, tap_far_uv.y)).rgb;
-		vec3 cD_l = texture(tag_tex,
-				SCREEN_UV + vec2(0.0, tap_far_uv.y)).rgb;
-
-		vec2 grad_close = vec2(
-				dot(cR_s, luma) - dot(cL_s, luma),
-				dot(cD_s, luma) - dot(cU_s, luma));
-		vec2 grad_mid = vec2(
-				dot(cR_m, luma) - dot(cL_m, luma),
-				dot(cD_m, luma) - dot(cU_m, luma));
-		vec2 grad_far = vec2(
-				dot(cR_l, luma) - dot(cL_l, luma),
-				dot(cD_l, luma) - dot(cU_l, luma));
-
-		// Per-scale weights: close scale saturates at the surface,
-		// mid and far contribute progressively weaker signals so the
-		// band fades smoothly from surface to interior.
-		float mag_close = length(grad_close) * gradient_gain * 1.0;
-		float mag_mid = length(grad_mid) * gradient_gain * 0.5;
-		float mag_far = length(grad_far) * gradient_gain * 0.25;
 		float grad_mag = clamp(
-				max(mag_close, max(mag_mid, mag_far)), 0.0, 1.0);
-		// Noise-floor subtract: anything below grad_floor falls to
-		// zero, so deep-interior pixels whose far tap faintly picks
-		// up an off-axis wall stop producing sub-threshold stipples.
-		// Remainder is rescaled so the surface peak stays at 1.
+				length(density_grad) * gradient_gain, 0.0, 1.0);
+		// Noise-floor subtract: deep solid interior (smoothly 1
+		// everywhere) and deep empty exterior (smoothly 0
+		// everywhere) both give near-zero gradient; the floor trims
+		// any residue from numerical noise.
 		grad_mag = clamp(
 				(grad_mag - grad_floor) / max(1.0 - grad_floor, 1e-3),
 				0.0,
 				1.0);
-		// Power curve: dims the tail much faster than the head so
-		// the deep end of the surface→interior gradient reads as
-		// faintly stippled (or none at all) while the surface
-		// stipples stay bright.
+		// Power curve: dims the tail faster than the head so the
+		// deep end of the surface→interior gradient reads as faintly
+		// stippled while the surface stipples stay bright.
 		grad_mag = pow(grad_mag, gradient_fade_curve);
 
-		// Surface-atlas-specific proximity signal. Uses only the
-		// close (4 px) scale so the surface accent texture stays a
-		// narrow rim at the actual tile edge instead of smearing
-		// down into what the multi-scale grad_mag now treats as the
-		// stipple fade band. Shrinking this scale also shrinks the
-		// halo of gradient contamination from the player sprite
-		// that sits on top of tiles (the "gap" artifact).
+		// Surface-atlas-specific proximity signal. Reuses the same
+		// 2-tap gradient; the multiplier lets the surface band be
+		// sharper or thicker than the stipple fade without a second
+		// gradient tap.
 		float surface_proximity = clamp(
-				length(grad_close) * gradient_gain * 1.5, 0.0, 1.0);
-		vec2 surface_normal = (length(grad_close) > 1e-4)
-				? (-normalize(grad_close)) : vec2(0.0, -1.0);
+				length(density_grad) * gradient_gain * 1.5, 0.0, 1.0);
+		vec2 surface_normal = (length(density_grad) > 1e-4)
+				? (-normalize(density_grad)) : vec2(0.0, -1.0);
 
-		// Direction for the facing ramp. Mid scale is the most
-		// stable (close flickers at tile corners, far smears across
-		// gaps). Fall back to whichever scale has a non-trivial
-		// reading.
-		vec2 grad;
-		if (length(grad_mid) > 1e-4) {
-			grad = grad_mid;
-		} else if (length(grad_close) > 1e-4) {
-			grad = grad_close;
-		} else {
-			grad = grad_far;
-		}
+		// Same gradient feeds the facing ramp — density gradient
+		// points from empty→solid, so the outward normal (used for
+		// "surface facing the player") is its negation.
+		vec2 grad = density_grad;
 
 		// "To player" direction for the facing dot product.
 		vec2 to_player = player_px - px;
@@ -471,25 +465,28 @@ void fragment() {
 		// --- Classify this pixel ------------------------------------
 		// Two sources of "type" information:
 		//
-		//   1. Palette nearest-match on c0. Terrain tiles render as
-		//      exact palette color in the scene, so this identifies
-		//      them reliably. Sprites (player, HUD, parallax) fail
-		//      the tight threshold and are treated as non-tile.
+		//   1. Direct `type_tex` sample — the C++ terrain writes its
+		//      per-cell Frequency.Type id into this R8 world-spanning
+		//      texture. NONE (0) means empty. This replaces the
+		//      palette-match on a tag SubViewport, giving sub-pixel-
+		//      stable classification independent of render artifacts.
 		//
 		//   2. Tagged-sprite halo. Bugs and (eventually) enemies push
 		//      their screen position + frequency into
 		//      `tagged_sprites`. Any pixel inside a halo inherits
-		//      that sprite's frequency. Handles small and semi-
-		//      transparent sprites whose pixels don't palette-match
-		//      reliably on their own.
+		//      that sprite's frequency — handles small and semi-
+		//      transparent sprites whose type isn't in the terrain
+		//      texture at all.
 		//
 		// Sprite tags win where they overlap tiles — a bug sitting on
 		// a tile reports bug frequency so matching-pulse stipples
 		// reveal the bug, not the tile.
-		int bg_type_id = 0;
-		vec3 bg_type_color = vec3(0.0);
-		bool is_bg_tile = detect_frequency(
-				tag0, bg_type_id, bg_type_color);
+		int bg_type_id = int(
+				texture(type_tex, world_to_type_uv(world_pos)).r
+						* 255.0 + 0.5);
+		bool is_bg_tile = bg_type_id != 0;
+		vec3 bg_type_color = is_bg_tile
+				? palette_color_for_type(bg_type_id) : vec3(0.0);
 
 		int tag_type_id = 0;
 		bool is_sprite_tag = false;
@@ -504,18 +501,8 @@ void fragment() {
 				break;
 			}
 		}
-		vec3 tag_type_color = vec3(0.0);
-		if (is_sprite_tag && palette_count > 0) {
-			for (int j = 0; j < MAX_PALETTE; j++) {
-				if (j >= palette_count) {
-					break;
-				}
-				if (palette_freqs[j] == tag_type_id) {
-					tag_type_color = palette[j].rgb;
-					break;
-				}
-			}
-		}
+		vec3 tag_type_color = is_sprite_tag
+				? palette_color_for_type(tag_type_id) : vec3(0.0);
 
 		bool is_tagged = is_bg_tile || is_sprite_tag;
 		int type_id = is_sprite_tag ? tag_type_id : bg_type_id;
@@ -529,14 +516,18 @@ void fragment() {
 				? 1.0
 				: step(background_luma_threshold, l0);
 
-		// Tagged pixels always stipple under a pulse, regardless of
-		// type. `is_matching` separately marks pixels whose type
-		// equals the player's current frequency — those get a
-		// brightness + saturation boost below so the matching color
-		// reads more prominently than other types.
-		float frequency_match = is_tagged ? 1.0 : 0.0;
+		// Tagged pixels stipple under a pulse; matching-frequency
+		// pixels get full stipple density, non-matching tagged
+		// pixels get a reduced density (`non_matching_stipple_factor`)
+		// so the player's current frequency dominates while other
+		// types still show as faint speckles. The full bloom
+		// treatment (larger soft-edge dots + extra brightness) is
+		// applied below using `is_matching`.
 		bool is_matching =
 				is_tagged && type_id == current_frequency;
+		float frequency_match = is_tagged
+				? (is_matching ? 1.0 : non_matching_stipple_factor)
+				: 0.0;
 
 		// Near-field reveals EVERYTHING smoothly (background + tiles
 		// + player) with no dither, no frequency gating, no surface
@@ -581,10 +572,32 @@ void fragment() {
 				* distance_falloff;
 
 		// Dither the pulse reveal so it reads as stippling.
+		// Matching-type pixels sample the Bayer pattern at a coarser
+		// scale so each dot covers more pixels (bigger dots), and
+		// threshold with a smoothstep so dot edges fall off softly
+		// (fake bloom halo). Non-matching pixels keep the tight
+		// single-pixel hard-edge stipple.
+		float bayer_scale_px = is_matching
+				? bayer_tile_px * matching_bloom_size_multiplier
+				: bayer_tile_px;
 		float bayer = texture(
-				bayer_tex, px / bayer_tile_px / 8.0).r;
-		float dithered_pulse_reveal = step(
-				1.0 - pulse_reveal, bayer);
+				bayer_tex, px / bayer_scale_px / 8.0).r;
+		float threshold = 1.0 - pulse_reveal;
+		float dithered_pulse_reveal;
+		if (is_matching) {
+			dithered_pulse_reveal = smoothstep(
+					threshold - matching_bloom_soft_width,
+					threshold + matching_bloom_soft_width,
+					bayer);
+		} else {
+			dithered_pulse_reveal = step(threshold, bayer);
+		}
+		// Without a pulse, pulse_reveal = 0 → threshold = 1. The
+		// matching-branch smoothstep still returns > 0 for the highest-
+		// threshold Bayer cells (bayer > threshold - soft_width), which
+		// lit up matching-type tiles even with no active echo. Gate the
+		// result so stipples only show during a pulse.
+		dithered_pulse_reveal *= step(0.001, pulse_reveal);
 
 		// Combined reveal (smooth near-field OR dithered pulse).
 		float reveal = clamp(
@@ -600,9 +613,6 @@ void fragment() {
 			float u_base = float(bg_type_id) / slot_count_f;
 			float u_width = 1.0 / slot_count_f;
 
-			vec2 world_pos = world_origin
-					+ UV * screen_size_px * world_per_screen_px;
-
 			// Interior: wrap within a tile-sized cell, then shift
 			// into this type's atlas slot on the x axis.
 			float interior_u_frac = fract(
@@ -615,23 +625,45 @@ void fragment() {
 			vec3 interior_rgb = texture(
 					interior_atlas, interior_uv).rgb;
 
-			// Surface band: sample along the surface tangent, with
-			// depth v driven by surface_proximity (close-scale
-			// gradient). Using the close scale here — instead of the
-			// multi-scale grad_mag — keeps the surface accent texture
-			// as a narrow rim at the actual tile edge. grad_mag is
-			// reserved for stipple-density fade; reusing it here
-			// would smear the surface art deep into the interior
-			// (the stretched-color artifact).
-			vec2 tangent = vec2(-surface_normal.y, surface_normal.x);
+			// Surface band — proper sub-pixel SDF-aligned rendering.
+			//
+			// `d_here` is the bilinear-filtered density at this exact
+			// pixel (ranges 0 at the outer edge of a surface cell to
+			// ~1 at the inner edge where the cell meets solid
+			// interior). Using `d_here` directly as the atlas's `v`
+			// axis gives a smooth per-pixel depth gradient, unlike
+			// the old `surface_proximity` which was roughly constant
+			// inside a surface cell and made the atlas look flat /
+			// mis-aligned.
+			//
+			// Tangent is snapped to the dominant cardinal direction
+			// so the `along` coordinate stays monotonic along a
+			// given wall — avoids flicker at cell boundaries where
+			// the raw gradient direction could rotate.
+			float d_here = texture(
+					density_tex, world_to_density_uv(world_pos)).r;
+			vec2 snapped_normal;
+			if (abs(surface_normal.x) > abs(surface_normal.y)) {
+				snapped_normal = vec2(
+						sign(surface_normal.x), 0.0);
+			} else {
+				snapped_normal = vec2(
+						0.0, sign(surface_normal.y));
+			}
+			vec2 tangent = vec2(
+					-snapped_normal.y, snapped_normal.x);
 			float along = fract(
 					dot(world_pos, tangent) / surface_scale_along_px);
-			float v = clamp(1.0 - surface_proximity, 0.0, 1.0);
+			float v = clamp(d_here, 0.0, 1.0);
 			vec2 surface_uv = vec2(
 					u_base + along * u_width, v);
 			vec4 surface_sample = texture(
 					surface_atlas, surface_uv);
 
+			// Band visibility: `surface_proximity` gates the band to
+			// the one-cell shell where gradient is non-zero, so deep
+			// interior doesn't get surface art. Atlas alpha continues
+			// to shape the accent so authored art can fade its edges.
 			float band_mix = smoothstep(0.2, 0.8, surface_proximity)
 					* surface_sample.a;
 			textured_rgb = mix(
@@ -655,6 +687,10 @@ void fragment() {
 					stipple_rgb,
 					matching_saturation_boost);
 			stipple_rgb *= matching_brightness_boost;
+			// Additional bloom bump — pushes the color past 1.0 so
+			// the combined pulse + stipple reads as an overbright
+			// glow. Display clamp handles the final output.
+			stipple_rgb *= matching_bloom_brightness_bump;
 		}
 		// Optional debug tint — author stipple_color with alpha > 0
 		// to repaint every dot a loud color for placement checks.
@@ -682,6 +718,109 @@ void fragment() {
 		float ring_mask = is_tagged ? 0.0 : 1.0;
 		vec3 out_rgb = max(near_contribution, pulse_contribution)
 				+ ring_rgb * ring_mask;
+
+		// --- Bounce-back pings ----------------------------------------
+		// Each ping is a line drawn along the continuous colinear
+		// surface segment the ray hit. During the first
+		// `ping_grow_duration_frac` of the ping's lifetime the lit
+		// portion grows outward from `hit_px` toward both segment
+		// endpoints (reaching whichever endpoint is closer first);
+		// the whole line then fades to zero over the remaining
+		// lifetime. Lines are additive over the non-tagged layer
+		// (same visual plane as the pulse ring glow).
+		vec3 ping_rgb = vec3(0.0);
+		for (int i = 0; i < MAX_PINGS; i++) {
+			if (i >= ping_count) {
+				break;
+			}
+			float age = pings[i].z;
+			if (age < 0.0) {
+				continue;
+			}
+			vec2 hit_px = pings[i].xy * screen_size_px;
+			vec2 start_px = ping_segments[i].xy * screen_size_px;
+			vec2 end_px = ping_segments[i].zw * screen_size_px;
+			vec2 seg = end_px - start_px;
+			float seg_length = length(seg);
+			// Degenerate (zero-length) segment: fall back to a point
+			// pulse at hit_px so the ping is at least visible.
+			vec2 tangent;
+			if (seg_length < 1e-3) {
+				tangent = vec2(1.0, 0.0);
+			} else {
+				tangent = seg / seg_length;
+			}
+			vec2 normal_dir = vec2(-tangent.y, tangent.x);
+
+			// Project the pixel onto the segment: `along_hit` is the
+			// position of the hit point on the segment (as measured
+			// from start_px), `along_pixel` is the current pixel's
+			// position. Negative or > seg_length means we're outside
+			// the segment bounds.
+			float along_hit = dot(hit_px - start_px, tangent);
+			float along_pixel = dot(px - start_px, tangent);
+			float perp_pixel = dot(px - start_px, normal_dir);
+			float dist_from_hit_along = abs(along_pixel - along_hit);
+
+			// Growth phase: at age=0 the line has zero extent; at
+			// age = grow_duration * lifetime it reaches `max_reach`,
+			// which is the distance from hit_px to the farther
+			// endpoint. (Closer endpoint is reached earlier.)
+			float t = clamp(age / ping_lifetime_sec, 0.0, 1.0);
+			float grow_t = clamp(t / ping_grow_duration_frac, 0.0, 1.0);
+			float max_reach = max(
+					along_hit, seg_length - along_hit);
+			float reveal_reach = grow_t * max_reach;
+
+			// Overall brightness envelope: ramps up during growth,
+			// holds, then fades out. `fade_t` is 1 at growth end,
+			// linearly drops to 0 at lifetime end.
+			float fade_t = 1.0 - smoothstep(
+					ping_grow_duration_frac, 1.0, t);
+
+			// On-segment gate (only light up pixels between the two
+			// endpoints). Small smoothstep softens the segment ends.
+			float on_segment = smoothstep(-1.0, 0.0, along_pixel)
+					* smoothstep(
+							-1.0, 0.0, seg_length - along_pixel);
+
+			// Line SDF: perpendicular distance from the segment
+			// central axis, with an exponential falloff past the
+			// nominal thickness for the glow halo.
+			float perp_abs = abs(perp_pixel);
+			float core = smoothstep(
+					ping_line_thickness_px + ping_line_glow_px,
+					ping_line_thickness_px,
+					perp_abs);
+			float halo = exp(-(perp_abs * perp_abs)
+					/ max(ping_line_glow_px * ping_line_glow_px
+							+ ping_line_thickness_px
+									* ping_line_thickness_px,
+							1e-3));
+			float line_strength = max(core, halo * 0.6);
+
+			// Along-segment reveal — smoothstep at the leading edge
+			// so the growing line's tip is soft rather than a hard
+			// cutoff.
+			float reveal_window = smoothstep(
+					reveal_reach + 1.0,
+					reveal_reach,
+					dist_from_hit_along);
+
+			float brightness = on_segment
+					* line_strength
+					* reveal_window
+					* fade_t;
+
+			int ping_type_id = int(pings[i].w);
+			vec3 ping_color = palette_color_for_type(ping_type_id);
+			if (ping_type_id == 0
+					|| dot(ping_color, ping_color) < 1e-6) {
+				ping_color = vec3(1.0);
+			}
+			ping_rgb += ping_color * brightness;
+		}
+		out_rgb += ping_rgb * ring_mask;
 
 		// Small dark floor so the ring never punches negative on
 		// pathological uniform values.
