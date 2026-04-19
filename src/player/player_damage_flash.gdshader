@@ -53,15 +53,27 @@ float alpha_within(
 
 void fragment() {
 	vec4 tex_color = texture(TEXTURE, UV);
+	// `COLOR` at fragment entry carries the CanvasItem modulate
+	// chain (vertex stage default: COLOR = MODULATE). Bugs tint
+	// their white spritesheet to frequency color via `modulate`;
+	// preserve it here so the body renders in its frequency color.
+	vec4 modulate_rgba = COLOR;
 
 	if (tex_color.a > 0.5) {
 		// Sprite body — tint toward flash_color. Preserve sprite
 		// alpha so the edges stay anti-aliased with the scene.
 		vec3 tinted = mix(
 				tex_color.rgb, flash_color.rgb, flash_strength);
-		COLOR = vec4(tinted, tex_color.a);
+		COLOR = vec4(
+				tinted * modulate_rgba.rgb,
+				tex_color.a * modulate_rgba.a);
 	} else {
 		// Outside the sprite — render the pulse ring if active.
+		// The ring's color is authored by the game (damage red,
+		// eaten-pulse frequency color) and should NOT be multiplied
+		// by modulate RGB — doing so would double-tint a bug's
+		// eaten pulse. Apply modulate alpha only so the ring fades
+		// in lockstep with the sprite.
 		vec4 base = tex_color;
 		if (pulse_alpha > 0.001 && pulse_radius_px > 0.0) {
 			vec2 tex_size = vec2(textureSize(TEXTURE, 0));
@@ -80,6 +92,6 @@ void fragment() {
 					* ring
 					* pulse_alpha;
 		}
-		COLOR = base;
+		COLOR = vec4(base.rgb, base.a * modulate_rgba.a);
 	}
 }
