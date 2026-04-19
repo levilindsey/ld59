@@ -10,11 +10,14 @@
 [ext_resource type="PackedScene" path="res://src/level/falling_cell.tscn" id="8_falling_cell"]
 [ext_resource type="PackedScene" uid="uid://b8k2pwamtr0x3" path="res://src/level/web_tile.tscn" id="9_web"]
 [ext_resource type="Texture2D" uid="uid://rihqreb0nh5o" path="res://assets/images/scratch/kittenbaticorn.png" id="10_kitten"]
-[ext_resource type="Script" path="res://src/level/editor_placeholder_sprite.gd" id="11_placeholder"]
-[ext_resource type="PackedScene" path="res://src/enemies/spider.tscn" id="12_spider"]
-[ext_resource type="PackedScene" path="res://src/enemies/coyote.tscn" id="13_coyote"]
-[ext_resource type="PackedScene" path="res://src/enemies/monster_bird.tscn" id="14_bird"]
-[ext_resource type="PackedScene" path="res://src/enemies/flying_critter.tscn" id="15_critter"]
+[ext_resource type="Script" uid="uid://cidpun4kcqrme" path="res://src/level/editor_placeholder_sprite.gd" id="11_placeholder"]
+[ext_resource type="PackedScene" uid="uid://dp2k8vxn3qr7m" path="res://src/enemies/spider.tscn" id="12_spider"]
+[ext_resource type="PackedScene" uid="uid://ck8v0fmnuap7q" path="res://src/enemies/coyote.tscn" id="13_coyote"]
+[ext_resource type="PackedScene" uid="uid://bm4k7p5q8rx3v" path="res://src/enemies/monster_bird.tscn" id="14_bird"]
+[ext_resource type="PackedScene" uid="uid://cb8y2r7l4nrak" path="res://src/enemies/flying_critter.tscn" id="15_critter"]
+[ext_resource type="PackedScene" uid="uid://bp7kw3m5h2qa0" path="res://src/bugs/persistent_bug_spawn.tscn" id="16_12ioe"]
+[ext_resource type="Script" uid="uid://dgi7hjpa5klr0" path="res://src/bugs/bug_spawn_region.gd" id="17_yhmjm"]
+[ext_resource type="Script" uid="uid://bvb1yejjsmib7" path="res://src/enemies/enemy_spawn_point.gd" id="18_c7jxb"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_player_spawn"]
 atlas = ExtResource("10_kitten")
@@ -43,7 +46,7 @@ tile_set = ExtResource("3_tileset")
 [node name="PlayerSpawnPoint" type="Node2D" parent="." unique_id=2146902381]
 unique_name_in_owner = true
 
-[node name="PlaceholderSprite" type="Sprite2D" parent="PlayerSpawnPoint"]
+[node name="PlaceholderSprite" type="Sprite2D" parent="PlayerSpawnPoint" unique_id=1572751611]
 position = Vector2(-5, -5)
 texture = SubResource("AtlasTexture_player_spawn")
 script = ExtResource("11_placeholder")
@@ -65,3 +68,21 @@ spider_scene = ExtResource("12_spider")
 coyote_scene = ExtResource("13_coyote")
 monster_bird_scene = ExtResource("14_bird")
 flying_critter_scene = ExtResource("15_critter")
+
+[node name="PersistentBugSpawn" parent="." unique_id=53641786 instance=ExtResource("16_12ioe")]
+position = Vector2(-135, 6)
+frequency = 4
+size_variant = 1
+
+[node name="BugSpawnRegion" type="Node2D" parent="." unique_id=435040009]
+position = Vector2(82, -18)
+script = ExtResource("17_yhmjm")
+frequency = 2
+metadata/_custom_type_script = "uid://dgi7hjpa5klr0"
+
+[node name="EnemySpawnPoint" type="Node2D" parent="." unique_id=849248867]
+position = Vector2(-75, 16)
+script = ExtResource("18_c7jxb")
+kind = 1
+frequency_override = 3
+metadata/_custom_type_script = "uid://bvb1yejjsmib7"

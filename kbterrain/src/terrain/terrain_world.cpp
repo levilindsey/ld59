@@ -209,7 +209,8 @@ void rebuild_collision_cells(
 			String("kbterrain rebuild_collision_cells: chunk=")
 			+ String::num(chunk->coords.x) + String(",")
 			+ String::num(chunk->coords.y) + String(" cells=")
-			+ String::num(count));
+			+ String::num(count) + String(" iso=")
+			+ String::num(iso));
 }
 
 } // namespace

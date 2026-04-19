@@ -1,14 +1,22 @@
-[gd_scene format=3 uid="uid://cmay3k4m7vq8x"]
+[gd_scene load_steps=5 format=3 uid="uid://cmay3k4m7vq8x"]
 
 [ext_resource type="Script" path="res://src/ui/hud/health_bar.gd" id="1_hb"]
+[ext_resource type="Texture2D" path="res://assets/images/scratch/heart-icon.png" id="2_heart"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hb_bg"]
-bg_color = Color(0.1, 0.1, 0.12, 0.85)
+bg_color = Color(0.24, 0.10, 0.14, 0.85)
 border_width_left = 1
 border_width_top = 1
 border_width_right = 1
 border_width_bottom = 1
-border_color = Color(0.9, 0.9, 0.95, 0.6)
+border_color = Color(0.95, 0.40, 0.55, 0.45)
+corner_radius_top_left = 2
+corner_radius_top_right = 2
+corner_radius_bottom_right = 2
+corner_radius_bottom_left = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hb_fill"]
+bg_color = Color(0.95, 0.40, 0.55, 1.0)
 corner_radius_top_left = 2
 corner_radius_top_right = 2
 corner_radius_bottom_right = 2
@@ -22,7 +30,7 @@ corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
 [node name="HealthBar" type="ProgressBar"]
-custom_minimum_size = Vector2(120, 12)
+custom_minimum_size = Vector2(150, 16)
 theme_override_styles/background = SubResource("StyleBoxFlat_hb_bg")
 theme_override_styles/fill = SubResource("StyleBoxFlat_hb_fill")
 min_value = 0.0
@@ -30,3 +38,21 @@ max_value = 100.0
 value = 100.0
 show_percentage = false
 script = ExtResource("1_hb")
+
+[node name="HeartIcon" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -7.5
+offset_top = -7.5
+offset_right = 7.5
+offset_bottom = 7.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture_filter = 1
+modulate = Color(0.95, 0.40, 0.55, 1.0)
+texture = ExtResource("2_heart")

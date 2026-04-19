@@ -301,8 +301,10 @@ uniform int atlas_slot_count = 8;
 uniform float interior_scale_px : hint_range(4.0, 128.0) = 32.0;
 uniform float surface_scale_along_px : hint_range(4.0, 128.0) = 32.0;
 // Depth (world px) the surface accent band extends from the cell
-// surface INTO the solid. Matches the surface atlas's pixel height.
-uniform float surface_depth_px : hint_range(1.0, 32.0) = 12.0;
+// surface INTO the solid. Default matches `density_cell_size_px` so
+// the accent stays within the surface cell's own bounds and doesn't
+// bleed into interior cells below.
+uniform float surface_depth_px : hint_range(1.0, 32.0) = 8.0;
 // RGB distance from the expected terrain palette color above which
 // the near-field atlas override is skipped and the scene pixel (c0)
 // is kept instead. The composite classifies terrain by world-space
@@ -394,11 +396,17 @@ vec3 palette_color_for_type(int type_id) {
 // ---- world ↔ density-texture coords ---------------------------------------
 
 // Convert world-px to density-texture UV. Density texture is
-// (cells_wide + 1, cells_high + 1) samples.
+// (cells_wide + 1, cells_high + 1) samples. Corner i sits at world
+// pos `i * density_cell_size_px`, and its texel center in UV is at
+// `(i + 0.5) / (cells + 1)` — so we add 0.5 in cell units before
+// normalizing. Omitting the 0.5 shifts all density samples by half a
+// texel (= half a cell in world pixels), which offsets the whole
+// surface gradient and is why interior / accent textures end up
+// half-a-cell off from the authored cell boundary.
 vec2 world_to_density_uv(vec2 world_px) {
 	vec2 cell = (world_px - density_world_origin_px)
 			/ density_cell_size_px;
-	return cell / (density_world_cell_size + vec2(1.0));
+	return (cell + vec2(0.5)) / (density_world_cell_size + vec2(1.0));
 }
 
 
@@ -775,7 +783,15 @@ void fragment() {
 		bool overlay_sprite_here = is_bg_tile
 				&& distance(c0, bg_type_color)
 						> overlay_sprite_diff_threshold;
-		if (is_bg_tile && !overlay_sprite_here) {
+		// `is_bg_tile` comes from a type-texture sample with a +0.5
+		// offset that can bleed half a cell beyond the authored
+		// solid region. Reinforce with a density-at-fragment gate:
+		// only run the texturing path where the fragment is actually
+		// inside the solid (d_here near 1). Outside that, leave c0.
+		float d_here_outer = texture(
+				density_tex, world_to_density_uv(world_pos)).r;
+		bool inside_solid_cell = d_here_outer >= 0.99;
+		if (is_bg_tile && !overlay_sprite_here && inside_solid_cell) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
 			float u_base = float(bg_type_id) / slot_count_f;
 			float u_width = 1.0 / slot_count_f;
@@ -848,8 +864,6 @@ void fragment() {
 			// the `along` coordinate stays monotonic along a given
 			// wall — avoids flicker at cell boundaries where the raw
 			// gradient direction could rotate.
-			float d_here = texture(
-					density_tex, world_to_density_uv(world_pos)).r;
 			vec2 snapped_normal;
 			if (abs(surface_normal.x) > abs(surface_normal.y)) {
 				snapped_normal = vec2(
@@ -873,15 +887,11 @@ void fragment() {
 					surface_atlas, surface_uv);
 
 			// Visibility gate: only render accent where the fragment
-			// itself is INSIDE solid. `d_here >= ~1` means the
-			// fragment sits on or inside the solid interior; < 1
-			// means the fragment is outside the solid boundary (in
-			// air / gradient shell) — those pixels stay at the
-			// interior color with no accent spilling past the
-			// authored cell edge. Atlas alpha continues to shape the
-			// accent so authored art can fade its edges.
-			float inside_solid = step(0.99, d_here);
-			float band_mix = inside_solid * surface_sample.a;
+			// itself is INSIDE solid. We already know
+			// `inside_solid_cell` from the outer guard, so the atlas
+			// alpha (authored per-column fade) is the only additional
+			// shaping the mix needs here.
+			float band_mix = surface_sample.a;
 			textured_rgb = mix(
 					interior_rgb, surface_sample.rgb, band_mix);
 		}

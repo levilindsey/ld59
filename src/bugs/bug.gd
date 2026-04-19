@@ -28,12 +28,14 @@ const _DRIFT_JITTER_RADIANS := PI * 0.6
 
 ## Per-size tuning. Body + Glow sprite scales, collision radius,
 ## juice granted on eat, and heal amount applied to the player.
-const _SMALL_BODY_SCALE := 6.0
-const _SMALL_GLOW_SCALE := 12.0
+## Body scales are calibrated for the 16x17 bug.png frame. Glow
+## scales are calibrated for the 64x64 GradientTexture2D halo.
+const _SMALL_BODY_SCALE := 1.5
+const _SMALL_GLOW_SCALE := 0.6
 const _SMALL_COLLISION_RADIUS := 15.0
 const _SMALL_HEAL := 15
-const _BIG_BODY_SCALE := 12.0
-const _BIG_GLOW_SCALE := 22.0
+const _BIG_BODY_SCALE := 3.0
+const _BIG_GLOW_SCALE := 1.2
 const _BIG_COLLISION_RADIUS := 28.0
 const _BIG_HEAL := 75
 
@@ -177,7 +179,7 @@ func _apply_size_variant() -> void:
 			coll_radius = _SMALL_COLLISION_RADIUS
 			juice_grant = Player.SMALL_JUICE_GRANT
 			heal_amount = _SMALL_HEAL
-	var body := get_node_or_null("Body") as Sprite2D
+	var body := get_node_or_null("Body") as Node2D
 	if is_instance_valid(body):
 		body.scale = Vector2(body_scale, body_scale)
 	var glow := get_node_or_null("Glow") as Sprite2D

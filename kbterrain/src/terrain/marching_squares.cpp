@@ -285,7 +285,15 @@ void mesh_chunk(
 					origin_px.x + x * cell_size_px,
 					origin_px.y + y * cell_size_px);
 
-			emit_interior(cs, origin, cell_size_px, d, iso, color, out);
+			// Only case 15 (fully-solid cell) emits interior triangles.
+			// With iso=255 and binary 0/255 density the partial cases
+			// are degenerate anyway, and skipping them explicitly keeps
+			// the visual mesh strictly inside authored cell boundaries
+			// so it aligns with the per-cell collision quads.
+			if (cs == 15) {
+				emit_interior(
+						cs, origin, cell_size_px, d, iso, color, out);
+			}
 
 			const CaseEdges &ce = CASE_TABLE[cs];
 			for (int s = 0; s < ce.count; s++) {
