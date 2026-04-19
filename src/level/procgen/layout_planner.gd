@@ -74,17 +74,23 @@ static func _carve_floor(
 		height: int,
 		rng: RandomNumberGenerator,
 		config: ProcgenConfig) -> void:
-	# Thick floor: fill from 2 tiles above the bottom border upward
-	# by 4 tiles. Mostly one "frequency-of-the-level" tile type with
-	# an occasional variation.
-	var floor_top := height - border - 5
+	# Thick floor with a noise-based top surface. For each column
+	# the top is base ± amplitude; thickness varies with it. Produces
+	# an undulating ground line instead of a flat slab.
+	var base_top := height - border - 5
 	var floor_bottom := height - border - 1
+	var span := grid.width - 2 * border
+	var heights := ProcgenShapes.noise_heights_1d(
+			span, base_top, 2, 14.0, rng)
 	var primary := _weighted_pick(config.weighted_frequencies(), rng)
-	for y in range(floor_top, floor_bottom + 1):
-		for x in range(border, grid.width - border):
+	for x_idx in range(span):
+		var x := border + x_idx
+		var top_y: int = heights[x_idx]
+		top_y = clampi(top_y, border + 2, floor_bottom - 1)
+		for y in range(top_y, floor_bottom + 1):
 			var t := primary
-			# 1-in-8 cells upstairs get a different color for variety.
-			if y == floor_top and rng.randi() % 8 == 0:
+			# Occasional off-color top "outcropping" for variety.
+			if y == top_y and rng.randi() % 9 == 0:
 				t = _weighted_pick(config.weighted_frequencies(), rng)
 			grid.set_cell(x, y, t)
 
@@ -99,7 +105,6 @@ static func _carve_platforms(
 	while platforms.size() < config.platform_count and tries < max_tries:
 		tries += 1
 		var width := 6 + rng.randi_range(0, 6)
-		var height := 1 + rng.randi_range(0, 2)
 		var min_y := config.border_tiles + 3
 		var max_y := grid.height - config.border_tiles - 8
 		if max_y <= min_y:
@@ -108,13 +113,55 @@ static func _carve_platforms(
 				config.border_tiles + 2,
 				grid.width - config.border_tiles - 2 - width)
 		var y := rng.randi_range(min_y, max_y)
-		var rect := Rect2i(x, y, width, height)
+		# Platforms have a noise-varied top surface and a slightly
+		# rounded underside via end caps; broad rect for footprint
+		# bookkeeping (used by set-piece overlap checks) spans the
+		# full extents of the carved shape.
+		var thickness := 1 + rng.randi_range(0, 2)
+		var rect := Rect2i(x, y, width, thickness + 1)
 		if _overlaps_any(platforms, rect.grow(2)):
 			continue
 		var freq := _weighted_pick(config.weighted_frequencies(), rng)
-		grid.fill_rect(rect, freq)
+		_stamp_organic_platform(grid, rect, freq, rng)
 		platforms.append(rect)
 	return platforms
+
+
+static func _stamp_organic_platform(
+		grid: ProcgenGrid,
+		rect: Rect2i,
+		freq: int,
+		rng: RandomNumberGenerator) -> void:
+	# Noise-based top surface: each column's top sits at
+	# `rect.top + noise(x)`, clamped to stay within the platform.
+	var w := rect.size.x
+	var top_y := rect.position.y
+	var max_drop := maxi(0, rect.size.y - 1)
+	var heights := ProcgenShapes.noise_heights_1d(
+			w, top_y, 1, 6.0, rng)
+	# Flatten the middle third so platforms always offer a walkable
+	# span (reachability BFS + player jump-arc can't rely on
+	# arbitrary stair-step paths).
+	var mid_from := w / 3
+	var mid_to := (w * 2) / 3
+	var mid_y := heights[mid_from] if mid_from < w else top_y
+	for x_idx in range(mid_from, mid_to):
+		heights[x_idx] = mid_y
+	for x_idx in range(w):
+		var col_x := rect.position.x + x_idx
+		var col_top: int = clampi(
+				heights[x_idx], top_y, top_y + max_drop)
+		# Thickness: full from col_top down to rect.bottom - 1.
+		for y in range(col_top, rect.position.y + rect.size.y):
+			grid.set_cell(col_x, y, freq)
+	# Taper left/right ends with small circles so edges don't read
+	# as hard corners.
+	var cap_r := 1.5
+	var left_cx := rect.position.x
+	var right_cx := rect.position.x + rect.size.x - 1
+	var cap_cy := rect.position.y + rect.size.y - 1
+	ProcgenShapes.fill_circle(grid, left_cx, cap_cy, cap_r, freq)
+	ProcgenShapes.fill_circle(grid, right_cx, cap_cy, cap_r, freq)
 
 
 static func _pick_spawn(grid: ProcgenGrid, border: int) -> Vector2i:
