@@ -22,6 +22,11 @@ var world_pos: Vector2 = Vector2.ZERO
 var segment_start: Vector2 = Vector2.ZERO
 var segment_end: Vector2 = Vector2.ZERO
 
+## Outward-facing surface normal (cardinal, unit length). Drives the
+## fade-phase translation so the line drifts perpendicular to the
+## surface, physically representing the echo radiating outward.
+var segment_normal: Vector2 = Vector2.ZERO
+
 ## Frequency type of the originating pulse (see Frequency.Type). The
 ## ping uses this both to look up a display color (via the shader
 ## palette) and to pitch-shift the audio ping.
