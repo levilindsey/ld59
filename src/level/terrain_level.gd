@@ -183,7 +183,12 @@ func _connect_pulse_damage() -> void:
 ##   far cells get nearly none. Lets pulses dig a bit into chunky
 ##   terrain near the player without long-range spray.
 const _DAMAGE_FULL_RADIUS_PX := 40.0
-const _DAMAGE_MAX_RADIUS_PX := 5040.0
+## Capped at ~1500 px: comfortably past the viewport diagonal at zoom
+## 2 (~660 px diagonal), so players still get "hit the far wall"
+## feel, but the bbox area in `damage_with_falloff` is ~11× smaller
+## than the old 5040 and the per-pulse C++ iteration drops from
+## ~1.25 M cells to ~110 k.
+const _DAMAGE_MAX_RADIUS_PX := 1500.0
 const _DAMAGE_FULL_AMOUNT := 256
 const _DAMAGE_MIN_AMOUNT := 96
 const _PROXIMITY_DAMAGE_FULL_RADIUS_PX := 40.0

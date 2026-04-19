@@ -1176,8 +1176,33 @@ void TerrainWorld::damage_with_falloff(
 				surface_max_radius_px * surface_max_radius_px;
 		const float proximity_r_sq =
 				proximity_max_radius_px * proximity_max_radius_px;
+		// Squared full-radius values so the full-damage zone test
+		// stays in squared space (no sqrt needed when the cell is
+		// inside a full-damage band).
+		const float surface_full_r_sq =
+				surface_full_radius_px * surface_full_radius_px;
+		const float proximity_full_r_sq =
+				proximity_full_radius_px * proximity_full_radius_px;
+		const int chunk_cells = chunk->cells;
 		for (int cy = min_y; cy <= max_y; cy++) {
 			for (int cx = min_x; cx <= max_x; cx++) {
+				// Type early-out: read the cell's type byte up front.
+				// Empty / indestructible / frequency-mismatch cells
+				// get no damage and don't need falloff math or a
+				// cross-call into `_apply_damage_to_cell`.
+				const int cell_idx = cy * chunk_cells + cx;
+				const uint8_t type = chunk->type_per_cell[cell_idx];
+				if (type == TerrainSettings::TYPE_NONE
+						|| type == TerrainSettings::TYPE_INDESTRUCTIBLE) {
+					continue;
+				}
+				if (frequency_mask != 0) {
+					const int type_bit = _frequency_to_bit(type);
+					if ((frequency_mask & type_bit) == 0) {
+						continue;
+					}
+				}
+
 				const Vector2 cell_center = Vector2(
 						origin.x + (cx + 0.5f)
 								* _cell_size_px_cached,
@@ -1189,14 +1214,16 @@ void TerrainWorld::damage_with_falloff(
 				if (d_sq > outer_r_sq) {
 					continue;
 				}
-				const float dist = std::sqrt(d_sq);
 
-				// Surface component — linear falloff.
+				// Surface component — linear falloff. Defer sqrt
+				// until we actually need `dist` for the falloff-band
+				// lerp; full-damage cells stay in squared space.
 				int surface_cell_dmg = 0;
 				if (d_sq <= surface_r_sq && surface_full_dmg > 0) {
-					if (dist <= surface_full_radius_px) {
+					if (d_sq <= surface_full_r_sq) {
 						surface_cell_dmg = surface_full_dmg;
 					} else {
+						const float dist = std::sqrt(d_sq);
 						float t = (dist - surface_full_radius_px)
 								/ surface_falloff_band;
 						if (t < 0.0f) { t = 0.0f; }
@@ -1219,9 +1246,10 @@ void TerrainWorld::damage_with_falloff(
 				int proximity_cell_dmg = 0;
 				if (d_sq <= proximity_r_sq
 						&& proximity_full_dmg > 0) {
-					if (dist <= proximity_full_radius_px) {
+					if (d_sq <= proximity_full_r_sq) {
 						proximity_cell_dmg = proximity_full_dmg;
 					} else {
+						const float dist = std::sqrt(d_sq);
 						float t = (dist - proximity_full_radius_px)
 								/ proximity_falloff_band;
 						if (t < 0.0f) { t = 0.0f; }
