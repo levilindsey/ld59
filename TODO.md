@@ -87,4 +87,35 @@
 ## TODO
 
 - Make sure Claude accounts for whatever we'll need to do make our GDExtension work in web builds.
+
+- EchoLocation:
+    - Shader:
+        - Bounce-back effect we talked about...
+        - Stipples of the matching color as the echolocation should show more brightly than the others.
+        - We should show stipples through water with echolocation, rather than attenuating with depth. Though, we should also still render the sharper surface/edges of water chunks.
+    - Audio effect:
+        - 
+    - Damage:
+        - Needs to be sharper cut-off.
+        - Needs to not extend as far.
+        - Needs to have lower damage at max cut-off distance.
+- Collapsing:
+    - Falling cells when detached
+    - Falling liquid
+    - Falling sand
+- Enemies:
+    - Coyote
+    - Spider
+    - Bird
+- Test:
+    - Falling cell, liquid, sand damage.
+    - 
+- Level generation:
+    - 
+
+
+# Stretch
+
+- Polish player and enemy sprite shading.
+- Polish level sprites.
 - 

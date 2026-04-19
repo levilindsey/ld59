@@ -58,6 +58,12 @@ public:
 	// --- Queries ----
 	float sample_density(Vector2 world_pos) const;
 	bool is_solid(Vector2 world_pos) const;
+	// True iff the cell containing `world_pos` has a non-NONE type.
+	// Cell-granular; use this (not `is_solid`) when you need to ask
+	// "is this particular cell filled?" — `is_solid` reads only the
+	// top-left corner density, which can be 255 via an adjacent
+	// anchor even if the cell itself is empty.
+	bool is_cell_non_empty(Vector2 world_pos) const;
 	// Cast a ray down from (x, -very_large) finding the topmost solid
 	// sample crossing; returns y in world px. Returns NAN if no hit.
 	float get_surface_height(float world_x, float search_max_y_px) const;
