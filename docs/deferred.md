@@ -376,12 +376,14 @@ off: water moving across a chunk seam briefly has stale collision on
 the neighbor chunk until something else triggers its remesh. Barely
 observable in practice.
 
-### 3.16 Player wedge-kick is input-gated, not continuous
-`_apply_wedge_kick_if_stuck` fires only on jump-press, not every
-frame. If the player gets wedged without pressing jump (e.g., falling
-into a 1-cell V), they're stuck until they press jump. Deliberate —
-continuous nudging would fight normal contact-with-wall behavior
-(sliding along a vertical wall, for instance).
+### 3.16 Player jump-stuck unstick is input-gated, not continuous
+`_unstick_to_nearest_open_space` only fires when a jump triggered on
+the previous frame and `move_and_slide` produced no meaningful
+displacement (and the player's AABB is currently overlapping
+collidable cells). If the player gets wedged without pressing jump
+(e.g., falling into a 1-cell V), they stay stuck until they press
+jump. Deliberate — continuous nudging would fight normal contact-
+with-wall behavior (sliding along a vertical wall, for instance).
 
 ---
 
