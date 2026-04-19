@@ -2,12 +2,6 @@ class_name AudioMain
 extends Node2D
 
 
-signal cadence_sequence_finished(which: String)
-
-
-const _POST_CADENCE_GAP_SEC := 0.5
-
-
 @export var theme_fade_duration_sec := 0.2
 
 @export var mute_volume := -80.0
@@ -30,12 +24,6 @@ const _POST_CADENCE_GAP_SEC := 0.5
 var initial_volumes := {}
 
 var current_theme: AudioStreamPlayer
-
-# True while a win/death cadence is playing. While set, fade_to_theme
-# defers its work so the theme change doesn't un-pause the music
-# underneath the cadence.
-var _is_cadence_active := false
-var _post_cadence_theme := ""
 
 
 func _enter_tree() -> void:
@@ -67,11 +55,6 @@ func stop_sound(sound_name: StringName) -> void:
 
 
 func fade_to_theme(theme_name: String) -> void:
-	if _is_cadence_active:
-		# The cadence owns the theme's pause state until it finishes;
-		# stash the requested destination and apply it post-cadence.
-		_post_cadence_theme = theme_name
-		return
 	if is_instance_valid(current_theme):
 		fade_out(current_theme)
 	current_theme = STREAM_PLAYERS_BY_NAME[theme_name]
@@ -124,52 +107,6 @@ func fade_out(stream_player: AudioStreamPlayer) -> void:
 	# Ensure the stream is still playing, just in case we somehow end up with
 	# overlapping tweens (the latest tween should end up winning).
 	stream_player.stream_paused = true
-
-
-func play_win_cadence() -> void:
-	_play_cadence(%SuccessCadenceStreamPlayer, "win")
-
-
-func play_death_cadence() -> void:
-	_play_cadence(%FailureCadenceStreamPlayer, "death")
-
-
-func _play_cadence(player: AudioStreamPlayer, which: String) -> void:
-	_is_cadence_active = true
-	_post_cadence_theme = ""
-	_pause_current_theme()
-	if player.finished.is_connected(_on_cadence_finished):
-		player.finished.disconnect(_on_cadence_finished)
-	player.finished.connect(
-		_on_cadence_finished.bind(which), CONNECT_ONE_SHOT)
-	player.play()
-
-
-func _pause_current_theme() -> void:
-	if not is_instance_valid(current_theme):
-		return
-	current_theme.stream_paused = true
-
-
-func _resume_current_theme() -> void:
-	if not is_instance_valid(current_theme):
-		return
-	current_theme.stream_paused = false
-
-
-func _on_cadence_finished(which: String) -> void:
-	# Use a process-always timer so the gap still ticks while the
-	# tree is paused (CREDITS state pauses the tree on win).
-	await get_tree().create_timer(
-		_POST_CADENCE_GAP_SEC, true, false, true).timeout
-	_is_cadence_active = false
-	if _post_cadence_theme.is_empty():
-		_resume_current_theme()
-	else:
-		var theme := _post_cadence_theme
-		_post_cadence_theme = ""
-		fade_to_theme(theme)
-	cadence_sequence_finished.emit(which)
 
 
 func play_player_sound(
