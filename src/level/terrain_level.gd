@@ -41,10 +41,12 @@ extends Level
 @export var web_tile_scene: PackedScene
 
 @export_group("Fragments")
-## Scene spawned when a connected-components pass detaches an
-## un-anchored island of terrain cells. Instance is initialized via
-## its `build()` method with pre-baked mesh + collision data.
-@export var fragment_scene: PackedScene
+## Scene spawned per-cell when a connected-components pass detaches
+## an un-anchored island. Each cell falls straight down under simple
+## scalar gravity (no rigid-body physics) and merges back into the
+## terrain on landing. Staggered by row (bottom first) so cells
+## don't self-collide in flight.
+@export var falling_cell_scene: PackedScene
 ## Toggle to force a re-bake from the editor inspector. Auto-flips
 ## back to false after triggering.
 @export var refresh_preview: bool = false:
@@ -127,28 +129,41 @@ func _connect_fragment_detached(tw: Node) -> void:
 			tw.connect("fragment_detached", _on_fragment_detached)
 
 
+const _STAGGER_SEC_PER_ROW := 0.04
+
+
 func _on_fragment_detached(
 		origin_world: Vector2,
-		mesh_verts: PackedVector2Array,
-		mesh_indices: PackedInt32Array,
-		mesh_colors: PackedColorArray,
-		collision_segments: PackedVector2Array,
+		_mesh_verts: PackedVector2Array,
+		_mesh_indices: PackedInt32Array,
+		_mesh_colors: PackedColorArray,
+		_collision_segments: PackedVector2Array,
 		island_size_cells: Vector2i,
 		cell_types: PackedByteArray,
 		cell_healths: PackedByteArray) -> void:
-	if not is_instance_valid(fragment_scene):
+	if falling_cell_scene == null:
 		return
-	var fragment: TerrainChunkFragment = fragment_scene.instantiate()
-	add_child(fragment)
-	fragment.build(
-			origin_world,
-			mesh_verts,
-			mesh_indices,
-			mesh_colors,
-			collision_segments,
-			island_size_cells,
-			cell_types,
-			cell_healths)
+	if not is_instance_valid(G.terrain) or G.terrain.settings == null:
+		return
+	var cell_size: float = G.terrain.settings.cell_size_px
+	var w := island_size_cells.x
+	var h := island_size_cells.y
+	for ly in h:
+		for lx in w:
+			var idx := ly * w + lx
+			var type := int(cell_types[idx])
+			if type == Frequency.Type.NONE:
+				continue
+			var world_pos := origin_world + Vector2(
+					(lx + 0.5) * cell_size,
+					(ly + 0.5) * cell_size)
+			# Bottom row falls immediately; each row above waits
+			# one stagger tick so the stack slides cohesively.
+			var delay := float(h - 1 - ly) * _STAGGER_SEC_PER_ROW
+			var cell: FallingCell = falling_cell_scene.instantiate()
+			add_child(cell)
+			cell.configure(
+					world_pos, type, int(cell_healths[idx]), delay)
 
 
 func _connect_pulse_damage() -> void:

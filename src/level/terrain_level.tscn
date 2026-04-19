@@ -7,7 +7,7 @@
 [ext_resource type="Script" uid="uid://clr0cpiah02eh" path="res://src/bugs/bug_spawner.gd" id="5_spawner"]
 [ext_resource type="PackedScene" uid="uid://dgk5b2n3lc8kr" path="res://src/bugs/bug.tscn" id="6_bug"]
 [ext_resource type="Script" uid="uid://o2i6tqdak3pe" path="res://src/enemies/enemy_system.gd" id="7_enemy_sys"]
-[ext_resource type="PackedScene" uid="uid://cqyam7b3nwf2p" path="res://src/level/terrain_chunk_fragment.tscn" id="8_fragment"]
+[ext_resource type="PackedScene" path="res://src/level/falling_cell.tscn" id="8_falling_cell"]
 [ext_resource type="PackedScene" uid="uid://b8k2pwamtr0x3" path="res://src/level/web_tile.tscn" id="9_web"]
 
 [node name="TerrainLevel" type="Node2D" unique_id=1888346517]
@@ -16,7 +16,7 @@ terrain_world_path = NodePath("TerrainWorld")
 terrain_settings = ExtResource("2_settings")
 tile_map_layer_path = NodePath("Tiles")
 web_tile_scene = ExtResource("9_web")
-fragment_scene = ExtResource("8_fragment")
+falling_cell_scene = ExtResource("8_falling_cell")
 
 [node name="ParallaxBackground" parent="." unique_id=482765648 instance=ExtResource("4_bg")]
 
