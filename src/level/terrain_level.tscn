@@ -13,7 +13,7 @@
 [ext_resource type="Script" uid="uid://cidpun4kcqrme" path="res://src/level/editor_placeholder_sprite.gd" id="11_placeholder"]
 [ext_resource type="PackedScene" uid="uid://dp2k8vxn3qr7m" path="res://src/enemies/spider.tscn" id="12_spider"]
 [ext_resource type="PackedScene" uid="uid://ck8v0fmnuap7q" path="res://src/enemies/coyote.tscn" id="13_coyote"]
-[ext_resource type="PackedScene" path="res://src/enemies/owl.tscn" id="14_owl"]
+[ext_resource type="PackedScene" uid="uid://cdvs6w86bbr5m" path="res://src/enemies/owl.tscn" id="14_owl"]
 [ext_resource type="PackedScene" uid="uid://bp7kw3m5h2qa0" path="res://src/bugs/persistent_bug_spawn.tscn" id="16_12ioe"]
 [ext_resource type="Script" uid="uid://dgi7hjpa5klr0" path="res://src/bugs/bug_spawn_region.gd" id="17_yhmjm"]
 [ext_resource type="Script" uid="uid://bvb1yejjsmib7" path="res://src/enemies/enemy_spawn_point.gd" id="18_c7jxb"]
@@ -79,8 +79,14 @@ frequency = 2
 metadata/_custom_type_script = "uid://dgi7hjpa5klr0"
 
 [node name="EnemySpawnPoint" type="Node2D" parent="." unique_id=849248867]
-position = Vector2(-75, 16)
+position = Vector2(-71, 4)
 script = ExtResource("18_c7jxb")
 kind = 1
+frequency_override = 3
+metadata/_custom_type_script = "uid://bvb1yejjsmib7"
+
+[node name="EnemySpawnPoint2" type="Node2D" parent="." unique_id=1641401742]
+position = Vector2(-286, -6)
+script = ExtResource("18_c7jxb")
 frequency_override = 3
 metadata/_custom_type_script = "uid://bvb1yejjsmib7"
