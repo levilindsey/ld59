@@ -658,6 +658,7 @@ void TerrainWorld::fill(Vector2 world_pos, float radius_px, float strength) {
 bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
 		int dmg, int frequency_mask, Vector2 emitter_world_pos,
 		Vector2 cell_world_pos,
+		std::unordered_set<int64_t> *destroyed_this_pulse,
 		int32_t *out_world_cx, int32_t *out_world_cy) {
 	if (cx < 0 || cy < 0 || cx >= chunk->cells || cy >= chunk->cells) {
 		return false;
@@ -679,19 +680,35 @@ bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
 
 	// Surface-only + player-facing damage gating. Mirrors the visual
 	// stipple / ping-line rules: pulses erode what they can "see".
+	//
+	// `destroyed_this_pulse` tracks cells already destroyed earlier in
+	// this same damage pass so we don't cascade through a column of
+	// solid cells in one pulse: a cell freshly destroyed by a prior
+	// iteration is treated as STILL SOLID for surface-check purposes,
+	// so its previously-interior neighbor stays interior and doesn't
+	// get chained into destruction.
 	const int cells = chunk->cells;
 	const int32_t wcx = chunk->coords.x * cells + cx;
 	const int32_t wcy = chunk->coords.y * cells + cy;
-	auto is_open = [](uint8_t t) {
+	auto pack_coord = [](int32_t x, int32_t y) -> int64_t {
+		return (static_cast<int64_t>(x) << 32)
+				| (static_cast<int64_t>(y) & 0xFFFFFFFFLL);
+	};
+	auto neighbor_is_open = [&](int32_t nx, int32_t ny) -> bool {
+		if (destroyed_this_pulse != nullptr
+				&& destroyed_this_pulse->count(pack_coord(nx, ny))
+						> 0) {
+			return false;
+		}
+		const uint8_t t = world_cell_type(*_manager, cells, nx, ny);
 		return t == TerrainSettings::TYPE_NONE
 				|| t == TerrainSettings::TYPE_LIQUID;
 	};
-	const uint8_t n_n = world_cell_type(*_manager, cells, wcx, wcy - 1);
-	const uint8_t n_s = world_cell_type(*_manager, cells, wcx, wcy + 1);
-	const uint8_t n_w = world_cell_type(*_manager, cells, wcx - 1, wcy);
-	const uint8_t n_e = world_cell_type(*_manager, cells, wcx + 1, wcy);
-	const bool is_surface = is_open(n_n) || is_open(n_s)
-			|| is_open(n_w) || is_open(n_e);
+	const bool open_n = neighbor_is_open(wcx, wcy - 1);
+	const bool open_s = neighbor_is_open(wcx, wcy + 1);
+	const bool open_w = neighbor_is_open(wcx - 1, wcy);
+	const bool open_e = neighbor_is_open(wcx + 1, wcy);
+	const bool is_surface = open_n || open_s || open_w || open_e;
 	if (!is_surface) {
 		return false;
 	}
@@ -700,10 +717,10 @@ bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
 	// is open, normalized. Cells exposed on multiple sides get the
 	// average of those directions (corner cells face diagonally).
 	Vector2 outward(0.0f, 0.0f);
-	if (is_open(n_n)) { outward.y -= 1.0f; }
-	if (is_open(n_s)) { outward.y += 1.0f; }
-	if (is_open(n_w)) { outward.x -= 1.0f; }
-	if (is_open(n_e)) { outward.x += 1.0f; }
+	if (open_n) { outward.y -= 1.0f; }
+	if (open_s) { outward.y += 1.0f; }
+	if (open_w) { outward.x -= 1.0f; }
+	if (open_e) { outward.x += 1.0f; }
 	if (outward.length_squared() > 1e-6f) {
 		outward = outward.normalized();
 	}
@@ -731,6 +748,9 @@ bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
 		chunk->type_per_cell[idx] = TerrainSettings::TYPE_NONE;
 		refresh_corners_after_clear(chunk, cx, cy);
 		emit_signal("tile_destroyed", cell_world_pos, type);
+		if (destroyed_this_pulse != nullptr) {
+			destroyed_this_pulse->insert(pack_coord(wcx, wcy));
+		}
 		if (out_world_cx) {
 			*out_world_cx = chunk->coords.x * chunk->cells + cx;
 		}
@@ -753,8 +773,13 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 
 	// Collect world-cell coords of destroyed cells. Fed to CC pass
 	// after the full damage query runs so islands are detected once
-	// per damage call rather than per-cell.
+	// per damage call rather than per-cell. The `destroyed_this_pulse`
+	// set is the same coords packed as int64_t, consulted by
+	// `_apply_damage_to_cell` during its neighbor-open check so a
+	// cell destroyed earlier in this pass doesn't cascade its
+	// newly-exposed neighbors into also-destroyed in the same pass.
 	std::vector<int32_t> destroyed_flat;
+	std::unordered_set<int64_t> destroyed_this_pulse;
 
 	for (const Vector2i &c : coords) {
 		Chunk *chunk = _manager->get(c);
@@ -792,7 +817,8 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 				int32_t w_cx = 0, w_cy = 0;
 				const bool destroyed = _apply_damage_to_cell(
 						chunk, cx, cy, dmg, frequency_mask,
-						world_pos, cell_center, &w_cx, &w_cy);
+						world_pos, cell_center, &destroyed_this_pulse,
+						&w_cx, &w_cy);
 				if (destroyed) {
 					destroyed_flat.push_back(w_cx);
 					destroyed_flat.push_back(w_cy);
@@ -993,8 +1019,12 @@ void TerrainWorld::damage_with_falloff(
 			_cell_size_px_cached);
 
 	// Same pattern as `damage`: collect destroyed cells, then run
-	// the connected-components island-detach pass once.
+	// the connected-components island-detach pass once. The per-
+	// pulse set is consulted by the surface-check so cells destroyed
+	// earlier in this pass don't re-expose (and chain-damage) their
+	// previously-interior neighbors.
 	std::vector<int32_t> destroyed_flat;
+	std::unordered_set<int64_t> destroyed_this_pulse;
 
 	for (const Vector2i &c : coords) {
 		Chunk *chunk = _manager->get(c);
@@ -1065,6 +1095,7 @@ void TerrainWorld::damage_with_falloff(
 				const bool destroyed = _apply_damage_to_cell(
 						chunk, cx, cy, cell_dmg,
 						frequency_mask, world_pos, cell_center,
+						&destroyed_this_pulse,
 						&w_cx, &w_cy);
 				if (destroyed) {
 					destroyed_flat.push_back(w_cx);

@@ -180,7 +180,7 @@ func _connect_pulse_damage() -> void:
 ## slowly toward `_DAMAGE_MIN_AMOUNT` near the edge of the visible
 ## range. Min halved again so the very edge takes ~24 hits.
 const _DAMAGE_FULL_RADIUS_PX := 40.0
-const _DAMAGE_MAX_RADIUS_PX := 840.0
+const _DAMAGE_MAX_RADIUS_PX := 5040.0
 const _DAMAGE_FULL_AMOUNT := 256
 const _DAMAGE_MIN_AMOUNT := 22
 
