@@ -1450,4 +1450,7 @@ Ref<Image> TerrainWorld::build_type_image() const {
 		}
 	}
 	return Image::create_from_data(
-			
+			width, height, false, Image::FORMAT_R8, data);
+}
+
+} // namespace godot
