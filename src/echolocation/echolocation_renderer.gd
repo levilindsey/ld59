@@ -66,7 +66,7 @@ const _PARTICLES_PER_DESTROYED_CELL := 6
 const _PARTICLE_LIFETIME_SEC := 0.9
 const _PARTICLE_BURST_SPEED_PX_PER_SEC := 40.0
 const _PARTICLE_GRAVITY_PX_PER_SEC2 := 220.0
-const _PARTICLE_RADIUS_PX := 2.5
+const _PARTICLE_RADIUS_PX := 1.5
 ## Halo radius for a bug's frequency tag, in WORLD pixels (the
 ## renderer scales this by canvas_scale before passing to the
 ## shader, so it tracks camera zoom). 6 = the radius of the bug's
