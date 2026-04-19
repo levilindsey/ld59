@@ -1,8 +1,11 @@
-[gd_scene load_steps=12 format=3 uid="uid://dp2k8vxn3qr7m"]
+[gd_scene format=3 uid="uid://dp2k8vxn3qr7m"]
 
-[ext_resource type="Script" path="res://src/enemies/spider.gd" id="1_spider"]
+[ext_resource type="Script" uid="uid://b8atqn7nb11ii" path="res://src/enemies/spider.gd" id="1_spider"]
 [ext_resource type="Texture2D" uid="uid://c84ck1y63s4l6" path="res://assets/images/scratch/spider.png" id="2_tex"]
-[ext_resource type="Shader" path="res://src/player/player_damage_flash.gdshader" id="3_damage_shader"]
+[ext_resource type="Shader" uid="uid://cgd14djt4xvu0" path="res://src/player/player_damage_flash.gdshader" id="3_damage_shader"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_spider"]
+radius = 6.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_spider_damage"]
 resource_local_to_scene = true
@@ -13,9 +16,6 @@ shader_parameter/pulse_color = Color(1, 0.3, 0.3, 1)
 shader_parameter/pulse_radius_px = 0.0
 shader_parameter/pulse_width_px = 5.0
 shader_parameter/pulse_alpha = 0.0
-
-[sub_resource type="CircleShape2D" id="CircleShape2D_spider"]
-radius = 6.0
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_spider_idle"]
 atlas = ExtResource("2_tex")
@@ -39,18 +39,33 @@ region = Rect2(164, 0, 41, 40)
 
 [sub_resource type="SpriteFrames" id="SpriteFrames_spider"]
 animations = [{
-"frames": [{"duration": 1.0, "texture": SubResource("AtlasTexture_spider_idle")}],
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_spider_idle")
+}],
 "loop": true,
 "name": &"idle",
 "speed": 5.0
 }, {
-"frames": [{"duration": 1.0, "texture": SubResource("AtlasTexture_spider_walk0")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_spider_walk1")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_spider_walk2")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_spider_walk3")}],
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_spider_walk0")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_spider_walk1")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_spider_walk2")
+}, {
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_spider_walk3")
+}],
 "loop": true,
 "name": &"walk",
 "speed": 12.0
 }]
 
-[node name="Spider" type="Area2D" node_paths=PackedStringArray("animated_sprite")]
+[node name="Spider" type="Area2D" unique_id=1509308053 node_paths=PackedStringArray("animated_sprite")]
 collision_layer = 16
 collision_mask = 8
 script = ExtResource("1_spider")
@@ -58,11 +73,12 @@ animated_sprite = NodePath("AnimatedSprite2D")
 max_health = 40
 touch_damage = 8
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1155968633]
 shape = SubResource("CircleShape2D_spider")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=591399935]
 material = SubResource("ShaderMaterial_spider_damage")
+position = Vector2(0, 1)
 sprite_frames = SubResource("SpriteFrames_spider")
 animation = &"idle"
 autoplay = "idle"

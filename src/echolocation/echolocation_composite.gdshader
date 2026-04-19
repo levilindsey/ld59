@@ -840,21 +840,23 @@ void fragment() {
 		float d_here_outer = texture(
 				density_tex, world_to_density_uv(world_pos)).r;
 		bool inside_solid_cell = d_here_outer >= 0.99;
-		// DEBUG: visualize fragment classification.
-		// - Pure RED: inside solid (fragment actually part of solid).
-		// - Pure MAGENTA: outside solid, bg_tile=true, c0 close to
-		//   bg_type_color (mesh spill).
-		// - Pure CYAN: outside solid, bg_tile=true, c0 far from
-		//   bg_type_color (sprite or sky).
-		// - Pure YELLOW: outside solid, bg_tile=false (pure sky).
-		if (inside_solid_cell) {
-			textured_rgb = vec3(1.0, 0.0, 0.0);
-		} else if (is_bg_tile && !overlay_sprite_here) {
-			textured_rgb = vec3(1.0, 0.0, 1.0);
-		} else if (is_bg_tile) {
-			textured_rgb = vec3(0.0, 1.0, 1.0);
-		} else {
-			textured_rgb = vec3(1.0, 1.0, 0.0);
+		// When the fragment is JUST outside the solid and `c0` matches
+		// the bg palette color, Godot's 2D rasterization has bled the
+		// mesh color 1 pixel past the authored cell edge. Sample `c0`
+		// from a pixel 2 screen-pixels further out along the outward
+		// normal — that pixel is reliably past the bleed and gives us
+		// the real backbuffer (sky / parallax) color. Use that to
+		// paint a smooth transition instead of leaving the bleed or
+		// punching a hard black ring.
+		if (is_bg_tile && !inside_solid_cell && !overlay_sprite_here) {
+			vec2 snap_n;
+			if (abs(surface_normal.x) > abs(surface_normal.y)) {
+				snap_n = vec2(sign(surface_normal.x), 0.0);
+			} else {
+				snap_n = vec2(0.0, sign(surface_normal.y));
+			}
+			vec2 offset_uv = SCREEN_UV + snap_n * 2.0 / screen_size_px;
+			textured_rgb = texture(screen_tex, offset_uv).rgb;
 		}
 		if (is_bg_tile && !overlay_sprite_here && inside_solid_cell) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
