@@ -106,6 +106,13 @@ const _BUG_TAG_RADIUS_PX := 6.0
 ## frequency dominates visually.
 @export_range(0.0, 1.0) var non_matching_stipple_factor := 0.5
 
+## Peak stipple strength for sprite-tagged pixels (bugs, future
+## enemies). Caps the synthetic always-on pulse-vis so bugs read as
+## faint pointillist silhouettes rather than solid discs. 0 hides
+## sprite stipples entirely; 1 matches terrain stipples at a direct
+## pulse.
+@export_range(0.0, 1.0) var sprite_tag_stipple_max := 0.25
+
 ## Cheap in-shader bloom on matching-type stipples:
 ## - `matching_bloom_size_multiplier`: Bayer tile is scaled up for
 ##   matching pixels so each dot covers more screen pixels.
@@ -237,6 +244,8 @@ func _ready() -> void:
 	_shader_mat.set_shader_parameter("bayer_tile_px", bayer_tile_px)
 	_shader_mat.set_shader_parameter(
 			"non_matching_stipple_factor", non_matching_stipple_factor)
+	_shader_mat.set_shader_parameter(
+			"sprite_tag_stipple_max", sprite_tag_stipple_max)
 	_shader_mat.set_shader_parameter(
 			"matching_bloom_size_multiplier",
 			matching_bloom_size_multiplier)

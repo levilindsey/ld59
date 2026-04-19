@@ -216,6 +216,12 @@ uniform vec4 tagged_sprites[MAX_TAGGED_SPRITES];
 // doesn't pop in/out. One float per `tagged_sprites` entry.
 uniform float tagged_sprite_alphas[MAX_TAGGED_SPRITES];
 uniform int tagged_sprite_count = 0;
+// Peak stipple strength for sprite-tagged pixels. Caps the synthetic
+// pulse-vis used for bugs so their always-on stipple reads as a
+// faint pointillist silhouette instead of a near-solid disk. 0 hides
+// sprite stipples entirely; 1 makes them as dense as terrain under a
+// direct pulse.
+uniform float sprite_tag_stipple_max : hint_range(0.0, 1.0) = 0.25;
 // Threshold for counting a pixel as "background" (low luminance /
 // transparent). In Phase 1 we use this to keep the shader from
 // sparkling the backdrop clear color.
@@ -761,13 +767,16 @@ void fragment() {
 				to_player_len);
 
 		// Sprite tags stipple unconditionally — substitute a
-		// full-strength synthetic pulse-vis for them so the reveal is
-		// active even with no in-flight echo. Scaled by the sprite's
-		// own alpha so the stipple grows in / fades out in lockstep
-		// with the sprite's modulate alpha. Terrain tiles still gate
-		// on real pulse visibility.
+		// synthetic pulse-vis for them so the reveal is active even
+		// with no in-flight echo. Capped by `sprite_tag_stipple_max`
+		// so bugs read as faint pointillist silhouettes rather than
+		// solid discs, and scaled by the sprite's own alpha so the
+		// stipple grows in / fades out in lockstep with the sprite's
+		// modulate alpha. Terrain tiles still gate on real pulse
+		// visibility.
 		float effective_pulse_vis = is_sprite_tag
-				? tag_alpha : raw_pulse_vis;
+				? tag_alpha * sprite_tag_stipple_max
+				: raw_pulse_vis;
 
 		float pulse_reveal = effective_pulse_vis
 				* prominence
@@ -831,10 +840,22 @@ void fragment() {
 		float d_here_outer = texture(
 				density_tex, world_to_density_uv(world_pos)).r;
 		bool inside_solid_cell = d_here_outer >= 0.99;
-		// (No zero-out here — blacking out the bleed shell looks
-		// worse than letting the faint bleed show through. The root
-		// cause of the leftover teal stripe is outside this shader
-		// (backbuffer contents) and needs to be addressed there.)
+		// DEBUG: visualize fragment classification.
+		// - Pure RED: inside solid (fragment actually part of solid).
+		// - Pure MAGENTA: outside solid, bg_tile=true, c0 close to
+		//   bg_type_color (mesh spill).
+		// - Pure CYAN: outside solid, bg_tile=true, c0 far from
+		//   bg_type_color (sprite or sky).
+		// - Pure YELLOW: outside solid, bg_tile=false (pure sky).
+		if (inside_solid_cell) {
+			textured_rgb = vec3(1.0, 0.0, 0.0);
+		} else if (is_bg_tile && !overlay_sprite_here) {
+			textured_rgb = vec3(1.0, 0.0, 1.0);
+		} else if (is_bg_tile) {
+			textured_rgb = vec3(0.0, 1.0, 1.0);
+		} else {
+			textured_rgb = vec3(1.0, 1.0, 0.0);
+		}
 		if (is_bg_tile && !overlay_sprite_here && inside_solid_cell) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
 			float u_base = float(bg_type_id) / slot_count_f;
