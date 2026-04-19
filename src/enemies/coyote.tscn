@@ -1,15 +1,91 @@
-[gd_scene format=3 uid="uid://ck8v0fmnuap7q"]
+[gd_scene load_steps=18 format=3 uid="uid://ck8v0fmnuap7q"]
 
 [ext_resource type="Script" path="res://src/enemies/coyote.gd" id="1_coyote"]
-[ext_resource type="Texture2D" uid="uid://g3ysr8be4but" path="res://assets/images/white_pixel.png" id="2_px"]
+[ext_resource type="Texture2D" uid="uid://70badbq75sgf" path="res://assets/images/scratch/coyote.png" id="2_tex"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_coyote"]
 radius = 9.0
 
-[node name="Coyote" type="Area2D"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_idle"]
+atlas = ExtResource("2_tex")
+region = Rect2(0, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_walk0"]
+atlas = ExtResource("2_tex")
+region = Rect2(49, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_walk1"]
+atlas = ExtResource("2_tex")
+region = Rect2(98, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_walk2"]
+atlas = ExtResource("2_tex")
+region = Rect2(147, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_walk3"]
+atlas = ExtResource("2_tex")
+region = Rect2(196, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_walk4"]
+atlas = ExtResource("2_tex")
+region = Rect2(245, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_walk5"]
+atlas = ExtResource("2_tex")
+region = Rect2(294, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_rise0"]
+atlas = ExtResource("2_tex")
+region = Rect2(343, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_rise1"]
+atlas = ExtResource("2_tex")
+region = Rect2(392, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_rise2"]
+atlas = ExtResource("2_tex")
+region = Rect2(441, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_fall0"]
+atlas = ExtResource("2_tex")
+region = Rect2(490, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_fall1"]
+atlas = ExtResource("2_tex")
+region = Rect2(539, 0, 49, 39)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_coyote_fall2"]
+atlas = ExtResource("2_tex")
+region = Rect2(588, 0, 49, 39)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_coyote"]
+animations = [{
+"frames": [{"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_idle")}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_walk0")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_walk1")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_walk2")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_walk3")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_walk4")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_walk5")}],
+"loop": true,
+"name": &"walk",
+"speed": 14.0
+}, {
+"frames": [{"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_rise0")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_rise1")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_rise2")}],
+"loop": false,
+"name": &"jump_rise",
+"speed": 12.0
+}, {
+"frames": [{"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_fall0")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_fall1")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_coyote_fall2")}],
+"loop": false,
+"name": &"jump_fall",
+"speed": 12.0
+}]
+
+[node name="Coyote" type="Area2D" node_paths=PackedStringArray("animated_sprite")]
 collision_layer = 16
 collision_mask = 8
 script = ExtResource("1_coyote")
+animated_sprite = NodePath("AnimatedSprite2D")
 max_health = 55
 touch_damage = 14
 knockback_impulse_px_per_sec = 260.0
@@ -17,41 +93,7 @@ knockback_impulse_px_per_sec = 260.0
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_coyote")
 
-[node name="Body" type="Sprite2D" parent="."]
-texture = ExtResource("2_px")
-scale = Vector2(18, 11)
-
-[node name="Head" type="Sprite2D" parent="."]
-position = Vector2(8, -4)
-texture = ExtResource("2_px")
-scale = Vector2(7, 6)
-
-[node name="Tail" type="Sprite2D" parent="."]
-modulate = Color(1, 1, 1, 0.8)
-position = Vector2(-10, -3)
-texture = ExtResource("2_px")
-scale = Vector2(5, 3)
-
-[node name="LegFrontLeft" type="Sprite2D" parent="."]
-modulate = Color(1, 1, 1, 0.8)
-position = Vector2(5, 6)
-texture = ExtResource("2_px")
-scale = Vector2(2, 6)
-
-[node name="LegFrontRight" type="Sprite2D" parent="."]
-modulate = Color(1, 1, 1, 0.8)
-position = Vector2(8, 6)
-texture = ExtResource("2_px")
-scale = Vector2(2, 6)
-
-[node name="LegBackLeft" type="Sprite2D" parent="."]
-modulate = Color(1, 1, 1, 0.8)
-position = Vector2(-7, 6)
-texture = ExtResource("2_px")
-scale = Vector2(2, 6)
-
-[node name="LegBackRight" type="Sprite2D" parent="."]
-modulate = Color(1, 1, 1, 0.8)
-position = Vector2(-4, 6)
-texture = ExtResource("2_px")
-scale = Vector2(2, 6)
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = SubResource("SpriteFrames_coyote")
+animation = &"idle"
+autoplay = "idle"

@@ -14,8 +14,7 @@ extends Node
 
 @export var spider_scene: PackedScene
 @export var coyote_scene: PackedScene
-@export var monster_bird_scene: PackedScene
-@export var flying_critter_scene: PackedScene
+@export var owl_scene: PackedScene
 
 
 func _enter_tree() -> void:
@@ -44,10 +43,8 @@ func scene_for(kind: Enemy.Kind) -> PackedScene:
 			return spider_scene
 		Enemy.Kind.COYOTE:
 			return coyote_scene
-		Enemy.Kind.MONSTER_BIRD:
-			return monster_bird_scene
-		Enemy.Kind.FLYING_CRITTER:
-			return flying_critter_scene
+		Enemy.Kind.OWL:
+			return owl_scene
 	return null
 
 

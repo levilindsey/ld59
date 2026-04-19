@@ -18,8 +18,7 @@ signal damaged(enemy: Enemy, amount: int)
 enum Kind {
 	SPIDER,
 	COYOTE,
-	MONSTER_BIRD,
-	FLYING_CRITTER,
+	OWL,
 }
 
 
@@ -52,6 +51,13 @@ var _knockback_velocity: Vector2 = Vector2.ZERO
 var _is_dead: bool = false
 var _invincibility_remaining_sec := 0.0
 var _blink_accum_sec := 0.0
+
+## Shared wander state used by `_compute_wander_velocity`. Subclasses
+## that want to wander while not perceiving the player call that
+## helper; when perceiving, they ignore it and pursue directly.
+var _wander_has_target: bool = false
+var _wander_target: Vector2 = Vector2.ZERO
+var _wander_idle_timer_sec: float = 0.0
 
 
 func _ready() -> void:
@@ -173,3 +179,37 @@ func _apply_frequency_tint() -> void:
 
 func is_pursuing() -> bool:
 	return _perception >= _PURSUIT_THRESHOLD
+
+
+## Returns a velocity that wanders around the enemy's current
+## position: alternately idling in place for a random duration, then
+## slow-moving to a random nearby point. Subclasses call this from
+## `_update_behavior` when `is_pursuing()` is false. Returns
+## `Vector2.ZERO` while the enemy is idling at rest.
+##
+## `radius_px` is the max random offset from the enemy's position
+## when picking a new wander target.
+func _compute_wander_velocity(
+		delta: float,
+		speed_px_per_sec: float,
+		radius_px: float,
+		idle_min_sec: float,
+		idle_max_sec: float,
+) -> Vector2:
+	if _wander_idle_timer_sec > 0.0:
+		_wander_idle_timer_sec -= delta
+		return Vector2.ZERO
+	if not _wander_has_target:
+		var angle: float = randf() * TAU
+		var dist: float = randf_range(radius_px * 0.3, radius_px)
+		_wander_target = (global_position
+				+ Vector2(cos(angle), sin(angle)) * dist)
+		_wander_has_target = true
+	var to_target: Vector2 = _wander_target - global_position
+	# Close enough — pause here, then pick a new target.
+	if to_target.length() < 4.0:
+		_wander_has_target = false
+		_wander_idle_timer_sec = randf_range(
+				idle_min_sec, idle_max_sec)
+		return Vector2.ZERO
+	return to_target.normalized() * speed_px_per_sec
