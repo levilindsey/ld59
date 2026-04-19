@@ -13,6 +13,16 @@ signal died(enemy: Enemy)
 signal damaged(enemy: Enemy, amount: int)
 
 
+## Taxonomy of enemy scenes known to EnemySystem. Used by
+## `EnemySpawnPoint.kind` to select which scene to instantiate.
+enum Kind {
+	SPIDER,
+	COYOTE,
+	MONSTER_BIRD,
+	FLYING_CRITTER,
+}
+
+
 ## Perception at which the enemy switches from idle to pursuit.
 const _PURSUIT_THRESHOLD := 0.3
 ## Perception decay back to zero, in units per second.
@@ -26,7 +36,7 @@ const _INVINCIBILITY_SEC := 0.6
 const _BLINK_PERIOD_SEC := 0.1
 
 
-@export var frequency: int = Frequency.Type.RED
+@export var frequency: Frequency.Type = Frequency.Type.RED
 @export_range(1, 500) var max_health: int = 30
 @export_range(0, 200) var touch_damage: int = 10
 

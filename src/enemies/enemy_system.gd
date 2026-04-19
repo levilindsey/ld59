@@ -4,7 +4,27 @@ extends Node
 ## subscribe to this via the "enemies" group; EnemySystem listens to
 ## G.echo.pulse_emitted once and dispatches.
 ##
+## Also owns the registry of `Enemy.Kind -> PackedScene` so
+## `EnemySpawnPoint` can spawn by enum rather than by PackedScene
+## reference. Scenes are assigned in the scene inspector on the
+## level template.
+##
 ## Lives under Level so it's torn down on reset.
+
+
+@export var spider_scene: PackedScene
+@export var coyote_scene: PackedScene
+@export var monster_bird_scene: PackedScene
+@export var flying_critter_scene: PackedScene
+
+
+func _enter_tree() -> void:
+	G.enemies = self
+
+
+func _exit_tree() -> void:
+	if G.enemies == self:
+		G.enemies = null
 
 
 func _ready() -> void:
@@ -14,6 +34,21 @@ func _ready() -> void:
 		G.warning(
 				"EnemySystem: G.echo not ready; "
 				+ "pulses will not damage enemies")
+
+
+## Returns the PackedScene registered for `kind`, or null if no
+## scene is assigned in this level's EnemySystem.
+func scene_for(kind: Enemy.Kind) -> PackedScene:
+	match kind:
+		Enemy.Kind.SPIDER:
+			return spider_scene
+		Enemy.Kind.COYOTE:
+			return coyote_scene
+		Enemy.Kind.MONSTER_BIRD:
+			return monster_bird_scene
+		Enemy.Kind.FLYING_CRITTER:
+			return flying_critter_scene
+	return null
 
 
 ## Applies pulse perception/damage/knockback to every enemy currently

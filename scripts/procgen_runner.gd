@@ -84,12 +84,6 @@ func _apply_and_save(
 			"res://src/enemies/enemy_spawn_point.gd")
 	var respawning_enemy_spawn_point_script := load(
 			"res://src/enemies/respawning_enemy_spawn_point.gd")
-	var enemy_scenes := {
-		"spider": load("res://src/enemies/spider.tscn"),
-		"coyote": load("res://src/enemies/coyote.tscn"),
-		"monster_bird": load("res://src/enemies/monster_bird.tscn"),
-		"flying_critter": load("res://src/enemies/flying_critter.tscn"),
-	}
 
 	var added := ProcgenTileMapWriter.apply(
 			root,
@@ -98,8 +92,7 @@ func _apply_and_save(
 			destination_scene,
 			bug_spawn_region_script,
 			enemy_spawn_point_script,
-			respawning_enemy_spawn_point_script,
-			enemy_scenes)
+			respawning_enemy_spawn_point_script)
 	print("Added %d entity children" % added.size())
 
 	# Pack and save.

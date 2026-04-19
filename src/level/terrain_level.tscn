@@ -9,6 +9,16 @@
 [ext_resource type="Script" uid="uid://o2i6tqdak3pe" path="res://src/enemies/enemy_system.gd" id="7_enemy_sys"]
 [ext_resource type="PackedScene" path="res://src/level/falling_cell.tscn" id="8_falling_cell"]
 [ext_resource type="PackedScene" uid="uid://b8k2pwamtr0x3" path="res://src/level/web_tile.tscn" id="9_web"]
+[ext_resource type="Texture2D" uid="uid://rihqreb0nh5o" path="res://assets/images/scratch/kittenbaticorn.png" id="10_kitten"]
+[ext_resource type="Script" path="res://src/level/editor_placeholder_sprite.gd" id="11_placeholder"]
+[ext_resource type="PackedScene" path="res://src/enemies/spider.tscn" id="12_spider"]
+[ext_resource type="PackedScene" path="res://src/enemies/coyote.tscn" id="13_coyote"]
+[ext_resource type="PackedScene" path="res://src/enemies/monster_bird.tscn" id="14_bird"]
+[ext_resource type="PackedScene" path="res://src/enemies/flying_critter.tscn" id="15_critter"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_spawn"]
+atlas = ExtResource("10_kitten")
+region = Rect2(1088, 0, 34, 36)
 
 [node name="TerrainLevel" type="Node2D" unique_id=1888346517]
 script = ExtResource("1_level")
@@ -33,6 +43,11 @@ tile_set = ExtResource("3_tileset")
 [node name="PlayerSpawnPoint" type="Node2D" parent="." unique_id=2146902381]
 unique_name_in_owner = true
 
+[node name="PlaceholderSprite" type="Sprite2D" parent="PlayerSpawnPoint"]
+position = Vector2(-5, -5)
+texture = SubResource("AtlasTexture_player_spawn")
+script = ExtResource("11_placeholder")
+
 [node name="Camera2D" type="Camera2D" parent="PlayerSpawnPoint" unique_id=937342632]
 unique_name_in_owner = true
 zoom = Vector2(2, 2)
@@ -46,3 +61,7 @@ bug_scene = ExtResource("6_bug")
 
 [node name="EnemySystem" type="Node" parent="." unique_id=259719197]
 script = ExtResource("7_enemy_sys")
+spider_scene = ExtResource("12_spider")
+coyote_scene = ExtResource("13_coyote")
+monster_bird_scene = ExtResource("14_bird")
+flying_critter_scene = ExtResource("15_critter")

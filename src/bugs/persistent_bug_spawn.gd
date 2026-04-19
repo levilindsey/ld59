@@ -24,7 +24,7 @@ const _EDITOR_LEASH_COLOR := Color(1.0, 1.0, 1.0, 0.25)
 const _EDITOR_LABEL_MARGIN_PX := 4.0
 
 
-@export var frequency: int = Frequency.Type.GREEN:
+@export var frequency: Frequency.Type = Frequency.Type.GREEN:
 	set(value):
 		frequency = value
 		queue_redraw()

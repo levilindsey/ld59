@@ -46,11 +46,6 @@ const _MAX_REJECTION_TRIES := 8
 ## design ask.
 @export_range(1, 16) var big_bug_ratio_denominator: int = 4
 
-## Seeded RNG for the big/small roll. Kept separate from global
-## `randi()` so other per-spawn randomness (spawn position,
-## lifetime jitter) doesn't shift if we tune this ratio.
-var _size_rng := RandomNumberGenerator.new()
-
 ## Floor rate (bugs/sec) applied after region stacking, per
 ## frequency. Prevents "player is stuck on the wrong frequency with
 ## no matching bugs anywhere nearby" soft-locks. Dictionary of
@@ -69,6 +64,11 @@ var _size_rng := RandomNumberGenerator.new()
 	Frequency.Type.BLUE: 0.0,
 	Frequency.Type.YELLOW: 0.0,
 }
+
+## Seeded RNG for the big/small roll. Kept separate from global
+## `randi()` so other per-spawn randomness (spawn position,
+## lifetime jitter) doesn't shift if we tune this ratio.
+var _size_rng := RandomNumberGenerator.new()
 
 ## Accumulated Poisson phase per frequency. When phase crosses
 ## `_thresholds[freq]`, a bug is spawned and the threshold is

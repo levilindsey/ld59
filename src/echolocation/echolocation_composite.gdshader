@@ -292,6 +292,9 @@ uniform sampler2D surface_atlas : source_color, repeat_disable,
 uniform int atlas_slot_count = 8;
 uniform float interior_scale_px : hint_range(4.0, 128.0) = 32.0;
 uniform float surface_scale_along_px : hint_range(4.0, 128.0) = 32.0;
+// Depth (world px) the surface accent band extends from the cell
+// surface INTO the solid. Matches the surface atlas's pixel height.
+uniform float surface_depth_px : hint_range(1.0, 32.0) = 12.0;
 // RGB distance from the expected terrain palette color above which
 // the near-field atlas override is skipped and the scene pixel (c0)
 // is kept instead. The composite classifies terrain by world-space
@@ -781,21 +784,25 @@ void fragment() {
 			vec3 interior_rgb = texture(
 					interior_atlas, interior_uv).rgb;
 
-			// Surface band — proper sub-pixel SDF-aligned rendering.
+			// Surface band — aligned with authored cell boundaries.
 			//
-			// `d_here` is the bilinear-filtered density at this exact
-			// pixel (ranges 0 at the outer edge of a surface cell to
-			// ~1 at the inner edge where the cell meets solid
-			// interior). Using `d_here` directly as the atlas's `v`
-			// axis gives a smooth per-pixel depth gradient, unlike
-			// the old `surface_proximity` which was roughly constant
-			// inside a surface cell and made the atlas look flat /
-			// mis-aligned.
+			// We render the accent STRICTLY INSIDE the solid cells:
+			// opaque at the cell's surface edge, fading to transparent
+			// `surface_depth_px` pixels INTO the solid. No accent
+			// extends outside cell bounds.
 			//
-			// Tangent is snapped to the dominant cardinal direction
-			// so the `along` coordinate stays monotonic along a
-			// given wall — avoids flicker at cell boundaries where
-			// the raw gradient direction could rotate.
+			// Approach: sample density at a position shifted OUTWARD
+			// from the solid by `surface_depth_px`. That shifted
+			// sample is 0 when the fragment is close to the surface
+			// (outward probe lands in air) and 1 when the fragment is
+			// deep inside the solid (outward probe still in solid).
+			// Used directly as the atlas v-axis, this maps "distance
+			// from surface" to the atlas's vertical fade.
+			//
+			// Tangent is snapped to the dominant cardinal direction so
+			// the `along` coordinate stays monotonic along a given
+			// wall — avoids flicker at cell boundaries where the raw
+			// gradient direction could rotate.
 			float d_here = texture(
 					density_tex, world_to_density_uv(world_pos)).r;
 			vec2 snapped_normal;
@@ -810,18 +817,26 @@ void fragment() {
 					-snapped_normal.y, snapped_normal.x);
 			float along = fract(
 					dot(world_pos, tangent) / surface_scale_along_px);
-			float v = clamp(d_here, 0.0, 1.0);
+			vec2 outward_probe = world_pos
+					+ snapped_normal * surface_depth_px;
+			float d_out = texture(
+					density_tex, world_to_density_uv(outward_probe)).r;
+			float v = clamp(d_out, 0.0, 1.0);
 			vec2 surface_uv = vec2(
 					u_base + along * u_width, v);
 			vec4 surface_sample = texture(
 					surface_atlas, surface_uv);
 
-			// Band visibility: `surface_proximity` gates the band to
-			// the one-cell shell where gradient is non-zero, so deep
-			// interior doesn't get surface art. Atlas alpha continues
-			// to shape the accent so authored art can fade its edges.
-			float band_mix = smoothstep(0.2, 0.8, surface_proximity)
-					* surface_sample.a;
+			// Visibility gate: only render accent where the fragment
+			// itself is INSIDE solid. `d_here >= ~1` means the
+			// fragment sits on or inside the solid interior; < 1
+			// means the fragment is outside the solid boundary (in
+			// air / gradient shell) — those pixels stay at the
+			// interior color with no accent spilling past the
+			// authored cell edge. Atlas alpha continues to shape the
+			// accent so authored art can fade its edges.
+			float inside_solid = step(0.99, d_here);
+			float band_mix = inside_solid * surface_sample.a;
 			textured_rgb = mix(
 					interior_rgb, surface_sample.rgb, band_mix);
 		}
