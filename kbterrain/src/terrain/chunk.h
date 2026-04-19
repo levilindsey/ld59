@@ -42,7 +42,11 @@ public:
 	// freed in ChunkManager::free_chunk_rids.
 	RID canvas_item_rid;
 	RID static_body_rid;
-	RID shape_rid;
+	// One ConvexPolygonShape2D per mesh triangle. Filled shapes give
+	// robust depenetration against CharacterBody2D; ConcavePolygonShape2D
+	// segments would, but their segment-vs-filled-shape collision in
+	// Godot 2D allows half-shape penetration.
+	std::vector<RID> shape_rids;
 
 	Chunk(Vector2i p_coords, int p_cells);
 	Chunk(const Chunk &) = delete;

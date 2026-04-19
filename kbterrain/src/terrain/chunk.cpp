@@ -12,7 +12,7 @@ Chunk::Chunk(Vector2i p_coords, int p_cells)
 		  generation(1),
 		  canvas_item_rid(),
 		  static_body_rid(),
-		  shape_rid() {}
+		  shape_rids() {}
 
 } // namespace terrain
 } // namespace godot
