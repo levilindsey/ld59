@@ -706,6 +706,7 @@ func _step_selection(direction: int) -> void:
 			if candidate != current_frequency:
 				current_frequency = candidate
 				frequency_selection_changed.emit(current_frequency)
+				play_sound("select", true)
 			return
 
 

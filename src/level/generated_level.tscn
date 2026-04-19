@@ -4,6 +4,7 @@
 [ext_resource type="TerrainSettings" uid="uid://dbdcqhdmuhy3a" path="res://src/level/default_terrain_settings.tres" id="2_nl8s0"]
 [ext_resource type="PackedScene" uid="uid://b8k2pwamtr0x3" path="res://src/level/web_tile.tscn" id="3_hc2mb"]
 [ext_resource type="PackedScene" path="res://src/level/falling_cell.tscn" id="4_xe7kk"]
+[ext_resource type="AudioStream" path="res://src/level/fwoof_randomizer.tres" id="4_fwoof"]
 [ext_resource type="PackedScene" path="res://src/level/parallax_background.tscn" id="5_qw0gx"]
 [ext_resource type="TileSet" uid="uid://mtwu14d78k40" path="res://src/level/default_tile_set.tres" id="7_1jjqb"]
 [ext_resource type="Script" uid="uid://clr0cpiah02eh" path="res://src/bugs/bug_spawner.gd" id="8_6p200"]
@@ -29,6 +30,7 @@ terrain_settings = ExtResource("2_nl8s0")
 tile_map_layer_path = NodePath("Tiles")
 web_tile_scene = ExtResource("3_hc2mb")
 falling_cell_scene = ExtResource("4_xe7kk")
+fwoof_stream = ExtResource("4_fwoof")
 
 [node name="ParallaxBackground" parent="." unique_id=482765648 instance=ExtResource("5_qw0gx")]
 

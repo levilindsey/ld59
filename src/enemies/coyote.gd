@@ -186,6 +186,17 @@ func _trigger_pounce(player: Player) -> void:
 	_state = CoyoteState.POUNCE
 	_pounce_cooldown_sec = _POUNCE_COOLDOWN_SEC
 	_jump_cooldown_sec = _JUMP_COOLDOWN_SEC
+	_play_voice()
+
+
+func _on_pursuit_started() -> void:
+	_play_voice()
+
+
+func _play_voice() -> void:
+	var voice := get_node_or_null(^"%VoicePlayer") as AudioStreamPlayer2D
+	if voice != null:
+		voice.play()
 
 
 func _update_animation(horizontal: float) -> void:

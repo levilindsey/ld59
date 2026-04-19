@@ -47,6 +47,13 @@ extends Level
 ## terrain on landing. Staggered by row (bottom first) so cells
 ## don't self-collide in flight.
 @export var falling_cell_scene: PackedScene
+## Randomizer stream played spatially at each detachment origin. The
+## throttle below caps how often this fires to avoid a wall-of-sound
+## when a carve produces many back-to-back detachments.
+@export var fwoof_stream: AudioStream
+## Minimum seconds between consecutive Fwoof plays, regardless of
+## how many detachments the frame produces.
+@export_range(0.0, 2.0) var fwoof_throttle_sec: float = 0.15
 ## Toggle to force a re-bake from the editor inspector. Auto-flips
 ## back to false after triggering.
 @export var refresh_preview: bool = false:
@@ -57,6 +64,7 @@ extends Level
 
 
 var _tilemap_signal_connected: bool = false
+var _fwoof_last_time_sec: float = -INF
 
 
 func _enter_tree() -> void:
@@ -176,6 +184,8 @@ func _on_fragment_detached(
 	var cell_size: float = G.terrain.settings.cell_size_px
 	var w := island_size_cells.x
 	var h := island_size_cells.y
+	_play_fwoof_at(origin_world + Vector2(
+			w * 0.5 * cell_size, h * 0.5 * cell_size))
 	for ly in h:
 		for lx in w:
 			var idx := ly * w + lx
@@ -192,6 +202,25 @@ func _on_fragment_detached(
 			add_child(cell)
 			cell.configure(
 					world_pos, type, int(cell_healths[idx]), delay)
+
+
+## Spawns a one-shot spatial AudioStreamPlayer2D at `world_pos`
+## playing the Fwoof randomizer. Throttled so a carve producing
+## many consecutive detachments only fires one audible whoosh.
+func _play_fwoof_at(world_pos: Vector2) -> void:
+	if fwoof_stream == null:
+		return
+	var now := G.time.get_scaled_play_time()
+	if now - _fwoof_last_time_sec < fwoof_throttle_sec:
+		return
+	_fwoof_last_time_sec = now
+	var player := AudioStreamPlayer2D.new()
+	player.stream = fwoof_stream
+	player.bus = &"SFX"
+	player.global_position = world_pos
+	player.finished.connect(player.queue_free)
+	add_child(player)
+	player.play()
 
 
 func _connect_pulse_damage() -> void:

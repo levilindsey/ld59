@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://b8atqn7nb11ii" path="res://src/enemies/spider.gd" id="1_spider"]
 [ext_resource type="Texture2D" uid="uid://c84ck1y63s4l6" path="res://assets/images/scratch/spider.png" id="2_tex"]
 [ext_resource type="Shader" uid="uid://cgd14djt4xvu0" path="res://src/player/player_damage_flash.gdshader" id="3_damage_shader"]
+[ext_resource type="AudioStream" uid="uid://bygtgddt5npw1" path="res://assets/audio/Spider.wav" id="4_spider_voice"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_spider"]
 radius = 6.0
@@ -82,3 +83,8 @@ position = Vector2(0, 1)
 sprite_frames = SubResource("SpriteFrames_spider")
 animation = &"idle"
 autoplay = "idle"
+
+[node name="VoicePlayer" type="AudioStreamPlayer2D" parent="." unique_id=1509308054]
+unique_name_in_owner = true
+stream = ExtResource("4_spider_voice")
+bus = &"SFX"

@@ -84,3 +84,7 @@ material = SubResource("ShaderMaterial_owl_damage")
 sprite_frames = SubResource("SpriteFrames_owl")
 animation = &"fly"
 autoplay = "fly"
+
+[node name="VoicePlayer" type="AudioStreamPlayer2D" parent="." unique_id=1607014845]
+unique_name_in_owner = true
+bus = &"SFX"
