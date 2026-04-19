@@ -30,6 +30,46 @@ using terrain::RemeshJob;
 using terrain::RemeshResult;
 using terrain::WorkerPool;
 
+namespace {
+
+// After a cell's type is cleared, rebuild its 4 corner densities by
+// checking whether any of the (up to 4) cells sharing each corner
+// still has a non-NONE type. Writes 255 if any non-NONE neighbor
+// exists, else 0. Only inspects cells within the same chunk for now;
+// cross-chunk overlap corners are slightly approximate but the
+// neighbor chunk's own remesh will correct its side.
+void refresh_corners_after_clear(
+		terrain::Chunk *chunk, int cx, int cy) {
+	const int cells = chunk->cells;
+	const int s = cells + 1;
+	for (int dyc = 0; dyc <= 1; dyc++) {
+		for (int dxc = 0; dxc <= 1; dxc++) {
+			const int corner_x = cx + dxc;
+			const int corner_y = cy + dyc;
+			bool any_solid = false;
+			for (int a = -1; a <= 0 && !any_solid; a++) {
+				for (int b = -1; b <= 0; b++) {
+					const int ncx = corner_x + b;
+					const int ncy = corner_y + a;
+					if (ncx < 0 || ncy < 0
+							|| ncx >= cells || ncy >= cells) {
+						continue;
+					}
+					if (chunk->type_per_cell[ncy * cells + ncx]
+							!= TerrainSettings::TYPE_NONE) {
+						any_solid = true;
+						break;
+					}
+				}
+			}
+			chunk->density[corner_y * s + corner_x] =
+					any_solid ? 255 : 0;
+		}
+	}
+}
+
+} // namespace
+
 TerrainWorld::TerrainWorld() {
 	_manager = std::make_unique<ChunkManager>();
 	_worker = std::make_unique<WorkerPool>();
@@ -467,11 +507,7 @@ bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
 	if (hp <= 0) {
 		chunk->health_per_cell[idx] = 0;
 		chunk->type_per_cell[idx] = TerrainSettings::TYPE_NONE;
-		const int s = chunk->cells + 1;
-		chunk->density[cy * s + cx] = 0;
-		chunk->density[cy * s + cx + 1] = 0;
-		chunk->density[(cy + 1) * s + cx] = 0;
-		chunk->density[(cy + 1) * s + cx + 1] = 0;
+		refresh_corners_after_clear(chunk, cx, cy);
 		emit_signal("tile_destroyed", world_pos, type);
 		if (out_world_cx) {
 			*out_world_cx = chunk->coords.x * chunk->cells + cx;
