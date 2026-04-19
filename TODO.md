@@ -109,11 +109,14 @@
     - Bird
 - Test:
     - Falling cell, liquid, sand damage.
-    - 
+    - Game end (win/lose), restart
 - Level generation:
     - 
 - Music
 - SFX
+- Water should damage cat
+- Start hanging from the ceiling.
+- Can also come to rest again against the ceiling
 
 # Stretch
 

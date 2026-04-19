@@ -182,6 +182,72 @@ func _physics_process(delta: float) -> void:
 				-_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC,
 				_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC)
 	_apply_fluid_damage(delta)
+	_unstick_from_terrain()
+
+
+## Continuous stuck check. Conservative: only triggers when a
+## collidable cell is fully embedded in the player's vertical
+## extent — i.e., overlap of at least a full cell height (8 px).
+## This ignores the normal few-pixel penetration of CharacterBody2D
+## resting on a floor, only firing when sand/solid has truly filled
+## a chunk of the player's interior. Backs up FallingCell's one-
+## shot eviction for cases where terrain FLOW moves cells in C++
+## without going through the FallingCell paint path.
+func _unstick_from_terrain() -> void:
+	if not is_instance_valid(G.terrain) or G.terrain.settings == null:
+		return
+	var cs: float = G.terrain.settings.cell_size_px
+	var hh: float = half_size.y if half_size.y > 0.0 else cs * 0.5
+	var hw: float = half_size.x if half_size.x > 0.0 else cs * 0.5
+
+	if not _is_cell_fully_embedded(global_position.y, hh, hw, cs):
+		return
+
+	const _MAX_STEPS := 8
+	for step in range(1, _MAX_STEPS + 1):
+		for dir in [-1, 1]:
+			var try_y: float = global_position.y + dir * step * cs
+			if not _is_cell_fully_embedded(try_y, hh, hw, cs):
+				global_position = Vector2(global_position.x, try_y)
+				velocity.y = 0.0
+				return
+
+
+## True iff any collidable cell has BOTH its top and bottom edges
+## inside the player's vertical AABB (shrunk by a small x-inset so
+## glancing side contact doesn't count). Requires a full 8 px of y
+## overlap before triggering — normal resting contact doesn't.
+func _is_cell_fully_embedded(
+		center_y: float, hh: float, hw: float, cs: float) -> bool:
+	const _X_INSET := 1.0
+	var p_left := global_position.x - hw + _X_INSET
+	var p_right := global_position.x + hw - _X_INSET
+	var p_top := center_y - hh
+	var p_bottom := center_y + hh
+
+	var first_cx := int(floor(p_left / cs))
+	var last_cx := int(floor(p_right / cs))
+	var first_cy := int(floor(p_top / cs))
+	var last_cy := int(floor(p_bottom / cs))
+
+	for cy in range(first_cy, last_cy + 1):
+		var cell_top := cy * cs
+		var cell_bottom := cell_top + cs
+		if cell_top < p_top or cell_bottom > p_bottom:
+			continue
+		for cx in range(first_cx, last_cx + 1):
+			var cell_left := cx * cs
+			var cell_right := cell_left + cs
+			# Require some x overlap beyond a single-pixel edge
+			# contact; the inset on p_left / p_right already does
+			# most of the work here.
+			if cell_right <= p_left or cell_left >= p_right:
+				continue
+			var ccx := cell_left + cs * 0.5
+			var ccy := cell_top + cs * 0.5
+			if G.terrain.is_cell_collidable(Vector2(ccx, ccy)):
+				return true
+	return false
 
 
 func _sample_water_overlap() -> void:
@@ -233,6 +299,40 @@ func _unhandled_input(event: InputEvent) -> void:
 		select_next_frequency()
 	elif event.is_action_pressed("ability"):
 		_emit_echo_pulse()
+	elif event.is_action_pressed("jump"):
+		_apply_wedge_kick_if_stuck()
+
+
+## If the player is wedged against solid terrain on both sides
+## (e.g., stuck in a 1-cell-wide diagonal gap), apply a horizontal
+## impulse toward the side with more room so they can pop free. If
+## neither side has more room, nudge upward a bit.
+const _WEDGE_KICK_PX_PER_SEC := 220.0
+const _WEDGE_POP_UP_PX_PER_SEC := 240.0
+
+func _apply_wedge_kick_if_stuck() -> void:
+	if not is_instance_valid(G.terrain) or G.terrain.settings == null:
+		return
+	var cs: float = G.terrain.settings.cell_size_px
+	# Probe one cell to each side at the player's center y.
+	var left_probe := Vector2(
+			global_position.x - half_size.x - cs * 0.5,
+			global_position.y)
+	var right_probe := Vector2(
+			global_position.x + half_size.x + cs * 0.5,
+			global_position.y)
+	var left_blocked: bool = G.terrain.is_cell_collidable(left_probe)
+	var right_blocked: bool = G.terrain.is_cell_collidable(right_probe)
+	if not left_blocked and not right_blocked:
+		return
+	if left_blocked and not right_blocked:
+		velocity.x = _WEDGE_KICK_PX_PER_SEC
+	elif right_blocked and not left_blocked:
+		velocity.x = -_WEDGE_KICK_PX_PER_SEC
+	else:
+		# Both sides blocked — pop upward a bit extra on top of the
+		# normal jump.
+		velocity.y = minf(velocity.y, -_WEDGE_POP_UP_PX_PER_SEC)
 
 
 func _emit_echo_pulse() -> void:

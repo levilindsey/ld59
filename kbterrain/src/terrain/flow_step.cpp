@@ -71,23 +71,16 @@ bool FlowStep::step_world(
 	_step_counter++;
 	const bool prefer_right = (_step_counter & 1u) == 0;
 
-	// Decay velocities slightly (for the sampled-velocity HUD / player
-	// damage path) and clear moved flags. The per-cell horizontal
-	// direction memory baked into vel_x's sign is NOT decayed to zero
-	// — once a liquid cell has committed to a lateral direction, it
-	// can't reverse into its origin cell. This breaks the mirror
-	// symmetry that causes pool-surface oscillation while still
-	// letting the cell move further in its original direction.
+	// Standard velocity decay (for sampled-velocity HUD + player
+	// damage path) and moved-flag clear. The sideways spread rule
+	// no longer depends on a direction-memory gate, so vel_x is
+	// only used as a continuous value.
 	for (auto &pair : _flow_by_chunk) {
 		ChunkFlow &cf = pair.second;
 		for (size_t i = 0; i < cf.vel_x.size(); i++) {
-			// Keep sign-preserving clamp at |vel| >= 1 so the cell
-			// remembers its direction forever while occupied.
-			int vx = static_cast<int>(cf.vel_x[i]);
-			int new_vx = (vx * VELOCITY_DECAY_NUM) / VELOCITY_DECAY_DEN;
-			if (vx > 0 && new_vx < 1) new_vx = 1;
-			if (vx < 0 && new_vx > -1) new_vx = -1;
-			cf.vel_x[i] = static_cast<int8_t>(new_vx);
+			cf.vel_x[i] = static_cast<int8_t>(
+					(static_cast<int>(cf.vel_x[i]) * VELOCITY_DECAY_NUM)
+					/ VELOCITY_DECAY_DEN);
 			cf.vel_y[i] = static_cast<int8_t>(
 					(static_cast<int>(cf.vel_y[i]) * VELOCITY_DECAY_NUM)
 					/ VELOCITY_DECAY_DEN);
@@ -137,6 +130,144 @@ bool FlowStep::step_world(
 							out_dirty_chunks);
 				}
 				if (moved) {
+					any_moved = true;
+				}
+			}
+		}
+	}
+
+	// Drop-aware lateral teleport. Top-layer liquid cells scan out
+	// to _LATERAL_REACH cells in each direction; at each lateral
+	// position they scan DOWNWARD to find the settle-y (where water
+	// would come to rest after falling). If any lateral target has
+	// a strictly positive drop (settle_y > source cy), the source
+	// cell teleports directly to (target_x, settle_y). This mimics
+	// water finding a drain path over the mound's edge and falling
+	// down it in a single step.
+	//
+	// Only moves with drop > 0 are allowed. Drop == 0 (sideways
+	// into a supported empty cell with no lower level to reach)
+	// is declined — that's the stable "rim cell" state, and
+	// declining the move there prevents the surface oscillation
+	// the user described.
+	for (auto &pair : _flow_by_chunk) {
+		std::fill(pair.second.moved_this_frame.begin(),
+				pair.second.moved_this_frame.end(), 0u);
+	}
+	constexpr int _LATERAL_REACH = 32;
+	constexpr int _MAX_DROP = 64;
+	for (const Vector2i &coord : chunk_coords) {
+		Chunk *chunk = manager.get(coord);
+		if (chunk == nullptr) {
+			continue;
+		}
+		ChunkFlow &flow = _get_or_create_flow(coord, chunk_cells);
+		for (int cy = 0; cy < chunk_cells; cy++) {
+			const int x_start = prefer_right ? 0 : chunk_cells - 1;
+			const int x_end = prefer_right ? chunk_cells : -1;
+			const int x_step = prefer_right ? 1 : -1;
+			for (int cx = x_start; cx != x_end; cx += x_step) {
+				const int idx = chunk->cell_index(cx, cy);
+				if (flow.moved_this_frame[idx]) {
+					continue;
+				}
+				const uint8_t t = chunk->type_per_cell[idx];
+				if (t != TerrainSettings::TYPE_LIQUID) {
+					continue;
+				}
+				const int32_t world_cx =
+						chunk->coords.x * chunk_cells + cx;
+				const int32_t world_cy =
+						chunk->coords.y * chunk_cells + cy;
+				// Top-layer only — cell directly above is not
+				// liquid. Both NONE and solid/anchor above qualify
+				// as "top-layer" for draining purposes.
+				const uint8_t above = flow_world_cell_type(
+						manager, chunk_cells,
+						world_cx, world_cy - 1);
+				if (above == TerrainSettings::TYPE_LIQUID) {
+					continue;
+				}
+				int32_t best_tx = world_cx;
+				int32_t best_ty = world_cy;
+				int best_drop = 0;
+				int best_offset = _LATERAL_REACH + 1;
+				// Outer loop is direction so we can break out of a
+				// direction when the path is blocked. If we just
+				// `continue`d on a block, a wall at offset 1 would
+				// get bypassed by a scan at offset 2+ — water would
+				// teleport through walls out of its container.
+				for (int dir_try = 0; dir_try < 2; dir_try++) {
+					const int side = (dir_try == 0)
+							? (prefer_right ? 1 : -1)
+							: (prefer_right ? -1 : 1);
+					for (int offset = 1; offset <= _LATERAL_REACH;
+							offset++) {
+						const int32_t tx = world_cx + side * offset;
+						const uint8_t at_target =
+								flow_world_cell_type(
+										manager, chunk_cells,
+										tx, world_cy);
+						if (at_target != TerrainSettings::TYPE_NONE) {
+							break;
+						}
+						// Scan downward for the settle position —
+						// last empty cell before a non-empty cell.
+						int32_t settle_y = world_cy;
+						for (int drop = 1; drop <= _MAX_DROP; drop++) {
+							const int32_t sy = world_cy + drop;
+							const uint8_t below_type =
+									flow_world_cell_type(
+											manager, chunk_cells,
+											tx, sy);
+							if (below_type !=
+									TerrainSettings::TYPE_NONE) {
+								break;
+							}
+							settle_y = sy;
+						}
+						const int drop_amount =
+								static_cast<int>(settle_y - world_cy);
+						if (drop_amount <= 0) {
+							continue;
+						}
+						if (drop_amount > best_drop
+								|| (drop_amount == best_drop
+										&& offset < best_offset)) {
+							best_drop = drop_amount;
+							best_offset = offset;
+							best_tx = tx;
+							best_ty = settle_y;
+						}
+					}
+				}
+				if (best_drop == 0) {
+					continue;
+				}
+				// Resolve target chunk + local coords.
+				int32_t dst_chunk_x = best_tx / chunk_cells;
+				int32_t dst_chunk_y = best_ty / chunk_cells;
+				int32_t dst_local_x = best_tx - dst_chunk_x * chunk_cells;
+				int32_t dst_local_y = best_ty - dst_chunk_y * chunk_cells;
+				if (dst_local_x < 0) {
+					dst_local_x += chunk_cells;
+					dst_chunk_x -= 1;
+				}
+				if (dst_local_y < 0) {
+					dst_local_y += chunk_cells;
+					dst_chunk_y -= 1;
+				}
+				Chunk *dst = manager.get(
+						Vector2i(dst_chunk_x, dst_chunk_y));
+				if (dst == nullptr) {
+					continue;
+				}
+				ChunkFlow &dst_flow = _get_or_create_flow(
+						Vector2i(dst_chunk_x, dst_chunk_y),
+						chunk_cells);
+				if (_move_cell(*chunk, flow, cx, cy,
+							*dst, dst_flow, dst_local_x, dst_local_y,
+							chunk_cells, out_dirty_chunks)) {
 					any_moved = true;
 				}
 			}
@@ -337,25 +468,20 @@ bool FlowStep::_try_liquid(
 				iso, prefer_right, dirty)) {
 		return true;
 	}
-	// Sideways spread. Bidirectional, with a permanent per-cell
-	// direction memory (vel_x's sign, which no longer decays to
-	// zero while the cell is occupied). A cell that previously
-	// moved right refuses to move left and vice versa — this
-	// breaks the mirror symmetry that drove oscillation on flat
-	// surfaces. Fresh cells (vel_x == 0) move in the step's
-	// preferred direction first and fall back to the other.
-	const int src_idx = chunk.cell_index(cx, cy);
-	const int8_t src_vx = flow.vel_x[src_idx];
+	// Sideways spread. Bidirectional with simple alternation — no
+	// direction memory. Prior attempts at preventing oscillation
+	// via vel_x commitment trapped water in mound configurations
+	// (cells stuck with a committed direction couldn't move back
+	// when their original neighborhood filled in). At 60 Hz flow
+	// tick the visual back-and-forth of cells on a flat surface
+	// looks more like "water shimmering" than jittering, and real
+	// mound configurations actually drain now.
 	Chunk *dst = nullptr;
 	ChunkFlow *dst_flow = nullptr;
 	int dx = 0, dy = 0;
 	const int first_side = prefer_right ? 1 : -1;
 	for (int s_try = 0; s_try < 2; s_try++) {
 		const int side = (s_try == 0) ? first_side : -first_side;
-		// Skip if this cell previously committed to the opposite
-		// direction.
-		if (src_vx > 0 && side < 0) continue;
-		if (src_vx < 0 && side > 0) continue;
 		if (!_is_empty(chunk, cx + side, cy, manager, chunk_cells,
 					iso, &dst, &dst_flow, &dx, &dy)) {
 			continue;

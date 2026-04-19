@@ -361,6 +361,20 @@ void TerrainWorld::_queue_remesh(Chunk *chunk) {
 	job.type_to_color_rgba = _type_to_rgba_lut;
 	job.simplify_epsilon_px = _simplify_eps_cached;
 
+	// Collision update on the main thread, BEFORE handing the job
+	// to the worker. This keeps the player from colliding with
+	// phantom shapes at old cell positions while the worker catches
+	// up with the render remesh — a detach of many chunks could
+	// leave stale collision active for multiple frames otherwise.
+	// Duplicates the worker's collision pass (it'll be overwritten
+	// when the worker result integrates), but cheap: mesh_chunk on
+	// a 32x32 density grid is ~microseconds.
+	if (!_editor_mode
+			&& !job.collision_density_snapshot.empty()) {
+		_update_collision_sync(chunk, job.collision_density_snapshot,
+				job.cells, job.cell_size_px, job.origin_px, job.iso);
+	}
+
 	if (_editor_mode) {
 		// Synchronous: the @tool preview wants to see the result
 		// immediately, no worker available.
@@ -370,6 +384,58 @@ void TerrainWorld::_queue_remesh(Chunk *chunk) {
 	} else {
 		_worker->submit(std::move(job));
 	}
+}
+
+void TerrainWorld::_update_collision_sync(
+		Chunk *chunk,
+		const std::vector<uint8_t> &collision_density,
+		int cells,
+		float cell_size_px,
+		Vector2 origin_px,
+		uint8_t iso) {
+	terrain::MeshResult coll_mesh;
+	terrain::mesh_chunk(
+			collision_density.data(),
+			cells,
+			cell_size_px,
+			origin_px,
+			iso,
+			0xFFFFFFFFu,
+			nullptr,
+			nullptr,
+			coll_mesh);
+	PhysicsServer2D *ps = PhysicsServer2D::get_singleton();
+	if (!chunk->static_body_rid.is_valid()) {
+		chunk->static_body_rid = ps->body_create();
+		ps->body_set_mode(chunk->static_body_rid,
+				PhysicsServer2D::BODY_MODE_STATIC);
+		ps->body_set_collision_layer(chunk->static_body_rid,
+				_settings.is_valid()
+						? _settings->collision_layer
+						: 1);
+		ps->body_set_collision_mask(chunk->static_body_rid,
+				_settings.is_valid()
+						? _settings->collision_mask
+						: 0);
+		Viewport *vp = get_viewport();
+		if (vp != nullptr) {
+			Ref<World2D> world_2d = vp->get_world_2d();
+			if (world_2d.is_valid()) {
+				ps->body_set_space(chunk->static_body_rid,
+						world_2d->get_space());
+			}
+		}
+	}
+	if (!chunk->shape_rid.is_valid()) {
+		chunk->shape_rid = ps->concave_polygon_shape_create();
+		ps->body_add_shape(chunk->static_body_rid, chunk->shape_rid);
+	}
+	PackedVector2Array seg_array;
+	seg_array.resize(coll_mesh.boundary_segments.size());
+	for (size_t i = 0; i < coll_mesh.boundary_segments.size(); i++) {
+		seg_array[i] = coll_mesh.boundary_segments[i];
+	}
+	ps->shape_set_data(chunk->shape_rid, seg_array);
 }
 
 void TerrainWorld::_queue_remesh_and_neighbors(Chunk *chunk) {
