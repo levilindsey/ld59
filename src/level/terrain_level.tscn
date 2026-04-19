@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://o2i6tqdak3pe" path="res://src/enemies/enemy_system.gd" id="7_enemy_sys"]
 [ext_resource type="PackedScene" path="res://src/level/falling_cell.tscn" id="8_falling_cell"]
 [ext_resource type="PackedScene" uid="uid://b8k2pwamtr0x3" path="res://src/level/web_tile.tscn" id="9_web"]
+[ext_resource type="SpriteFrames" uid="uid://dprfrmplyrfrms" path="res://src/player/player_frames.tres" id="10_frames"]
 
 [node name="TerrainLevel" type="Node2D" unique_id=1888346517]
 script = ExtResource("1_level")
@@ -36,6 +37,13 @@ unique_name_in_owner = true
 [node name="Camera2D" type="Camera2D" parent="PlayerSpawnPoint" unique_id=937342632]
 unique_name_in_owner = true
 zoom = Vector2(2, 2)
+
+[node name="SpawnPreviewSprite" type="AnimatedSprite2D" parent="PlayerSpawnPoint"]
+unique_name_in_owner = true
+process_mode = 3
+sprite_frames = ExtResource("10_frames")
+animation = &"idle_ceiling"
+autoplay = "idle_ceiling"
 
 [node name="Players" type="Node2D" parent="." unique_id=1687508849]
 unique_name_in_owner = true
