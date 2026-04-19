@@ -3,11 +3,7 @@
 [ext_resource type="Script" path="res://src/ui/hud/health_bar.gd" id="1_hb"]
 [ext_resource type="Texture2D" path="res://assets/images/scratch/heart-icon.png" id="2_heart"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hb_bg"]
-content_margin_left = 4.0
-content_margin_top = 4.0
-content_margin_right = 4.0
-content_margin_bottom = 4.0
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hb_panel"]
 bg_color = Color(0.24, 0.10, 0.14, 0.85)
 border_width_left = 1
 border_width_top = 1
@@ -19,24 +15,32 @@ corner_radius_top_right = 2
 corner_radius_bottom_right = 2
 corner_radius_bottom_left = 2
 
+[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_bar_bg"]
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hb_fill"]
 bg_color = Color(0.95, 0.40, 0.55, 1.0)
-corner_radius_top_left = 2
-corner_radius_top_right = 2
-corner_radius_bottom_right = 2
-corner_radius_bottom_left = 2
+corner_radius_top_left = 1
+corner_radius_top_right = 1
+corner_radius_bottom_right = 1
+corner_radius_bottom_left = 1
 
-[node name="HealthBar" type="ProgressBar"]
+[node name="HealthBar" type="PanelContainer"]
 custom_minimum_size = Vector2(144, 24)
-theme_override_styles/background = SubResource("StyleBoxFlat_hb_bg")
-theme_override_styles/fill = SubResource("StyleBoxFlat_hb_fill")
+theme_override_styles/panel = SubResource("StyleBoxFlat_hb_panel")
+script = ExtResource("1_hb")
+
+[node name="Bar" type="ProgressBar" parent="."]
+custom_minimum_size = Vector2(136, 16)
+size_flags_horizontal = 4
+size_flags_vertical = 4
 min_value = 0.0
 max_value = 100.0
 value = 100.0
 show_percentage = false
-script = ExtResource("1_hb")
+theme_override_styles/background = SubResource("StyleBoxEmpty_bar_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_hb_fill")
 
-[node name="HeartIcon" type="TextureRect" parent="."]
+[node name="HeartIcon" type="TextureRect" parent="Bar"]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5

@@ -34,6 +34,20 @@ const _INVINCIBILITY_SEC := 0.6
 ## Blink period while invincible.
 const _BLINK_PERIOD_SEC := 0.1
 
+## Death pulse — big, slow, red outline that expands outward from
+## the enemy's sprite silhouette. Mirrors the player's death pulse
+## so downed enemies and the downed player share the same visual
+## vocabulary. Plays via a ShaderMaterial on the subclass's
+## `AnimatedSprite2D`; queue_free waits for the tween to finish.
+const _DEATH_FLASH_PEAK := 0.9
+const _DEATH_FLASH_DURATION_SEC := 0.55
+const _DEATH_PULSE_DURATION_SEC := 0.8
+const _DEATH_PULSE_MAX_RADIUS_PX := 18.0
+const _DEATH_PULSE_WIDTH_PX := 5.0
+const _DEATH_PULSE_ALPHA := 0.9
+const _DEATH_FLASH_COLOR := Color(1.0, 0.2, 0.2)
+const _DEATH_PULSE_COLOR := Color(1.0, 0.3, 0.3)
+
 
 @export var frequency: Frequency.Type = Frequency.Type.RED
 @export_range(1, 500) var max_health: int = 30
@@ -151,8 +165,47 @@ func _apply_damage(amount: int) -> void:
 
 func _die() -> void:
 	_is_dead = true
+	# Stop further contact damage / pulse reception while the death
+	# tween plays out — the enemy is already logically gone.
+	monitoring = false
+	monitorable = false
 	died.emit(self)
-	queue_free()
+	_play_death_pulse()
+
+
+## Runs the same shader animation used by the player's death pulse,
+## bound to the subclass's `AnimatedSprite2D`. Frees the enemy once
+## the tween completes.
+func _play_death_pulse() -> void:
+	var sprite := get_node_or_null("AnimatedSprite2D") as AnimatedSprite2D
+	if sprite == null or sprite.material == null:
+		queue_free()
+		return
+	var mat := sprite.material as ShaderMaterial
+	if mat == null:
+		queue_free()
+		return
+	mat.set_shader_parameter("flash_color", _DEATH_FLASH_COLOR)
+	mat.set_shader_parameter("pulse_color", _DEATH_PULSE_COLOR)
+	mat.set_shader_parameter("flash_strength", _DEATH_FLASH_PEAK)
+	mat.set_shader_parameter("pulse_width_px", _DEATH_PULSE_WIDTH_PX)
+	mat.set_shader_parameter("pulse_radius_px", 1.0)
+	mat.set_shader_parameter("pulse_alpha", _DEATH_PULSE_ALPHA)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(
+			mat, "shader_parameter/flash_strength",
+			0.0, _DEATH_FLASH_DURATION_SEC
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(
+			mat, "shader_parameter/pulse_radius_px",
+			_DEATH_PULSE_MAX_RADIUS_PX, _DEATH_PULSE_DURATION_SEC
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(
+			mat, "shader_parameter/pulse_alpha",
+			0.0, _DEATH_PULSE_DURATION_SEC
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(queue_free)
 
 
 func _on_body_entered(body: Node2D) -> void:

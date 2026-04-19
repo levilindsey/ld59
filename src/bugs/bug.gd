@@ -39,6 +39,16 @@ const _BIG_GLOW_SCALE := 1.2
 const _BIG_COLLISION_RADIUS := 28.0
 const _BIG_HEAL := 75
 
+## Eaten pulse — matches the player's damage-hit aesthetic, tinted
+## with this bug's frequency color. Played on consumption; the bug
+## stays in the tree until the tween finishes, then frees itself.
+const _EATEN_FLASH_PEAK := 0.85
+const _EATEN_FLASH_DURATION_SEC := 0.2
+const _EATEN_PULSE_DURATION_SEC := 0.3
+const _EATEN_PULSE_MAX_RADIUS_PX := 8.0
+const _EATEN_PULSE_WIDTH_PX := 2.8
+const _EATEN_PULSE_ALPHA := 0.7
+
 
 ## Frequency type (see Frequency.Type). Drives tint and the juice
 ## pool filled on consumption.
@@ -136,10 +146,50 @@ func _on_body_entered(body: Node2D) -> void:
 
 func _consume(player: Player) -> void:
 	_consumed = true
+	# Stop detecting further overlaps while the eaten pulse plays so
+	# the bug doesn't re-trigger consumption during its death tween.
+	monitoring = false
+	monitorable = false
 	player.add_juice(frequency, juice_grant)
 	player.apply_heal(heal_amount)
 	eaten.emit(self)
-	queue_free()
+	_play_eaten_pulse()
+
+
+## Bug's frequency-tinted analog of the player's damage-hit pulse.
+## Runs the same shader material as the player (on the Body
+## AnimatedSprite2D), then frees the bug once the tween finishes.
+func _play_eaten_pulse() -> void:
+	var body := $Body as AnimatedSprite2D
+	if body == null or body.material == null:
+		queue_free()
+		return
+	var mat := body.material as ShaderMaterial
+	if mat == null:
+		queue_free()
+		return
+	var color := Frequency.color_of(frequency)
+	mat.set_shader_parameter("flash_color", color)
+	mat.set_shader_parameter("pulse_color", color)
+	mat.set_shader_parameter("flash_strength", _EATEN_FLASH_PEAK)
+	mat.set_shader_parameter("pulse_width_px", _EATEN_PULSE_WIDTH_PX)
+	mat.set_shader_parameter("pulse_radius_px", 1.0)
+	mat.set_shader_parameter("pulse_alpha", _EATEN_PULSE_ALPHA)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(
+			mat, "shader_parameter/flash_strength",
+			0.0, _EATEN_FLASH_DURATION_SEC
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(
+			mat, "shader_parameter/pulse_radius_px",
+			_EATEN_PULSE_MAX_RADIUS_PX, _EATEN_PULSE_DURATION_SEC
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(
+			mat, "shader_parameter/pulse_alpha",
+			0.0, _EATEN_PULSE_DURATION_SEC
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(queue_free)
 
 
 func _update_opacity() -> void:
