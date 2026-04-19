@@ -36,16 +36,29 @@ const _PING_LIFETIME_SEC := 0.5
 ## keeps everything ≥ perpendicular; positive values tighten to
 ## only strongly-facing surfaces.
 const _PING_PLAYER_FACING_THRESHOLD := 0.0
+## Safety cap on LoS DDA walk length (in grid cells crossed). A miss
+## past this length is treated as "not occluded" so the segment
+## schedules. At cell_size=8 px, 200 cells = 1600 px — more than any
+## pulse radius we actually use.
+const _PING_LOS_MAX_STEPS := 200
 ## Fallback cell-size-px when G.terrain.settings isn't available at
 ## raycast time. Matches TerrainSettings default.
 const _DEFAULT_CELL_SIZE_PX := 8.0
 ## Number of frames the damage-region outline flash stays visible after
 ## a pulse stamps a cell. At 60 FPS, 30 frames ≈ 0.5 sec.
-const _DAMAGE_FLASH_FRAMES := 30
-## Damage radius (world px) used to enumerate cells that a pulse will
-## visibly flash. Matches `_DAMAGE_MAX_RADIUS_PX` in `terrain_level.gd`
-## so the visual region lines up with the actual damage region.
-const _DAMAGE_FLASH_RADIUS_PX := 420.0
+const _DAMAGE_FLASH_FRAMES := 40
+
+## Debris-particle tuning. Spawned one per destroyed cell (times
+## `_PARTICLES_PER_DESTROYED_CELL`); no scene nodes, integrated in
+## the renderer's `_process`. Shader renders them as solid colored
+## disks, sampled with either the tile atlas (near-field) or flat
+## palette color (outside).
+const _MAX_PARTICLES := 128
+const _PARTICLES_PER_DESTROYED_CELL := 4
+const _PARTICLE_LIFETIME_SEC := 0.6
+const _PARTICLE_BURST_SPEED_PX_PER_SEC := 40.0
+const _PARTICLE_GRAVITY_PX_PER_SEC2 := 220.0
+const _PARTICLE_RADIUS_PX := 1.5
 ## Halo radius for a bug's frequency tag, in WORLD pixels (the
 ## renderer scales this by canvas_scale before passing to the
 ## shader, so it tracks camera zoom). 6 = the radius of the bug's
@@ -84,12 +97,17 @@ const _BUG_TAG_RADIUS_PX := 6.0
 ## - `matching_bloom_brightness_bump`: extra brightness multiplier
 ##   applied to matching stipple color, on top of the existing
 ##   saturation boost, pushing color past 1.0 for an overbright feel.
-@export_range(1.0, 3.0) var matching_bloom_size_multiplier := 2.0
-@export_range(0.0, 0.5) var matching_bloom_soft_width := 0.22
-@export_range(1.0, 3.0) var matching_bloom_brightness_bump := 1.8
+@export_range(1.0, 3.0) var matching_bloom_size_multiplier := 2.5
+@export_range(0.0, 0.5) var matching_bloom_soft_width := 0.32
+@export_range(1.0, 3.0) var matching_bloom_brightness_bump := 2.4
 
 @export_range(100.0, 2000.0) var default_pulse_speed_px_per_sec := 600.0
 @export_range(100.0, 4000.0) var default_pulse_max_radius_px := 1000.0
+
+## Scale factor applied to the echo's physical round-trip delay
+## (2 × dist / speed). 1.0 = physical; 0.5 = half (snappier feel).
+## Low values make echoes feel immediate; high values feel sluggish.
+@export_range(0.1, 2.0) var ping_delay_scale := 0.7
 
 ## If true, draws a cyan cross at the computed player_uv and prints
 ## diagnostics for the first few frames after a player is acquired.
@@ -100,6 +118,9 @@ var _pool: Array[EchoPulse] = []
 ## Bounce-back ping pool (pending + active). Pool-managed rather than
 ## scene-node spawned so there's zero allocation after warmup.
 var _ping_pool: Array[EchoPing] = []
+## Destruction-debris particle pool. Same pool pattern; integrated
+## each frame in `_process`.
+var _particle_pool: Array[EchoParticle] = []
 ## Monotonic process-time clock used to schedule pings. Driven by the
 ## renderer's `_process` delta, so pausing the scene pauses the ping
 ## schedule too.
@@ -164,6 +185,7 @@ func _ready() -> void:
 	# Pre-allocate pool slots.
 	_pool.resize(_MAX_PULSES)
 	_ping_pool.resize(_MAX_PINGS)
+	_particle_pool.resize(_MAX_PARTICLES)
 
 	_shader_mat = %Mask.material as ShaderMaterial
 	G.ensure_valid(_shader_mat, "EcholocationRenderer: Mask missing ShaderMaterial")
@@ -229,15 +251,17 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	_elapsed_sec += delta
 
-	# Lazy-connect to G.terrain.chunk_modified so the density/type
-	# textures rebuild after any terrain edit. The connection survives
-	# until _exit_tree. G.terrain may not exist yet at _ready time
-	# (level load order), so we retry each frame until it does.
-	if (is_instance_valid(G.terrain)
-			and not G.terrain.chunk_modified.is_connected(
-					_on_chunk_modified)):
-		G.terrain.chunk_modified.connect(_on_chunk_modified)
-		_terrain_textures_dirty = true
+	# Lazy-connect to G.terrain signals. The connections survive until
+	# _exit_tree. G.terrain may not exist yet at _ready time (level
+	# load order), so we retry each frame until it does.
+	if is_instance_valid(G.terrain):
+		if not G.terrain.chunk_modified.is_connected(
+				_on_chunk_modified):
+			G.terrain.chunk_modified.connect(_on_chunk_modified)
+			_terrain_textures_dirty = true
+		if not G.terrain.tile_destroyed.is_connected(
+				_on_tile_destroyed):
+			G.terrain.tile_destroyed.connect(_on_tile_destroyed)
 
 	# Rebuild SDF textures if terrain changed since the last frame.
 	if _terrain_textures_dirty and is_instance_valid(G.terrain):
@@ -463,6 +487,41 @@ func _process(delta: float) -> void:
 	_shader_mat.set_shader_parameter("ping_normals", packed_normals)
 	_shader_mat.set_shader_parameter("ping_count", ping_active_count)
 
+	# Advance + pack debris particles. Gravity pulls +y (screen-down
+	# in Godot's convention). Expire on age >= lifetime. Pack as
+	# vec4(screen_uv.xy, radius_px_screen, frequency).
+	var packed_particles: Array[Vector4] = []
+	packed_particles.resize(_MAX_PARTICLES)
+	var particle_active_count := 0
+	var particle_radius_screen: float = (_PARTICLE_RADIUS_PX
+			* absf(canvas_scale.x))
+	for i in range(_MAX_PARTICLES):
+		var particle: EchoParticle = _particle_pool[i]
+		if particle == null:
+			continue
+		particle.age_sec += delta
+		if particle.age_sec >= particle.lifetime_sec:
+			_particle_pool[i] = null
+			continue
+		particle.velocity.y += (_PARTICLE_GRAVITY_PX_PER_SEC2 * delta)
+		particle.world_pos += particle.velocity * delta
+		var p_uv := _world_to_uv(
+				particle.world_pos,
+				follow_target.global_position,
+				player_screen_px,
+				canvas_rot,
+				canvas_scale,
+				viewport_size)
+		packed_particles[particle_active_count] = Vector4(
+				p_uv.x,
+				p_uv.y,
+				particle_radius_screen,
+				float(particle.frequency))
+		particle_active_count += 1
+	_shader_mat.set_shader_parameter("particles", packed_particles)
+	_shader_mat.set_shader_parameter(
+			"particle_count", particle_active_count)
+
 	# Damage-region outline flash. Decay active cells, re-upload the
 	# damage_age_tex if anything changed.
 	_decay_damage_flashes()
@@ -502,7 +561,6 @@ func emit_pulse(
 
 	_pool[slot] = pulse
 	_schedule_pings_for_pulse(pulse)
-	_stamp_damage_cells_for_pulse(pulse)
 	pulse_emitted.emit(pulse)
 	return pulse
 
@@ -682,6 +740,84 @@ func _type_byte_at(cx: int, cy: int) -> int:
 	return _type_image_bytes[cy * _type_image_width + cx]
 
 
+## Return true when the straight line from `from_world` to `to_world`
+## passes through any non-empty cell between its origin and target.
+## Uses Amanatides-Woo grid DDA on `_type_image_bytes`, so no C++
+## crossings. The origin cell (whatever cell contains `from_world`)
+## and the target cell (whatever contains `to_world`) are NOT
+## checked — we only care about intermediate cells that would occlude
+## the pulse's line of sight. Out-of-bounds cells pass (treated as
+## empty, so segments near the world edge don't false-positive).
+func _los_occluded(from_world: Vector2, to_world: Vector2) -> bool:
+	if _type_image_bytes.is_empty():
+		return false
+	var cell_size: float = _density_cell_size_px
+	if cell_size <= 0.0:
+		return false
+
+	var from_cx_f: float = (from_world.x / cell_size
+			- float(_type_image_origin_cells.x))
+	var from_cy_f: float = (from_world.y / cell_size
+			- float(_type_image_origin_cells.y))
+	var to_cx_f: float = (to_world.x / cell_size
+			- float(_type_image_origin_cells.x))
+	var to_cy_f: float = (to_world.y / cell_size
+			- float(_type_image_origin_cells.y))
+
+	var target_cx: int = int(floor(to_cx_f))
+	var target_cy: int = int(floor(to_cy_f))
+	var cx: int = int(floor(from_cx_f))
+	var cy: int = int(floor(from_cy_f))
+
+	# Same cell — nothing between origin and target.
+	if cx == target_cx and cy == target_cy:
+		return false
+
+	var dx: float = to_cx_f - from_cx_f
+	var dy: float = to_cy_f - from_cy_f
+	var abs_dx: float = absf(dx)
+	var abs_dy: float = absf(dy)
+	var step_x: int = 0 if abs_dx < 1e-9 else (1 if dx > 0.0 else -1)
+	var step_y: int = 0 if abs_dy < 1e-9 else (1 if dy > 0.0 else -1)
+	if step_x == 0 and step_y == 0:
+		return false
+
+	var t_delta_x: float = INF if step_x == 0 else 1.0 / abs_dx
+	var t_delta_y: float = INF if step_y == 0 else 1.0 / abs_dy
+
+	var t_max_x: float = INF
+	if step_x > 0:
+		t_max_x = (float(cx + 1) - from_cx_f) / abs_dx
+	elif step_x < 0:
+		t_max_x = (from_cx_f - float(cx)) / abs_dx
+
+	var t_max_y: float = INF
+	if step_y > 0:
+		t_max_y = (float(cy + 1) - from_cy_f) / abs_dy
+	elif step_y < 0:
+		t_max_y = (from_cy_f - float(cy)) / abs_dy
+
+	for _step in range(_PING_LOS_MAX_STEPS):
+		if t_max_x < t_max_y:
+			cx += step_x
+			t_max_x += t_delta_x
+		else:
+			cy += step_y
+			t_max_y += t_delta_y
+		# Reached target — line of sight is clear.
+		if cx == target_cx and cy == target_cy:
+			return false
+		# Off the grid — treat as empty (not a blocker).
+		if (cx < 0 or cy < 0
+				or cx >= _type_image_width
+				or cy >= _type_image_height):
+			return false
+		# Intermediate cell is solid → blocks the ray.
+		if _type_byte_at(cx, cy) != 0:
+			return true
+	return false
+
+
 ## Schedule a ping for the given surface segment if it's in range and
 ## within the pulse's arc, and its outward normal faces the pulse
 ## emitter. Returns false only when the ping pool is exhausted
@@ -728,6 +864,12 @@ func _try_schedule_segment_ping(
 		if cos_ang < cos_half_arc:
 			return true
 
+	# Line-of-sight: skip segments whose closest-point can't be
+	# reached in a straight line from the pulse emitter (some
+	# intermediate solid cell blocks the path).
+	if _los_occluded(pulse.center, closest):
+		return true
+
 	var slot: int = _find_free_ping_slot()
 	if slot < 0:
 		return false
@@ -741,7 +883,8 @@ func _try_schedule_segment_ping(
 	ping.hit_angle_rad = atan2(dy, dx)
 	ping.hit_distance_px = dist
 	ping.scheduled_time_sec = (_elapsed_sec
-			+ 2.0 * dist / pulse.speed_px_per_sec)
+			+ 2.0 * dist / pulse.speed_px_per_sec
+			* ping_delay_scale)
 	ping.age_sec = -1.0
 	_ping_pool[slot] = ping
 	return true
@@ -764,85 +907,57 @@ func _world_to_uv(
 	return screen_px / viewport_size
 
 
-## Write 255 into `_damage_age_bytes` at every cell that would take
-## damage from `pulse`, so the shader can render a fading outline
-## flash on the damaged region. Cheap GDScript walk over the pulse's
-## bounding box (checking distance + arc + type-match per cell).
-## Caller is `emit_pulse`, so this fires BEFORE the C++ damage pass
-## runs — cells we stamp here are the ones that will take damage in
-## this frame.
-func _stamp_damage_cells_for_pulse(pulse: EchoPulse) -> void:
-	# Only the four colored gameplay frequencies damage terrain. NONE
-	# and INDESTRUCTIBLE pulses never carve; skip their flash.
-	if (pulse.frequency < Frequency.Type.RED
-			or pulse.frequency > Frequency.Type.YELLOW):
-		return
-	if not is_instance_valid(G.terrain):
-		return
+## Handler for `G.terrain.tile_destroyed(world_pos, type)` — stamps
+## the destroyed cell in the damage_age texture for the brief flash,
+## and spawns debris particles carrying the cell's color.
+func _on_tile_destroyed(world_pos: Vector2, type: int) -> void:
+	_spawn_debris_particles(world_pos, type)
 	if _damage_age_texture == null or _damage_age_bytes.is_empty():
 		return
 	var cell_size: float = _density_cell_size_px
 	if cell_size <= 0.0:
 		return
-
-	var origin_cells: Vector2i = G.terrain.get_world_cell_origin()
-	var size_cells: Vector2i = G.terrain.get_world_cell_size()
-	# Guard against a mid-frame resize between rebuild_terrain_textures
-	# and this call.
-	if (size_cells.x != _damage_age_width
-			or size_cells.y != _damage_age_height):
+	var cx: int = (int(floor(world_pos.x / cell_size))
+			- _type_image_origin_cells.x)
+	var cy: int = (int(floor(world_pos.y / cell_size))
+			- _type_image_origin_cells.y)
+	if (cx < 0 or cy < 0
+			or cx >= _damage_age_width
+			or cy >= _damage_age_height):
 		return
+	var idx: int = cy * _damage_age_width + cx
+	_damage_age_bytes[idx] = 255
+	_active_damage_cells[Vector2i(cx, cy)] = _DAMAGE_FLASH_FRAMES
+	_damage_age_dirty = true
 
-	var radius_cells: int = int(
-			ceil(_DAMAGE_FLASH_RADIUS_PX / cell_size))
-	var center_cx: int = int(floor(pulse.center.x / cell_size))
-	var center_cy: int = int(floor(pulse.center.y / cell_size))
-	var local_min_x: int = maxi(
-			0, center_cx - radius_cells - origin_cells.x)
-	var local_max_x: int = mini(
-			_damage_age_width - 1,
-			center_cx + radius_cells - origin_cells.x)
-	var local_min_y: int = maxi(
-			0, center_cy - radius_cells - origin_cells.y)
-	var local_max_y: int = mini(
-			_damage_age_height - 1,
-			center_cy + radius_cells - origin_cells.y)
-	var radius_sq: float = (
-			_DAMAGE_FLASH_RADIUS_PX * _DAMAGE_FLASH_RADIUS_PX)
-	var is_full_circle: bool = pulse.arc_radians >= TAU - 0.01
-	var half_arc: float = pulse.arc_radians * 0.5
-	var cos_half_arc: float = cos(half_arc)
-	var aim: Vector2 = Vector2(
-			cos(pulse.arc_direction_radians),
-			sin(pulse.arc_direction_radians))
 
-	var any_stamped: bool = false
-	for cy in range(local_min_y, local_max_y + 1):
-		for cx in range(local_min_x, local_max_x + 1):
-			var world_x: float = ((cx + origin_cells.x) * cell_size
-					+ cell_size * 0.5)
-			var world_y: float = ((cy + origin_cells.y) * cell_size
-					+ cell_size * 0.5)
-			var dx: float = world_x - pulse.center.x
-			var dy: float = world_y - pulse.center.y
-			var dist_sq: float = dx * dx + dy * dy
-			if dist_sq > radius_sq:
-				continue
-			if not is_full_circle and dist_sq > 1e-3:
-				var inv_len: float = 1.0 / sqrt(dist_sq)
-				var cos_ang: float = (dx * aim.x + dy * aim.y) * inv_len
-				if cos_ang < cos_half_arc:
-					continue
-			var world_p := Vector2(world_x, world_y)
-			if not G.terrain.is_cell_type_at(
-					world_p, pulse.frequency):
-				continue
-			var idx: int = cy * _damage_age_width + cx
-			_damage_age_bytes[idx] = 255
-			_active_damage_cells[Vector2i(cx, cy)] = _DAMAGE_FLASH_FRAMES
-			any_stamped = true
-	if any_stamped:
-		_damage_age_dirty = true
+## Spawn `_PARTICLES_PER_DESTROYED_CELL` debris particles at the
+## destroyed cell, with random radial velocities. Silently drops on
+## pool exhaustion — the visual is cosmetic, not critical.
+func _spawn_debris_particles(world_pos: Vector2, type: int) -> void:
+	for _i in range(_PARTICLES_PER_DESTROYED_CELL):
+		var slot: int = _find_free_particle_slot()
+		if slot < 0:
+			return
+		var angle: float = randf() * TAU
+		# Small speed jitter so particles don't all fly at the same
+		# rate ("explode out very slightly").
+		var speed: float = (_PARTICLE_BURST_SPEED_PX_PER_SEC
+				* (0.6 + randf() * 0.8))
+		var particle := EchoParticle.new()
+		particle.world_pos = world_pos
+		particle.velocity = Vector2(cos(angle), sin(angle)) * speed
+		particle.frequency = type
+		particle.age_sec = 0.0
+		particle.lifetime_sec = _PARTICLE_LIFETIME_SEC
+		_particle_pool[slot] = particle
+
+
+func _find_free_particle_slot() -> int:
+	for i in range(_MAX_PARTICLES):
+		if _particle_pool[i] == null:
+			return i
+	return -1
 
 
 ## Decrement active-damage-cell ticks, updating stored bytes so the

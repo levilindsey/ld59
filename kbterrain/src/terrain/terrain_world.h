@@ -174,12 +174,23 @@ private:
 			uint8_t iso);
 	void _integrate_results();
 	void _integrate_one(const terrain::RemeshResult &result);
-	// Returns true if the cell was destroyed this call (type went to
-	// NONE); in that case `out_world_cx`/`out_world_cy` are set if
-	// non-null. Pass nullptr for both if the caller doesn't need the
-	// destroyed-cell coord (e.g. falloff damage without CC).
+	// Apply damage to a single cell with surface-only + player-facing
+	// gating:
+	//   - Cells whose cardinal neighbors are ALL solid (interior
+	//     cells) take NO damage — only surface cells erode.
+	//   - Exposed cells compute a composite outward normal from their
+	//     empty-neighbor sides; damage scales by
+	//     `0.3 + 0.7 * max(0, dot(normal, to_emitter))`, so cells
+	//     whose exposed face points toward the emitter take full
+	//     damage while back-facing cells take 30%.
+	//   - Empty-neighbor test treats TYPE_NONE and TYPE_LIQUID as
+	//     "open" (water exposes the cell to a pulse).
+	// Returns true if the cell was destroyed this call; `out_world_cx`
+	// / `out_world_cy` are set if non-null. Pass nullptr when the
+	// caller doesn't need the destroyed-cell coord.
 	bool _apply_damage_to_cell(terrain::Chunk *chunk, int cx, int cy,
-			int damage, int frequency_mask, Vector2 world_pos,
+			int damage, int frequency_mask,
+			Vector2 emitter_world_pos, Vector2 cell_world_pos,
 			int32_t *out_world_cx = nullptr,
 			int32_t *out_world_cy = nullptr);
 	void _free_chunk_rids(terrain::Chunk *chunk);

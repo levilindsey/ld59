@@ -17,6 +17,11 @@ const int MAX_PULSES = 8;
 const int MAX_PALETTE = 16;
 const int MAX_TAGGED_SPRITES = 32;
 const int MAX_PINGS = 128;
+const int MAX_PARTICLES = 128;
+// Must match `Frequency.Type.LIQUID` in src/core/frequency.gd.
+// LIQUID cells bypass surface-depth gating so water reads through
+// its full body, not just at its boundary.
+const int LIQUID_TYPE_ID = 5;
 
 uniform vec2 player_uv = vec2(0.5, 0.5);
 uniform vec2 screen_size_px = vec2(1152.0, 648.0);
@@ -93,6 +98,13 @@ uniform vec4 ping_segments[MAX_PINGS];
 uniform vec4 ping_normals[MAX_PINGS];
 uniform int ping_count = 0;
 
+// Debris particles — one per destroyed cell × `_PARTICLES_PER_DESTROYED_CELL`.
+// Packing: xy = screen_uv, z = radius_px (screen), w = frequency id.
+// Rendered as solid colored disks (no dither). Inside the near-field
+// they tint with the tile atlas; outside, the flat palette color.
+uniform vec4 particles[MAX_PARTICLES];
+uniform int particle_count = 0;
+
 // Ping visual tuning.
 uniform float ping_line_thickness_px : hint_range(0.5, 8.0) = 1.0;
 uniform float ping_line_glow_px : hint_range(0.0, 6.0) = 1.0;
@@ -102,8 +114,8 @@ uniform float ping_lifetime_sec : hint_range(0.1, 2.0) = 0.5;
 // surface and toward the player by this many pixels over the rest
 // of the ping's lifetime. Suggests the echo's wavefront returning
 // home — not just a flash on the wall.
-uniform float ping_translate_distance_px : hint_range(0.0, 128.0)
-		= 24.0;
+uniform float ping_translate_distance_px : hint_range(0.0, 256.0)
+		= 96.0;
 
 // Damage-region flash. `damage_age_tex` is an R8 world-cell texture
 // where 1.0 = just damaged, 0.0 = never or long-ago. The renderer
@@ -121,7 +133,7 @@ uniform float damage_flash_intensity : hint_range(0.0, 2.0) = 0.4;
 uniform float damage_flash_saturation : hint_range(0.0, 1.0) = 0.2;
 // Delay fraction (in "damage age" terms) before the flash starts
 // rising from zero. At stored_value > (1 - delay), brightness = 0.
-uniform float damage_flash_delay_frac : hint_range(0.0, 0.9) = 0.1;
+uniform float damage_flash_delay_frac : hint_range(0.0, 0.9) = 0.35;
 // Where in the decay the brightness peaks. Stored values between
 // (1 - delay) and peak give the rising ramp; from peak down to 0
 // the brightness fades linearly to zero.
@@ -227,11 +239,11 @@ uniform float non_matching_stipple_factor : hint_range(0.0, 1.0)
 //   after the saturation boost, pushing past 1.0 for an HDR-ish
 //   overbright feel (clamps at the display).
 uniform float matching_bloom_size_multiplier : hint_range(1.0, 3.0)
-		= 2.0;
+		= 2.5;
 uniform float matching_bloom_soft_width : hint_range(0.0, 0.5)
-		= 0.22;
+		= 0.32;
 uniform float matching_bloom_brightness_bump : hint_range(1.0, 3.0)
-		= 1.8;
+		= 2.4;
 
 // Stipple color override. When alpha > 0, pulse-revealed pixels are
 // painted this color instead of the tile / scene pixel underneath.
@@ -371,6 +383,23 @@ vec2 world_to_type_uv(vec2 world_px) {
 	vec2 cell = (world_px - density_world_origin_px)
 			/ density_cell_size_px;
 	return (cell + vec2(0.5)) / density_world_cell_size;
+}
+
+
+// Sample the per-type interior-atlas color at an arbitrary world
+// position. Extracted from the main `if (is_bg_tile)` block so the
+// debris-particle pass can reuse it (particles borrow the tile's
+// texture art inside the near-field).
+vec3 sample_tile_interior_atlas(vec2 pos, int type_id) {
+	float slot_count_f = max(float(atlas_slot_count), 1.0);
+	float u_base = float(type_id) / slot_count_f;
+	float u_width = 1.0 / slot_count_f;
+	float interior_u_frac = fract(pos.x / interior_scale_px);
+	float interior_v = fract(pos.y / interior_scale_px);
+	vec2 interior_uv = vec2(
+			u_base + interior_u_frac * u_width,
+			interior_v);
+	return texture(interior_atlas, interior_uv).rgb;
 }
 
 
@@ -572,6 +601,14 @@ void fragment() {
 		bool is_bg_tile = bg_type_id != 0;
 		vec3 bg_type_color = is_bg_tile
 				? palette_color_for_type(bg_type_id) : vec3(0.0);
+
+		// LIQUID cells always read — bypass the gradient-derived
+		// prominence so water in a fully-submerged region (where the
+		// density gradient is zero) still stipples. Pulse envelope,
+		// frequency_match, distance_falloff etc. still gate normally.
+		if (bg_type_id == LIQUID_TYPE_ID) {
+			prominence = 1.0;
+		}
 
 		int tag_type_id = 0;
 		bool is_sprite_tag = false;
@@ -959,6 +996,31 @@ void fragment() {
 			out_rgb += flash_color
 					* envelope
 					* damage_flash_intensity;
+		}
+
+		// --- Debris particles ----------------------------------------
+		// Solid colored disks — no dither, no distance gating. Inside
+		// the near-field the color blends toward the tile's atlas art
+		// ("closer matching the original cell texture"); outside, the
+		// flat palette color ("same color as the stippling"). Rendered
+		// last so particles visibly pop over terrain and sky alike.
+		for (int pi = 0; pi < MAX_PARTICLES; pi++) {
+			if (pi >= particle_count) { break; }
+			vec2 p_px = particles[pi].xy * screen_size_px;
+			float p_radius = particles[pi].z;
+			int p_freq = int(particles[pi].w);
+			float d = distance(px, p_px);
+			if (d >= p_radius) { continue; }
+			float edge = smoothstep(p_radius, p_radius - 1.0, d);
+			if (edge <= 0.0) { continue; }
+			vec3 atlas_color = sample_tile_interior_atlas(
+					world_pos, p_freq);
+			vec3 flat_color = palette_color_for_type(p_freq);
+			if (p_freq == 0 || dot(flat_color, flat_color) < 1e-6) {
+				flat_color = vec3(1.0);
+			}
+			vec3 p_color = mix(flat_color, atlas_color, near_vis);
+			out_rgb = mix(out_rgb, p_color, edge);
 		}
 
 		// Small dark floor so the ring never punches negative on
