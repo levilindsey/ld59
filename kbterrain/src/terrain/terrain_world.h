@@ -13,6 +13,7 @@
 #include <godot_cpp/variant/vector2i.hpp>
 
 #include <memory>
+#include <unordered_set>
 
 namespace godot {
 
@@ -191,6 +192,7 @@ private:
 	bool _apply_damage_to_cell(terrain::Chunk *chunk, int cx, int cy,
 			int damage, int frequency_mask,
 			Vector2 emitter_world_pos, Vector2 cell_world_pos,
+			std::unordered_set<int64_t> *destroyed_this_pulse = nullptr,
 			int32_t *out_world_cx = nullptr,
 			int32_t *out_world_cy = nullptr);
 	void _free_chunk_rids(terrain::Chunk *chunk);
