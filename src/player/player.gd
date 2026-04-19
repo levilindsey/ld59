@@ -24,7 +24,6 @@ const _FLUID_DAMAGE_TICK_SEC := 0.25
 ## across frames at varying physics steps.
 const _WEB_MAX_VERTICAL_SPEED_PX_PER_SEC := 120.0
 
-<<<<<<< HEAD
 ## Horizontal speed multiplier while submerged in LIQUID terrain.
 const _WATER_SPEED_MULTIPLIER := 0.45
 ## Post-step cap on |velocity.y| while submerged. Keeps buoyancy and
@@ -37,10 +36,7 @@ const _WATER_GRAVITY_SCALE := 0.2
 ## the player "double-jump" upward through water repeatedly.
 const _WATER_SWIM_IMPULSE_PX_PER_SEC := 180.0
 
-## Minimum interval between echo pulses (3 / second).
-=======
 ## Minimum interval between echo pulses (3 / second) for colored pulses.
->>>>>>> a2a916c (Update juice)
 const _ECHO_COOLDOWN_SEC := 1.0 / 3.0
 
 ## Half-rate cooldown for the blank (NONE) reveal-only pulse.
@@ -109,12 +105,18 @@ func _ready() -> void:
 	half_size = Geometry.calculate_half_width_height(
 		collision_shape.shape,
 		false)
+	var starting_juice: int = (
+			MAX_JUICE
+			if G.settings.start_with_full_juice
+			else 0)
 	_juice = {
-		Frequency.Type.RED: 0,
-		Frequency.Type.GREEN: 0,
-		Frequency.Type.BLUE: 0,
-		Frequency.Type.YELLOW: 0,
+		Frequency.Type.RED: starting_juice,
+		Frequency.Type.GREEN: starting_juice,
+		Frequency.Type.BLUE: starting_juice,
+		Frequency.Type.YELLOW: starting_juice,
 	}
+	for freq in _juice:
+		juice_changed.emit(freq, _juice[freq])
 	current_frequency = Frequency.Type.NONE
 	%PlayerHealth.died.connect(_on_died)
 

@@ -25,6 +25,11 @@ extends Resource
 @export var player_scene: PackedScene
 @export var default_level_scene: PackedScene
 
+## Debug / playtesting helper. When true, the player spawns with
+## MAX_JUICE in every colored frequency so all pulse colors can be
+## used immediately without hunting bugs.
+@export var start_with_full_juice := false
+
 
 @export_group("Logs")
 ## Logs with these categories won't be shown.
