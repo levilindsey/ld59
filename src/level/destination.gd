@@ -18,6 +18,11 @@ const _EDITOR_ARC_SEGMENTS := 48
 const _EDITOR_LABEL := "GOAL"
 const _EDITOR_LABEL_MARGIN_PX := 4.0
 
+## Delay between the "BigMeow" spatial hit on arrival and the global
+## "success" cadence. Matches the failure cadence offset on death so
+## win/loss share the same musical rhythm.
+const _SUCCESS_CADENCE_DELAY_SEC := 0.9
+
 
 ## Frequency tint; cosmetic only (does not gate the win).
 @export var frequency: Frequency.Type = Frequency.Type.YELLOW:
@@ -74,6 +79,12 @@ func _draw() -> void:
 func _on_body_entered(body: Node) -> void:
 	if not (body is Player):
 		return
+	var meow_player := get_node_or_null(^"%BigMeowPlayer") as AudioStreamPlayer2D
+	if meow_player != null:
+		meow_player.play()
+	if is_instance_valid(G.audio):
+		G.audio.play_player_sound_delayed(
+				"success", _SUCCESS_CADENCE_DELAY_SEC)
 	if is_instance_valid(G.level):
 		G.level.win()
 

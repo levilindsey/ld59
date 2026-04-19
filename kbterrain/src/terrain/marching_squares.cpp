@@ -285,18 +285,28 @@ void mesh_chunk(
 					origin_px.x + x * cell_size_px,
 					origin_px.y + y * cell_size_px);
 
-			// Only emit interior triangles for fully-solid, typed cells.
-			// `cs == 15` rules out partial cases (degenerate at
-			// iso=255; half-cell trapezoids at iso<255). `type_here
-			// != 0` rules out hollow case-15 cells — cells whose
-			// corners are all 255 because neighbor cells are painted,
-			// but whose own type is NONE. Emitting those would produce
-			// transparent triangles that some drivers still raster
-			// with visible artifacts. Combined, the mesh lives
-			// strictly inside authored cell boundaries.
-			if (cs == 15 && type_here != 0) {
-				emit_interior(
-						cs, origin, cell_size_px, d, iso, color, out);
+			// Emit a full-cell filled quad for every painted cell
+			// (type != NONE). This ties the visual mesh to the
+			// authored `type_per_cell` grid 1:1, so every cell that
+			// has a collision shape also has a visible quad, and no
+			// cell without a type renders. Avoids both the
+			// partial-case mesh spill (cases 1..14 emit trapezoids
+			// that extend past the authored cell edge at iso<255)
+			// and the "missing bottom/edge cell" gaps that happen
+			// when density-only checks skip legitimate painted cells
+			// whose corner samples don't quite hit the threshold.
+			if (type_here != 0) {
+				// Two triangles covering the full cell rect.
+				emit_triangle(out,
+						corner_pos(0, origin, cell_size_px),
+						corner_pos(1, origin, cell_size_px),
+						corner_pos(2, origin, cell_size_px),
+						color);
+				emit_triangle(out,
+						corner_pos(0, origin, cell_size_px),
+						corner_pos(2, origin, cell_size_px),
+						corner_pos(3, origin, cell_size_px),
+						color);
 			}
 
 			const CaseEdges &ce = CASE_TABLE[cs];

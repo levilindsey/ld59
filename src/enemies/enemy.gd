@@ -67,13 +67,12 @@ const _DEATH_PULSE_ALPHA := 0.9
 ## Knockback impulse magnitude applied on a matching-frequency pulse.
 @export_range(0.0, 2000.0) var knockback_impulse_px_per_sec := 320.0
 
-## World-space radius of the echolocation tag halo. Read by
-## `EcholocationRenderer` to synthesize an always-on pointillist
-## silhouette around this enemy so pulses reveal it at range even
-## when the pulse wave hasn't swept across the sprite yet. Mirrors
-## the bug tag-halo mechanic. Tune per-scene to roughly match the
-## enemy's visible body radius.
-@export_range(2.0, 48.0) var tag_radius_px: float = 12.0
+## Radius at which the enemy notices the player from proximity
+## alone (no echolocation pulse required). Perception is pegged to
+## 1.0 while the player is within this radius and then decays
+## naturally once the player moves away, so pursuit feels "sticky"
+## for a moment after the enemy loses sight.
+@export_range(0.0, 1024.0) var proximity_perception_radius_px := 200.0
 
 @export_node_path("CollisionShape2D") var collision_shape_path: NodePath
 
@@ -98,7 +97,6 @@ func _ready() -> void:
 	monitoring = true
 	monitorable = true
 	_health = max_health
-	_apply_frequency_tint()
 	_apply_sprite_shader_parameters()
 	body_entered.connect(_on_body_entered)
 
@@ -131,6 +129,14 @@ func _process(delta: float) -> void:
 	_knockback_velocity *= knockback_decay
 
 	var player := _get_player()
+	if (is_instance_valid(player)
+			and proximity_perception_radius_px > 0.0):
+		var distance_sq: float = (global_position
+				.distance_squared_to(player.global_position))
+		var radius_sq: float = (proximity_perception_radius_px
+				* proximity_perception_radius_px)
+		if distance_sq <= radius_sq:
+			_perception = 1.0
 	_update_behavior(delta, player)
 
 	global_position += (_velocity + _knockback_velocity) * delta
@@ -279,11 +285,6 @@ func _get_player() -> Player:
 	if is_instance_valid(G.level) and is_instance_valid(G.level.player):
 		return G.level.player
 	return null
-
-
-func _apply_frequency_tint() -> void:
-	var color := Frequency.color_of(frequency)
-	modulate = Color(color.r, color.g, color.b, modulate.a)
 
 
 func is_pursuing() -> bool:

@@ -162,6 +162,7 @@ func _consume(player: Player) -> void:
 	player.add_juice(frequency, juice_grant)
 	player.apply_heal(heal_amount)
 	eaten.emit(self)
+	player.play_sound("eat_bug", true)
 	_play_eaten_pulse()
 
 

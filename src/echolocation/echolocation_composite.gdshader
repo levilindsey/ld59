@@ -421,12 +421,22 @@ vec2 world_to_density_uv(vec2 world_px) {
 
 
 // Convert world-px to type-texture UV. Type texture is
-// (cells_wide, cells_high). Offset by half a cell so nearest-filter
-// samples the cell that contains world_px, not its upper-left corner.
+// (cells_wide, cells_high); texel `i` covers the cell whose world-x
+// span is `[i * cell_size, (i + 1) * cell_size)`. We floor the cell
+// position to the integer index and aim the UV at that texel's center,
+// so `filter_nearest` samples the cell that CONTAINS the fragment
+// unambiguously at every world position — including cell boundaries.
+//
+// An earlier version used `(cell + 0.5) / W`, which lined up the texel
+// CENTER with the cell center. That shifted the nearest-filter's
+// Voronoi boundary by half a texel, so pixels in the second half of
+// cell i sampled cell i+1 instead, producing a half-cell wide color
+// bleed around every painted boundary (the "thick teal band about a
+// cell wide" visible above / beside painted edges).
 vec2 world_to_type_uv(vec2 world_px) {
 	vec2 cell = (world_px - density_world_origin_px)
 			/ density_cell_size_px;
-	return (cell + vec2(0.5)) / density_world_cell_size;
+	return (floor(cell) + vec2(0.5)) / density_world_cell_size;
 }
 
 
@@ -639,9 +649,29 @@ void fragment() {
 		// Sprite tags win where they overlap tiles — a bug sitting on
 		// a tile reports bug frequency so matching-pulse stipples
 		// reveal the bug, not the tile.
-		int bg_type_id = int(
-				texture(type_tex, world_to_type_uv(world_pos)).r
-						* 255.0 + 0.5);
+		// World-bounds gate. The density / type textures only cover
+		// the chunk-coord bounding box; clamp-to-edge sampling beyond
+		// that box returns the boundary row/column values unchanged.
+		// When the world bbox's top row is painted, every sky pixel
+		// above the bbox reads as that type AND reads density = 1.0
+		// (the boundary corner was 255 from an adjacent painted cell).
+		// That ran the interior / surface-texture block on sky
+		// fragments, producing a cell-wide colored band above the
+		// world's top edge. Explicit bbox check makes every out-of-
+		// bbox pixel read as empty.
+		vec2 bbox_cell_f = (world_pos - density_world_origin_px)
+				/ density_cell_size_px;
+		bool in_world_bbox = all(greaterThanEqual(
+					bbox_cell_f, vec2(0.0)))
+				&& all(lessThan(
+					bbox_cell_f, density_world_cell_size));
+		int bg_type_id = 0;
+		if (in_world_bbox) {
+			bg_type_id = int(
+					texture(type_tex,
+							world_to_type_uv(world_pos)).r
+							* 255.0 + 0.5);
+		}
 		bool is_bg_tile = bg_type_id != 0;
 		vec3 bg_type_color = is_bg_tile
 				? palette_color_for_type(bg_type_id) : vec3(0.0);
@@ -837,8 +867,14 @@ void fragment() {
 		// solid region. Reinforce with a density-at-fragment gate:
 		// only run the texturing path where the fragment is actually
 		// inside the solid (d_here near 1).
-		float d_here_outer = texture(
-				density_tex, world_to_density_uv(world_pos)).r;
+		// Out-of-bbox density clamps to the boundary corners (which
+		// are 255 wherever a painted cell touches the bbox edge), so
+		// force zero outside the bbox instead.
+		float d_here_outer = 0.0;
+		if (in_world_bbox) {
+			d_here_outer = texture(
+					density_tex, world_to_density_uv(world_pos)).r;
+		}
 		bool inside_solid_cell = d_here_outer >= 0.99;
 		// When the fragment is JUST outside the solid and `c0` matches
 		// the bg palette color, Godot's 2D rasterization has bled the
