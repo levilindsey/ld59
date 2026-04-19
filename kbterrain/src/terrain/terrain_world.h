@@ -64,6 +64,9 @@ public:
 	// top-left corner density, which can be 255 via an adjacent
 	// anchor even if the cell itself is empty.
 	bool is_cell_non_empty(Vector2 world_pos) const;
+	// True iff the cell containing `world_pos` is of the given
+	// `Frequency.Type`. Queries `type_per_cell` directly.
+	bool is_cell_type_at(Vector2 world_pos, int type) const;
 	// Cast a ray down from (x, -very_large) finding the topmost solid
 	// sample crossing; returns y in world px. Returns NAN if no hit.
 	float get_surface_height(float world_x, float search_max_y_px) const;

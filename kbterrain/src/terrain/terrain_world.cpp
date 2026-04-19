@@ -129,6 +129,9 @@ void TerrainWorld::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_cell_non_empty", "world_pos"),
 			&TerrainWorld::is_cell_non_empty);
 	ClassDB::bind_method(
+			D_METHOD("is_cell_type_at", "world_pos", "type"),
+			&TerrainWorld::is_cell_type_at);
+	ClassDB::bind_method(
 			D_METHOD("get_surface_height", "world_x", "search_max_y_px"),
 			&TerrainWorld::get_surface_height);
 	ClassDB::bind_method(D_METHOD("get_stats"),
@@ -915,6 +918,30 @@ bool TerrainWorld::is_cell_non_empty(Vector2 world_pos) const {
 	}
 	return chunk->type_per_cell[chunk->cell_index(cx, cy)]
 			!= TerrainSettings::TYPE_NONE;
+}
+
+bool TerrainWorld::is_cell_type_at(Vector2 world_pos, int type) const {
+	if (!_manager) {
+		return false;
+	}
+	const Vector2i coord = ChunkManager::world_to_chunk(
+			world_pos, _cells_cached, _cell_size_px_cached);
+	auto it = _manager->all().find(coord);
+	if (it == _manager->all().end()) {
+		return false;
+	}
+	Chunk *chunk = it->second.get();
+	const Vector2 origin = chunk->origin_px(_cell_size_px_cached);
+	int cx = static_cast<int>(
+			std::floor((world_pos.x - origin.x) / _cell_size_px_cached));
+	int cy = static_cast<int>(
+			std::floor((world_pos.y - origin.y) / _cell_size_px_cached));
+	if (cx < 0 || cy < 0
+			|| cx >= _cells_cached || cy >= _cells_cached) {
+		return false;
+	}
+	return chunk->type_per_cell[chunk->cell_index(cx, cy)]
+			== static_cast<uint8_t>(type);
 }
 
 float TerrainWorld::get_surface_height(float world_x,

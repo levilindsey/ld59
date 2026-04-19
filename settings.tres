@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="Settings" format=3 uid="uid://dv60bmaw1pdx6"]
 
 [ext_resource type="Script" uid="uid://cqomr88ncj2d3" path="res://src/core/settings.gd" id="1_krfic"]
-[ext_resource type="PackedScene" path="res://src/level/generated_level.tscn" id="1_legvn"]
+[ext_resource type="PackedScene" uid="uid://dcl7cm14y6u51" path="res://src/level/terrain_level.tscn" id="1_legvn"]
 [ext_resource type="PackedScene" uid="uid://cn6hdqmmufnvr" path="res://src/player/player.tscn" id="2_legvn"]
 
 [resource]

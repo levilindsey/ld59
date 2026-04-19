@@ -1,6 +1,7 @@
 #include "worker_pool.h"
 
 #include "douglas_peucker.h"
+#include "terrain_settings.h"
 
 namespace godot {
 namespace terrain {
@@ -22,7 +23,8 @@ void process_remesh_job(const RemeshJob &job, RemeshResult &out) {
 					? nullptr : job.type_snapshot.data(),
 			job.type_to_color_rgba.empty()
 					? nullptr : job.type_to_color_rgba.data(),
-			out.mesh);
+			out.mesh,
+			TerrainSettings::TYPE_LIQUID);
 
 	if (job.simplify_epsilon_px > 0.0f
 			&& !out.mesh.boundary_segments.empty()) {

@@ -15,7 +15,6 @@ extends Area2D
 const _GRAVITY_PX_PER_SEC2 := 900.0
 const _MAX_SPEED_PX_PER_SEC := 900.0
 const _TOUCH_DAMAGE := 8
-const _TOUCH_PUSH_PX_PER_SEC := 220.0
 const _TOUCH_COOLDOWN_SEC := 0.4
 const _STUCK_MAX_CELLS := 4
 ## Safety: if a cell never finds terrain below (level has no floor),
@@ -120,7 +119,9 @@ func _land() -> void:
 	if is_instance_valid(G.terrain):
 		G.terrain.paint_cell_at_world(
 				global_position, _type, _health)
-	_evict_actors_from_cell()
+	# Liquid doesn't block the player — no need to evict.
+	if _type != Frequency.Type.LIQUID:
+		_evict_actors_from_cell()
 	queue_free()
 
 
@@ -144,10 +145,15 @@ func _try_evict_actor(body: Node) -> void:
 	for step in range(_STUCK_MAX_CELLS + 1):
 		var try_y := cell_top_y - (step + 0.5) * cs
 		var probe := Vector2(actor.global_position.x, try_y)
-		if not G.terrain.is_solid(probe):
+		if not G.terrain.is_cell_non_empty(probe):
 			actor.global_position = Vector2(
 					actor.global_position.x,
 					cell_top_y - (step + 1) * cs)
+			# Pure displacement: don't carry over any falling
+			# velocity the actor may have had before the push-up.
+			if "velocity" in actor:
+				var v: Vector2 = actor.get("velocity")
+				actor.set("velocity", Vector2(v.x, 0.0))
 			return
 	# No room within threshold: lethal.
 	if actor.has_method("apply_damage"):
@@ -157,6 +163,9 @@ func _try_evict_actor(body: Node) -> void:
 
 
 func _on_body_entered(body: Node) -> void:
+	# Liquid is non-damaging; players pass through it.
+	if _type == Frequency.Type.LIQUID:
+		return
 	if _landed or _touch_cooldown_sec > 0.0:
 		return
 	if not (body is Node2D):
@@ -164,12 +173,6 @@ func _on_body_entered(body: Node) -> void:
 	_touch_cooldown_sec = _TOUCH_COOLDOWN_SEC
 	if body.has_method("apply_damage"):
 		body.call("apply_damage", _TOUCH_DAMAGE)
-	# Soft push: nudge the actor's velocity if it has one.
-	var push := Vector2(0.0, -_TOUCH_PUSH_PX_PER_SEC)
-	var actor := body as Node2D
-	if "velocity" in actor:
-		var v: Vector2 = actor.get("velocity")
-		actor.set("velocity", v + push)
 
 
 func _build_collision_and_mesh() -> void:

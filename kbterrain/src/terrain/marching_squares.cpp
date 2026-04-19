@@ -238,7 +238,8 @@ void mesh_chunk(
 		uint32_t per_cell_color_rgba,
 		const uint8_t *type_grid,
 		const uint32_t *type_to_color_rgba,
-		MeshResult &out) {
+		MeshResult &out,
+		uint8_t collision_skip_type) {
 	out.clear();
 
 	const int stride = cells + 1;
@@ -273,8 +274,9 @@ void mesh_chunk(
 			}
 
 			uint32_t color = per_cell_color_rgba;
+			uint8_t type_here = 0;
 			if (type_grid != nullptr && type_to_color_rgba != nullptr) {
-				uint8_t type_here = type_grid[y * cells + x];
+				type_here = type_grid[y * cells + x];
 				color = type_to_color_rgba[type_here];
 			}
 
@@ -284,7 +286,13 @@ void mesh_chunk(
 
 			emit_interior(cs, origin, cell_size_px, d, iso, color, out);
 
-			// Boundary segments.
+			// Boundary segments. Skip for cells whose type is flagged
+			// non-collidable (e.g., liquid — renders but doesn't
+			// block the player).
+			if (collision_skip_type != 0
+					&& type_here == collision_skip_type) {
+				continue;
+			}
 			const CaseEdges &ce = CASE_TABLE[cs];
 			for (int s = 0; s < ce.count; s++) {
 				const int e_a = ce.segments[s * 2 + 0];
