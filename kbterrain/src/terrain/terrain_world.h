@@ -6,6 +6,7 @@
 #include "terrain_settings.h"
 #include "worker_pool.h"
 
+#include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/node2d.hpp>
 #include <godot_cpp/templates/hash_set.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
@@ -77,6 +78,28 @@ public:
 	float get_surface_height(float world_x, float search_max_y_px) const;
 
 	Dictionary get_stats() const;
+
+	// --- SDF texture queries ----
+	// Build a single R8 Image containing every chunk's density samples,
+	// stitched into one world-spanning grid. Width and height are
+	// `get_world_cell_size() + Vector2i(1, 1)` (density has one extra
+	// sample per chunk for the shared edge with neighbor chunks).
+	// Returns a null Ref when no chunks exist — caller must skip bind.
+	// Used by the echolocation shader for SDF-based surface detection
+	// (replaces the tag SubViewport gradient hack).
+	Ref<Image> build_density_image() const;
+	// Build a single R8 Image containing every chunk's per-cell type
+	// ids. Width and height are `get_world_cell_size()`. Returns null
+	// when no chunks exist. Used by the echolocation shader for
+	// per-pixel type classification (replaces palette-match).
+	Ref<Image> build_type_image() const;
+	// Upper-left world cell coordinate corresponding to pixel (0, 0) of
+	// the density/type images. Equals `min_chunk_coord × cells`.
+	Vector2i get_world_cell_origin() const;
+	// Image dimensions in cells — width and height of the type image,
+	// and one less than width/height of the density image (which has
+	// the shared-edge +1 sample).
+	Vector2i get_world_cell_size() const;
 
 	// Sampled fluid velocity at a world position. Returns Vector2()
 	// outside liquids. Used by the player to take damage from

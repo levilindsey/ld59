@@ -9,20 +9,20 @@ authoritative phase checklist for *intended-and-actively-tracked* work).
 
 ## 1. Deferred Features
 
-### 1.1 Per-hit return pings — visual + audio
-**Status**: designed, not implemented.
-**Description**: At pulse emit time, raycast N rays (~24) from the player
-in the configured arc; for each hit point compute `delay = 2 * dist /
-pulse_speed`. At the scheduled time, fire a small bright dot + faint
-outward ringlet at the hit point (color = pulse frequency) AND a short
-audio "ping" panned by hit-angle, attenuated by distance.
-**Design decisions made**: Visual rendering goes through a shader
-uniform array (`pings[MAX_PINGS]`, ~32 slots, packed `vec4(x, y,
-age_sec, freq_id)`), not spawned scene nodes; integrates with the
-existing pulse/tagged-sprites uniform pattern. Audio uses a pooled
-`AudioStreamPlayer` with `pitch_scale` + `pan` set per-ping.
-**Why deferred**: Substantial new system (raycast scheduler + shader
-uniforms + audio plumbing) — kept slipping under more-urgent fixes.
+### 1.1 Per-hit return pings — visual + audio — **DONE**
+Raycast scheduler shipped in `echolocation_renderer._schedule_pings_for_pulse`
+(24 rays / pulse via GDScript DDA against `G.terrain.is_cell_non_empty`).
+Visuals packed into `pings[MAX_PINGS]` uniform (32 slots) — bright dot +
+expanding ringlet per fired ping. Audio: `EchoAudioPlayer` connects to
+`G.echo.ping_fired`; per-ping plays through an `AudioStreamPlayer2D`
+positioned at the hit's world position, so Godot's 2D audio engine
+auto-pans stereo based on hit direction relative to the Camera2D.
+Built-in inverse-distance attenuation is disabled (`attenuation = 0`)
+so the manual `volume_db` curve is the single source of distance-
+volume truth. Pool bumped to 8.
+**Deferred (future polish)**: promote the GDScript DDA to a C++ bulk
+`raycast_arc()` if profiling flags it (not needed at 3 pulses/sec,
+24 rays).
 
 ### 1.2 Damage-tier visualization shader
 **Status**: design recommendation made; **starting implementation now**.
@@ -128,16 +128,12 @@ not formally specified or fully playtested.
 **Open**: do we want regions to multiply rather than add? do negative
 deltas suppress positives? — need playtest data.
 
-### 2.3 Frequency-tag SubViewport architecture
-**Status**: implemented in Phase 1 form. Currently uses a Godot 4.6.2
-+ AMD-driver workaround (`canvas_cull_mask = 3` rather than the
-intended `2`) because pure-bit-1 cull doesn't filter as the math says
-it should — the tag viewport ends up containing parallax + player too,
-and the shader's tight (0.02) palette-match threshold is what cleanly
-separates terrain pixels from sprite pixels at sample time.
-**Open**: report Godot bug upstream, or revisit when 4.6.3+ ships, or
-adopt the SDF-from-density-texture approach (Section 4.1) which makes
-the tag viewport unnecessary.
+### 2.3 Frequency-tag SubViewport architecture — **REMOVED**
+Replaced by the density/type texture approach in §4.1 (now shipped).
+TagViewport + TagCamera2D nodes deleted from `main.tscn`; palette-match
+/ `detect_frequency` / `palette_match_threshold` gone from the shader.
+The AMD `canvas_cull_mask = 3` quirk is no longer load-bearing on any
+code path.
 
 ### 2.4 Player sprite vs collision relative offset
 **Status**: collision is sized 23×6 (rotated → 6×23), 2 px taller
@@ -193,9 +189,10 @@ against 4.5-cpp loads cleanly in Godot 4.6.2 via
 GDExtension DLLs are file-locked while the editor runs. Workflow:
 prototype hot logic in GDScript, port stable shapes to C++.
 
-### 3.3 SubViewport rendering on web
-Godot issue #86258: SubViewports can render black on WebGL2 unless
-`render_target_update_mode = ALWAYS`. Already set on the tag viewport.
+### 3.3 SubViewport rendering on web — **NO LONGER APPLICABLE**
+The tag SubViewport was removed (see §2.3 / §4.1). Godot issue #86258
+no longer affects this project. Leaving the note as a breadcrumb in
+case any future code paths add a SubViewport.
 
 ### 3.4 Defensive null-checks added to scaffolder character code
 Three patches were added during this session because Godot's
@@ -264,18 +261,17 @@ transfer) and density corners become source of truth, not type.
 
 ## 4. Architectural Follow-Ups
 
-### 4.1 Density-field SDF in shader (replace tag viewport)
-**Status**: written up in `docs/notes.md` deferred-shader-work list.
-**Description**: Once the marching-squares density field is exposed to
-the shader as an actual texture (R8 per cell, sampled bilinearly),
-several things become cleaner:
-- Eliminate the tag SubViewport entirely (per-pixel type via density
-  texture sampling instead).
-- True signed-distance to surface for bandwidth (replace luminance-
-  gradient hack).
-- Sub-pixel surface band rendering.
-**Blocked on**: nothing — the data already exists in C++; just needs
-exposing as a texture uniform updated per-chunk-modification.
+### 4.1 Density-field SDF in shader (replace tag viewport) — **DONE**
+C++ `TerrainWorld::build_density_image()` + `build_type_image()` produce
+world-spanning R8 images from `density` / `type_per_cell`; renderer
+wraps them in `ImageTexture`s, re-uploads on `chunk_modified` via
+`ImageTexture.update()`. Shader samples `density_tex` with a 2-tap
+central difference for the surface gradient (replaces the 12-tap
+multi-scale luminance Sobel) and `type_tex` directly for per-pixel
+type (replaces the palette-match path). Tag SubViewport removed.
+**Deferred follow-ups**: incremental per-chunk blit if a profiling pass
+flags full-rebuild cost; sub-pixel surface-band rendering (the density
+field enables it, but the current rendering doesn't exploit it yet).
 
 ### 4.2 Refactor StateMain transitions
 **Status**: state flow has multiple defensive guards (the

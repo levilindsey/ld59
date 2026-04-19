@@ -26,54 +26,11 @@ func _ready() -> void:
 
 	get_tree().paused = true
 
-	# Share World2D between the root viewport and the tag viewport
-	# so both render the same scene tree. The cameras in each
-	# viewport filter what they see via canvas_cull_mask; terrain
-	# lives on visibility layer 1|2 (visible in both), sprites
-	# default to layer 1 (scene only). The tag viewport's pixels
-	# are fed to the echolocation composite shader as a per-pixel
-	# type buffer for gradient sampling + palette matching.
-	var root_viewport := get_viewport()
-	var tag_viewport: SubViewport = %TagViewport
-	tag_viewport.world_2d = root_viewport.world_2d
-	var root_size := root_viewport.get_visible_rect().size
-	tag_viewport.size = Vector2i(root_size)
-	root_viewport.size_changed.connect(_on_root_viewport_resized)
-	# Re-currency the tag camera after world_2d is assigned —
-	# changing world_2d after tree entry can clear the camera's
-	# auto-current registration.
-	var tag_camera: Camera2D = %TagCamera2D
-	if is_instance_valid(tag_camera):
-		tag_camera.make_current()
-	# Tag viewport cull_mask = 3 (layers 1 + 2). Ideally this would
-	# be 2 (terrain only, vis_layer 3 has bit 1 set) so the tag
-	# texture excluded sprites/parallax — that's the cleaner
-	# architecture. But Godot 4.6.2 + this AMD driver appears to
-	# have a quirk where canvas_cull_mask = 2 doesn't filter
-	# correctly, even though (visibility_layer 3 & cull_mask 2) = 2
-	# should pass; cull = 3 works. Workaround: include layer 1, let
-	# the shader's palette-match path filter terrain pixels from
-	# sprite/parallax pixels (terrain renders at exact palette
-	# colors, sprites don't).
-	# Side effect: gradient sampling on tag_tex includes player
-	# pixels, so the small (~4 px) player-gap artifact in the
-	# atlas surface band returns. Acceptable for now.
-	tag_viewport.canvas_cull_mask = 3
-	if (is_instance_valid(tag_camera)
-			and "canvas_cull_mask" in tag_camera):
-		tag_camera.set("canvas_cull_mask", 3)
-
 	await get_tree().process_frame
 
 	_move_window()
 
 	G.state.start_game()
-
-
-func _on_root_viewport_resized() -> void:
-	var root_viewport := get_viewport()
-	var tag_viewport: SubViewport = %TagViewport
-	tag_viewport.size = Vector2i(root_viewport.get_visible_rect().size)
 
 
 func _notification(notification_type: int) -> void:
