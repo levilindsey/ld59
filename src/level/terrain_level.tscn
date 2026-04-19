@@ -13,8 +13,7 @@
 [ext_resource type="Script" uid="uid://cidpun4kcqrme" path="res://src/level/editor_placeholder_sprite.gd" id="11_placeholder"]
 [ext_resource type="PackedScene" uid="uid://dp2k8vxn3qr7m" path="res://src/enemies/spider.tscn" id="12_spider"]
 [ext_resource type="PackedScene" uid="uid://ck8v0fmnuap7q" path="res://src/enemies/coyote.tscn" id="13_coyote"]
-[ext_resource type="PackedScene" uid="uid://bm4k7p5q8rx3v" path="res://src/enemies/monster_bird.tscn" id="14_bird"]
-[ext_resource type="PackedScene" uid="uid://cb8y2r7l4nrak" path="res://src/enemies/flying_critter.tscn" id="15_critter"]
+[ext_resource type="PackedScene" path="res://src/enemies/owl.tscn" id="14_owl"]
 [ext_resource type="PackedScene" uid="uid://bp7kw3m5h2qa0" path="res://src/bugs/persistent_bug_spawn.tscn" id="16_12ioe"]
 [ext_resource type="Script" uid="uid://dgi7hjpa5klr0" path="res://src/bugs/bug_spawn_region.gd" id="17_yhmjm"]
 [ext_resource type="Script" uid="uid://bvb1yejjsmib7" path="res://src/enemies/enemy_spawn_point.gd" id="18_c7jxb"]
@@ -66,8 +65,7 @@ bug_scene = ExtResource("6_bug")
 script = ExtResource("7_enemy_sys")
 spider_scene = ExtResource("12_spider")
 coyote_scene = ExtResource("13_coyote")
-monster_bird_scene = ExtResource("14_bird")
-flying_critter_scene = ExtResource("15_critter")
+owl_scene = ExtResource("14_owl")
 
 [node name="PersistentBugSpawn" parent="." unique_id=53641786 instance=ExtResource("16_12ioe")]
 position = Vector2(-135, 6)

@@ -358,10 +358,8 @@ func _hint_string_from_enemy_kind(kind: Enemy.Kind) -> String:
 			return "enemy_spider"
 		Enemy.Kind.COYOTE:
 			return "enemy_coyote"
-		Enemy.Kind.MONSTER_BIRD:
-			return "enemy_bird"
-		Enemy.Kind.FLYING_CRITTER:
-			return "enemy_critter"
+		Enemy.Kind.OWL:
+			return "enemy_owl"
 	return ""
 
 

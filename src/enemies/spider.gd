@@ -1,8 +1,10 @@
 class_name Spider
 extends Enemy
 ## Floor-crawling enemy. Casts a short ray downward each frame to
-## stick to the top of tile surfaces. Idle: minor sway in place.
-## Pursuit: walks horizontally toward the player.
+## stick to the top of tile surfaces. When perceiving the player,
+## walks horizontally toward them. When not perceiving, wanders
+## idly along the floor (idle-pause, then slow-walk to a nearby
+## offset, repeat).
 ##
 ## Full wall/ceiling crawling is a later enhancement; for now the
 ## spider only adheres to floors.
@@ -12,12 +14,19 @@ const _GROUND_RAY_LENGTH_PX := 18.0
 const _GRAVITY_PX_PER_SEC_SQ := 900.0
 const _MAX_FALL_SPEED_PX_PER_SEC := 500.0
 
-const _IDLE_SWAY_AMPLITUDE_PX_PER_SEC := 6.0
-const _IDLE_SWAY_FREQUENCY_HZ := 0.5
-
 const _PURSUIT_SPEED_PX_PER_SEC := 75.0
+const _WANDER_SPEED_PX_PER_SEC := 22.0
+const _WANDER_RADIUS_PX := 64.0
+const _WANDER_IDLE_MIN_SEC := 0.6
+const _WANDER_IDLE_MAX_SEC := 1.8
 
 const _SURFACE_MASK := 1
+## Horizontal speed below which the animator plays idle instead of
+## walk.
+const _IDLE_SPEED_THRESHOLD_PX_PER_SEC := 2.0
+
+
+@export var animated_sprite: AnimatedSprite2D
 
 
 var _time_sec := 0.0
@@ -29,15 +38,21 @@ func _update_behavior(delta: float, player: Player) -> void:
 
 	_snap_to_floor()
 
-	var horizontal := 0.0
+	var horizontal: float = 0.0
 	if is_pursuing() and is_instance_valid(player):
-		var dx := player.global_position.x - global_position.x
+		var dx: float = player.global_position.x - global_position.x
 		if absf(dx) > 2.0:
 			horizontal = signf(dx) * _PURSUIT_SPEED_PX_PER_SEC
 	else:
-		horizontal = sin(
-				_time_sec * _IDLE_SWAY_FREQUENCY_HZ * TAU
-		) * _IDLE_SWAY_AMPLITUDE_PX_PER_SEC
+		# Wander horizontally (spider stays on the floor so vertical
+		# wander is irrelevant — just use the x component).
+		var wander_v: Vector2 = _compute_wander_velocity(
+				delta,
+				_WANDER_SPEED_PX_PER_SEC,
+				_WANDER_RADIUS_PX,
+				_WANDER_IDLE_MIN_SEC,
+				_WANDER_IDLE_MAX_SEC)
+		horizontal = wander_v.x
 
 	var vertical: float = _velocity.y
 	if _is_grounded:
@@ -48,6 +63,19 @@ func _update_behavior(delta: float, player: Player) -> void:
 				_MAX_FALL_SPEED_PX_PER_SEC)
 
 	_velocity = Vector2(horizontal, vertical)
+	_update_animation(horizontal)
+
+
+func _update_animation(horizontal: float) -> void:
+	if animated_sprite == null:
+		return
+	if absf(horizontal) < _IDLE_SPEED_THRESHOLD_PX_PER_SEC:
+		if animated_sprite.animation != &"idle":
+			animated_sprite.play(&"idle")
+	else:
+		if animated_sprite.animation != &"walk":
+			animated_sprite.play(&"walk")
+		animated_sprite.flip_h = horizontal < 0.0
 
 
 func _snap_to_floor() -> void:

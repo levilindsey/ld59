@@ -25,8 +25,7 @@ const _TILE_SET_SOURCE_ID := 2
 const _HINT_TO_ENEMY_KIND := {
 	"enemy_spider": Enemy.Kind.SPIDER,
 	"enemy_coyote": Enemy.Kind.COYOTE,
-	"enemy_bird": Enemy.Kind.MONSTER_BIRD,
-	"enemy_critter": Enemy.Kind.FLYING_CRITTER,
+	"enemy_owl": Enemy.Kind.OWL,
 }
 
 

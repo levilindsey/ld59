@@ -11,13 +11,12 @@
 [ext_resource type="Script" uid="uid://o2i6tqdak3pe" path="res://src/enemies/enemy_system.gd" id="10_h2pw0"]
 [ext_resource type="Script" uid="uid://brnx2oppf7lin" path="res://src/enemies/respawning_enemy_spawn_point.gd" id="11_eh26e"]
 [ext_resource type="Script" uid="uid://dgi7hjpa5klr0" path="res://src/bugs/bug_spawn_region.gd" id="13_kqo85"]
-[ext_resource type="PackedScene" uid="uid://cb8y2r7l4nrak" path="res://src/enemies/flying_critter.tscn" id="13_nl8s0"]
+[ext_resource type="PackedScene" path="res://src/enemies/owl.tscn" id="13_nl8s0"]
 [ext_resource type="PackedScene" uid="uid://dxm1qaht8n6rq" path="res://src/level/destination.tscn" id="15_lby5r"]
 [ext_resource type="Texture2D" uid="uid://rihqreb0nh5o" path="res://assets/images/scratch/kittenbaticorn.png" id="16_kitten"]
 [ext_resource type="Script" path="res://src/level/editor_placeholder_sprite.gd" id="17_placeholder"]
 [ext_resource type="PackedScene" path="res://src/enemies/spider.tscn" id="18_spider"]
 [ext_resource type="PackedScene" path="res://src/enemies/coyote.tscn" id="19_coyote"]
-[ext_resource type="PackedScene" path="res://src/enemies/monster_bird.tscn" id="20_bird"]
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_player_spawn"]
 atlas = ExtResource("16_kitten")
@@ -67,8 +66,7 @@ bug_scene = ExtResource("9_pb4la")
 script = ExtResource("10_h2pw0")
 spider_scene = ExtResource("18_spider")
 coyote_scene = ExtResource("19_coyote")
-monster_bird_scene = ExtResource("20_bird")
-flying_critter_scene = ExtResource("13_nl8s0")
+owl_scene = ExtResource("13_nl8s0")
 
 [node name="BugSpawnRegion_(21, 29)" type="Node2D" parent="." unique_id=219226921]
 position = Vector2(344, 472)

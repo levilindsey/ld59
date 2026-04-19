@@ -1,33 +1,56 @@
-[gd_scene load_steps=4 format=3 uid="uid://dp2k8vxn3qr7m"]
+[gd_scene load_steps=10 format=3 uid="uid://dp2k8vxn3qr7m"]
 
 [ext_resource type="Script" path="res://src/enemies/spider.gd" id="1_spider"]
-[ext_resource type="Texture2D" uid="uid://g3ysr8be4but" path="res://assets/images/white_pixel.png" id="2_px"]
+[ext_resource type="Texture2D" uid="uid://c84ck1y63s4l6" path="res://assets/images/scratch/spider.png" id="2_tex"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_spider"]
 radius = 6.0
 
-[node name="Spider" type="Area2D"]
+[sub_resource type="AtlasTexture" id="AtlasTexture_spider_idle"]
+atlas = ExtResource("2_tex")
+region = Rect2(0, 0, 24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_spider_walk0"]
+atlas = ExtResource("2_tex")
+region = Rect2(24, 0, 24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_spider_walk1"]
+atlas = ExtResource("2_tex")
+region = Rect2(48, 0, 24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_spider_walk2"]
+atlas = ExtResource("2_tex")
+region = Rect2(72, 0, 24, 24)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_spider_walk3"]
+atlas = ExtResource("2_tex")
+region = Rect2(96, 0, 24, 24)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_spider"]
+animations = [{
+"frames": [{"duration": 1.0, "texture": SubResource("AtlasTexture_spider_idle")}],
+"loop": true,
+"name": &"idle",
+"speed": 5.0
+}, {
+"frames": [{"duration": 1.0, "texture": SubResource("AtlasTexture_spider_walk0")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_spider_walk1")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_spider_walk2")}, {"duration": 1.0, "texture": SubResource("AtlasTexture_spider_walk3")}],
+"loop": true,
+"name": &"walk",
+"speed": 12.0
+}]
+
+[node name="Spider" type="Area2D" node_paths=PackedStringArray("animated_sprite")]
 collision_layer = 16
 collision_mask = 8
 script = ExtResource("1_spider")
+animated_sprite = NodePath("AnimatedSprite2D")
 max_health = 40
 touch_damage = 8
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_spider")
 
-[node name="Body" type="Sprite2D" parent="."]
-texture = ExtResource("2_px")
-scale = Vector2(10, 7)
-
-[node name="LegsLeft" type="Sprite2D" parent="."]
-modulate = Color(1, 1, 1, 0.7)
-position = Vector2(-6, 2)
-texture = ExtResource("2_px")
-scale = Vector2(3, 6)
-
-[node name="LegsRight" type="Sprite2D" parent="."]
-modulate = Color(1, 1, 1, 0.7)
-position = Vector2(6, 2)
-texture = ExtResource("2_px")
-scale = Vector2(3, 6)
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+sprite_frames = SubResource("SpriteFrames_spider")
+animation = &"idle"
+autoplay = "idle"
