@@ -38,7 +38,10 @@ class Stamp:
 
 ## Stamp a LIQUID pool over a SAND shell with an INDESTRUCTIBLE rim.
 ## `anchor` is the tile coord of the bottom-left cell of the pool
-## footprint. `width` and `depth` are in tiles.
+## footprint. `width` and `depth` are in tiles. Shape is elliptical
+## rather than rectangular — rim wraps the basin as a thick ring,
+## liquid fills the inside, and a curved SAND shell traces the
+## bottom arc.
 static func stamp_pool_sand_trap(
 		grid: ProcgenGrid,
 		anchor: Vector2i,
@@ -46,32 +49,46 @@ static func stamp_pool_sand_trap(
 		depth: int,
 		rng: RandomNumberGenerator) -> Stamp:
 	var out := Stamp.new()
-	width = maxi(3, width)
-	depth = maxi(2, depth)
+	width = maxi(4, width)
+	depth = maxi(3, depth)
+
+	var cx := anchor.x + width / 2
+	var cy := anchor.y + depth
+	var rx := float(width) / 2.0
+	var ry := float(depth)
 
 	# Footprint sanity check.
-	if anchor.x < 1 or anchor.y < 1:
+	if cx - rx < 1.0 or cy - ry < 1.0:
 		return out
-	if anchor.x + width >= grid.width or anchor.y + depth + 1 >= grid.height:
+	if cx + rx >= grid.width - 1 or cy + ry + 2 >= grid.height:
 		return out
 
-	# INDESTRUCTIBLE rim: one-tile wall on left/right, one-tile floor
-	# of SAND under the basin.
-	for y in range(anchor.y, anchor.y + depth):
-		grid.set_cell(anchor.x, y, Frequency.Type.INDESTRUCTIBLE)
-		grid.set_cell(anchor.x + width - 1, y, Frequency.Type.INDESTRUCTIBLE)
+	# INDESTRUCTIBLE rim: an ellipse slightly larger than the basin.
+	# Hollow it out with the interior ellipse in the next step so it
+	# reads as a ring wall.
+	ProcgenShapes.fill_ellipse(
+			grid, cx, cy, rx + 1.0, ry + 1.0,
+			Frequency.Type.INDESTRUCTIBLE)
 
-	# SAND shell (2 tiles thick — player can carve through, but not
-	# trivially with a single pulse).
-	var shell_y := anchor.y + depth
-	for x in range(anchor.x + 1, anchor.x + width - 1):
-		grid.set_cell(x, shell_y, Frequency.Type.SAND)
-		grid.set_cell(x, shell_y + 1, Frequency.Type.SAND)
+	# LIQUID fill carves the interior out of the rim.
+	ProcgenShapes.fill_ellipse(
+			grid, cx, cy, rx, ry, Frequency.Type.LIQUID)
 
-	# LIQUID fill above the shell.
-	for y in range(anchor.y, anchor.y + depth):
-		for x in range(anchor.x + 1, anchor.x + width - 1):
-			grid.set_cell(x, y, Frequency.Type.LIQUID)
+	# SAND shell: a thin arc tracing the ellipse bottom. The shell
+	# is the ring between radius `ry` and `ry + 1.5` on the lower
+	# hemisphere only, so the player breaks through from above by
+	# carving downward.
+	for dy in range(0, int(ceil(ry + 2.0))):
+		for dx in range(-int(ceil(rx + 1.0)), int(ceil(rx + 1.0)) + 1):
+			var nx := float(dx) / rx
+			var ny := float(dy) / ry
+			var d := nx * nx + ny * ny
+			if d > 1.6 or d < 0.9:
+				continue
+			# Only lower hemisphere (dy > 0).
+			if dy <= 0:
+				continue
+			grid.set_cell(cx + dx, cy + dy, Frequency.Type.SAND)
 
 	return out
 
@@ -93,10 +110,22 @@ static func stamp_web_tunnel(
 		return out
 
 	# INDESTRUCTIBLE ceiling + floor for the tunnel so webs can't be
-	# bypassed by carving around them.
-	for x in range(anchor.x, anchor.x + length):
-		grid.set_cell(x, anchor.y - 1, Frequency.Type.INDESTRUCTIBLE)
-		grid.set_cell(x, anchor.y + 2, Frequency.Type.INDESTRUCTIBLE)
+	# bypassed by carving around them. Jitter the outer edges ±1
+	# tile so the tunnel doesn't read as a pristine corridor; the
+	# INSIDE lane (anchor.y .. anchor.y+1) stays straight so the
+	# reachability BFS still finds a 2-tile-tall walkway.
+	var ceil_jitter := ProcgenShapes.noise_heights_1d(
+			length, anchor.y - 1, 1, 5.0, rng)
+	var floor_jitter := ProcgenShapes.noise_heights_1d(
+			length, anchor.y + 2, 1, 5.0, rng)
+	for x_idx in range(length):
+		var x := anchor.x + x_idx
+		var c: int = mini(ceil_jitter[x_idx], anchor.y - 1)
+		var f: int = maxi(floor_jitter[x_idx], anchor.y + 2)
+		for y in range(c, anchor.y):
+			grid.set_cell(x, y, Frequency.Type.INDESTRUCTIBLE)
+		for y in range(anchor.y + 2, f + 1):
+			grid.set_cell(x, y, Frequency.Type.INDESTRUCTIBLE)
 
 	# Hollow the tunnel itself.
 	for x in range(anchor.x, anchor.x + length):
@@ -128,37 +157,35 @@ static func stamp_web_tunnel(
 	return out
 
 
-## Small alcove with a single enemy spawner.
+## Small alcove with a single enemy spawner. Shape is a blob (main
+## disc + jittered lumps) for a more natural cavern-mouth feel than
+## the previous rectangular hollow.
 static func stamp_enemy_pocket(
 		grid: ProcgenGrid,
 		anchor: Vector2i,
 		rng: RandomNumberGenerator,
 		config: ProcgenConfig) -> Stamp:
 	var out := Stamp.new()
-	# Dig a 4x3 alcove if the surrounding 5x4 area is mostly solid.
-	var w := 4
-	var h := 3
-	if anchor.x + w >= grid.width or anchor.y + h >= grid.height:
+	var cx := anchor.x + 2
+	var cy := anchor.y + 2
+	if cx < 3 or cx >= grid.width - 3 or cy < 3 or cy >= grid.height - 3:
 		return out
-	for y in range(anchor.y, anchor.y + h):
-		for x in range(anchor.x, anchor.x + w):
-			grid.set_cell(x, y, Frequency.Type.NONE)
+	ProcgenShapes.stamp_blob(
+			grid, cx, cy, 2.4, Frequency.Type.NONE, rng, 4)
 
-	# Pick an enemy type. Ground enemies want a floor below them;
-	# flyers want open air.
-	var has_floor_below := grid.is_solid(anchor.x + 1, anchor.y + h)
+	# Same enemy-type logic: check whether there's a solid cell
+	# beneath the pocket center, pick ground vs air enemy.
+	var has_floor_below := grid.is_solid(cx, cy + 3)
 	var kind: String
 	if has_floor_below:
-		# Coyote (active chase + jump) vs Spider (passive ambusher).
 		kind = "enemy_coyote" if (rng.randi() % 3 == 0) else "enemy_spider"
 	else:
 		kind = "enemy_bird" if (rng.randi() % 2 == 0) else "enemy_critter"
 
 	var hint := EntityHint.new()
 	hint.kind = kind
-	# Spawn tile is the floor-of-the-alcove if ground, else mid-air.
-	var spawn_y := anchor.y + h - 1 if has_floor_below else anchor.y + 1
-	hint.tile = Vector2i(anchor.x + w / 2, spawn_y)
+	var spawn_y := cy + 2 if has_floor_below else cy
+	hint.tile = Vector2i(cx, spawn_y)
 	hint.params = {"respawn": true, "max_active": 2}
 	hint.frequency = _weighted_pick(config.weighted_frequencies(), rng)
 	out.hints.append(hint)

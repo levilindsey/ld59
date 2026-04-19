@@ -78,6 +78,31 @@ static func _generate_one(
 	dest_hint.frequency = Frequency.Type.YELLOW
 	hints.append(dest_hint)
 
+	# Smoothing post-pass. Runs on every colored + hazard type so
+	# platform ends, pool rims, and pocket edges lose single-cell
+	# spikes and 1-wide pits. INDESTRUCTIBLE and the perimeter are
+	# skipped inside `smooth_once`, so the anchor border stays
+	# intact. Two iterations is the sweet spot — more erodes thin
+	# platforms below the BFS jump-height.
+	var smoothable: Array[int] = [
+		Frequency.Type.RED,
+		Frequency.Type.GREEN,
+		Frequency.Type.BLUE,
+		Frequency.Type.YELLOW,
+		Frequency.Type.LIQUID,
+		Frequency.Type.SAND,
+	]
+	for _i in range(2):
+		var changed := ProcgenShapes.smooth_once(grid, smoothable)
+		if changed == 0:
+			break
+
+	# Re-carve spawn and goal stand tiles + the 2 tiles above each
+	# in case the smoothing pass filled them. Belt-and-suspenders
+	# for the validator's spawn_no_floor / goal_no_floor checks.
+	_ensure_standable(grid, plan.spawn_tile)
+	_ensure_standable(grid, plan.destination_tile)
+
 	# Validate.
 	var report := ProcgenValidator.validate(
 			grid, plan.spawn_tile, plan.destination_tile, hints)
@@ -213,6 +238,15 @@ static func _place_bug_region_anywhere(
 					pocket.position.y + pocket.size.y - 1))
 	return ProcgenSetPieceLibrary.stamp_bug_region(
 			tile, frequency, rate_delta).hints[0]
+
+
+static func _ensure_standable(grid: ProcgenGrid, tile: Vector2i) -> void:
+	# Guarantee the stand-cell is empty, that the cell above it is
+	# empty (headroom), and that the cell below it is solid.
+	grid.set_cell(tile.x, tile.y, Frequency.Type.NONE)
+	grid.set_cell(tile.x, tile.y - 1, Frequency.Type.NONE)
+	if not grid.is_solid(tile.x, tile.y + 1):
+		grid.set_cell(tile.x, tile.y + 1, Frequency.Type.GREEN)
 
 
 static func _named_rng(master_seed: int, name: String) -> RandomNumberGenerator:
