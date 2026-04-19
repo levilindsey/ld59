@@ -21,6 +21,10 @@ Thumbs.db
 
 build/*
 
+# Web server npm deps (installed via `npm install` in web/ before
+# running the static server; recreated per-machine).
+web/node_modules/
+
 # GDExtension build artifacts.
 kbterrain/bin/
 kbterrain/.scons_cache/
