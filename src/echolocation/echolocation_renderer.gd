@@ -88,8 +88,8 @@ const _BUG_TAG_RADIUS_PX := 6.0
 @export var surface_atlas: Texture2D
 @export var damage_tier_atlas: Texture2D
 
-@export_range(0.0, 512.0) var near_radius_px := 80.0
-@export_range(0.0, 128.0) var near_fade_px := 32.0
+@export_range(0.0, 512.0) var near_radius_px := 72.0
+@export_range(0.0, 128.0) var near_fade_px := 64.0
 
 @export_range(1.0, 64.0) var edge_width_px := 12.0
 @export_range(0.05, 2.0) var fade_tau_sec := 0.35

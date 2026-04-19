@@ -84,7 +84,7 @@ bg_color = Color(0.98, 0.70, 0.25, 1.0)
 [sub_resource type="StyleBoxEmpty" id="ProgressBar_empty_fg"]
 
 [node name="JuiceBarRow" type="HBoxContainer"]
-custom_minimum_size = Vector2(150, 60)
+custom_minimum_size = Vector2(144, 60)
 theme_override_constants/separation = 6
 script = ExtResource("1_row")
 
@@ -136,6 +136,24 @@ value = 0.0
 theme_override_styles/background = SubResource("ProgressBar_empty_bg")
 theme_override_styles/fill = SubResource("Slot_red_fill")
 
+[node name="EchoIcon" type="TextureRect" parent="SlotRed/Bar"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -7.5
+offset_top = -7.5
+offset_right = 7.5
+offset_bottom = 7.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture_filter = 1
+modulate = Color(0.85, 0.85, 0.9, 1.0)
+texture = ExtResource("3_echo")
+
 [node name="SlotGreen" type="PanelContainer" parent="."]
 custom_minimum_size = Vector2(24, 60)
 theme_override_styles/panel = SubResource("Slot_green_bg")
@@ -150,6 +168,24 @@ max_value = 10.0
 value = 0.0
 theme_override_styles/background = SubResource("ProgressBar_empty_bg")
 theme_override_styles/fill = SubResource("Slot_green_fill")
+
+[node name="EchoIcon" type="TextureRect" parent="SlotGreen/Bar"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -7.5
+offset_top = -7.5
+offset_right = 7.5
+offset_bottom = 7.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture_filter = 1
+modulate = Color(0.85, 0.85, 0.9, 1.0)
+texture = ExtResource("3_echo")
 
 [node name="SlotBlue" type="PanelContainer" parent="."]
 custom_minimum_size = Vector2(24, 60)
@@ -166,6 +202,24 @@ value = 0.0
 theme_override_styles/background = SubResource("ProgressBar_empty_bg")
 theme_override_styles/fill = SubResource("Slot_blue_fill")
 
+[node name="EchoIcon" type="TextureRect" parent="SlotBlue/Bar"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -7.5
+offset_top = -7.5
+offset_right = 7.5
+offset_bottom = 7.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture_filter = 1
+modulate = Color(0.85, 0.85, 0.9, 1.0)
+texture = ExtResource("3_echo")
+
 [node name="SlotYellow" type="PanelContainer" parent="."]
 custom_minimum_size = Vector2(24, 60)
 theme_override_styles/panel = SubResource("Slot_yellow_bg")
@@ -180,6 +234,24 @@ max_value = 10.0
 value = 0.0
 theme_override_styles/background = SubResource("ProgressBar_empty_bg")
 theme_override_styles/fill = SubResource("Slot_yellow_fill")
+
+[node name="EchoIcon" type="TextureRect" parent="SlotYellow/Bar"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -7.5
+offset_top = -7.5
+offset_right = 7.5
+offset_bottom = 7.5
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture_filter = 1
+modulate = Color(0.85, 0.85, 0.9, 1.0)
+texture = ExtResource("3_echo")
 
 [node name="SelectionBox" type="Control" parent="."]
 custom_minimum_size = Vector2(0, 0)

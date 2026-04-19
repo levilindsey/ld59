@@ -65,6 +65,11 @@ func _refresh_bars(player: Player) -> void:
 		else:
 			bar.max_value = float(Player.MAX_JUICE)
 			bar.value = float(player.get_juice(freq))
+		# Hide the echo icon when the bar is empty so empty slots
+		# read as "locked / needs juice" at a glance.
+		var icon := bar.get_node_or_null("EchoIcon") as CanvasItem
+		if icon != null:
+			icon.visible = bar.value > 0.0
 
 
 func _refresh_selection(player: Player) -> void:

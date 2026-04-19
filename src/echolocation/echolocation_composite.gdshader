@@ -787,10 +787,18 @@ void fragment() {
 		// offset that can bleed half a cell beyond the authored
 		// solid region. Reinforce with a density-at-fragment gate:
 		// only run the texturing path where the fragment is actually
-		// inside the solid (d_here near 1). Outside that, leave c0.
+		// inside the solid (d_here near 1).
 		float d_here_outer = texture(
 				density_tex, world_to_density_uv(world_pos)).r;
 		bool inside_solid_cell = d_here_outer >= 0.99;
+		// DEBUG: if the fragment is classified as bg_tile but NOT
+		// inside_solid_cell, paint it pure red so we can see exactly
+		// which pixels take this branch. If the teal band is here,
+		// it will turn red. If the teal stays teal, the source is
+		// elsewhere.
+		if (is_bg_tile && !inside_solid_cell) {
+			textured_rgb = vec3(1.0, 0.0, 0.0);
+		}
 		if (is_bg_tile && !overlay_sprite_here && inside_solid_cell) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
 			float u_base = float(bg_type_id) / slot_count_f;
