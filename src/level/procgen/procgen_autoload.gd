@@ -124,38 +124,16 @@ func _run_adjust(parsed: Dictionary) -> void:
 	print("=== procgen adjust ===")
 	print("op=%s input=%s output=%s" % [op, input_path, output_path])
 
-	var packed: PackedScene = load(input_path)
-	if packed == null:
-		printerr("Could not load input: %s" % input_path)
+	var context := _load_adjust_context(input_path)
+	if context.is_empty():
 		get_tree().quit(1)
 		return
-	var root: Node = packed.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED)
-	var tml_candidate := root.get_node_or_null("Tiles")
-	if not (tml_candidate is TileMapLayer):
-		printerr("Input has no Tiles TileMapLayer child")
-		get_tree().quit(1)
-		return
-	var tml: TileMapLayer = tml_candidate
-	var grid := _grid_from_tilemap(tml)
-	var spawn_tile := _spawn_tile_from_root(root)
-	var dest_tile := _destination_tile_from_root(root)
 
-	var applied := true
-	match op:
-		"validate":
-			pass # Just runs the validator below; no mutation.
-		"carve_rect":
-			applied = _apply_carve_rect(grid, parsed)
-		"paint_rect":
-			applied = _apply_paint_rect(grid, parsed)
-		"remove_entity":
-			applied = _apply_remove_entity(root, parsed)
-		_:
-			printerr("Unknown op: '%s' (expected: validate, carve_rect, paint_rect, remove_entity)" % op)
-			get_tree().quit(1)
-			return
-	if not applied:
-		printerr("Op failed to apply; see preceding errors")
+	var root: Node = context["root"]
+	var tml: TileMapLayer = context["tml"]
+	var grid: ProcgenGrid = context["grid"]
+
+	if not _apply_adjust_op(op, grid, root, parsed):
 		get_tree().quit(1)
 		return
 
@@ -169,7 +147,10 @@ func _run_adjust(parsed: Dictionary) -> void:
 	# region coverage) can still fire correctly after a save/load.
 	var scene_hints := _scan_scene_for_hints(root)
 	var report := ProcgenValidator.validate(
-			grid, spawn_tile, dest_tile, scene_hints)
+			grid,
+			context["spawn_tile"],
+			context["dest_tile"],
+			scene_hints)
 	for line in report.summary_lines():
 		print(line)
 	if report.has_errors() and op != "validate":
@@ -181,19 +162,77 @@ func _run_adjust(parsed: Dictionary) -> void:
 		get_tree().quit(0)
 		return
 
+	if not _pack_and_save_adjust_scene(root, output_path):
+		get_tree().quit(1)
+		return
+
+	print("Saved: %s" % output_path)
+	get_tree().quit(0)
+
+
+## Load the input scene and derive the grid + tile references the
+## adjust op needs. Returns an empty Dictionary on failure (after
+## printing an error) so the caller can bail cleanly.
+func _load_adjust_context(input_path: String) -> Dictionary:
+	var packed: PackedScene = load(input_path)
+	if packed == null:
+		printerr("Could not load input: %s" % input_path)
+		return {}
+	var root: Node = packed.instantiate(PackedScene.GEN_EDIT_STATE_DISABLED)
+	var tml_candidate := root.get_node_or_null("Tiles")
+	if not (tml_candidate is TileMapLayer):
+		printerr("Input has no Tiles TileMapLayer child")
+		return {}
+	var tml: TileMapLayer = tml_candidate
+	return {
+		"root": root,
+		"tml": tml,
+		"grid": _grid_from_tilemap(tml),
+		"spawn_tile": _spawn_tile_from_root(root),
+		"dest_tile": _destination_tile_from_root(root),
+	}
+
+
+## Dispatch to the per-op mutator. Returns false (after printing an
+## error) if the op name is unknown or its mutator reported failure.
+func _apply_adjust_op(
+		op: String,
+		grid: ProcgenGrid,
+		root: Node,
+		parsed: Dictionary) -> bool:
+	var applied := true
+	match op:
+		"validate":
+			pass # Just runs the validator below; no mutation.
+		"carve_rect":
+			applied = _apply_carve_rect(grid, parsed)
+		"paint_rect":
+			applied = _apply_paint_rect(grid, parsed)
+		"remove_entity":
+			applied = _apply_remove_entity(root, parsed)
+		_:
+			printerr("Unknown op: '%s' (expected: validate, carve_rect, paint_rect, remove_entity)" % op)
+			return false
+	if not applied:
+		printerr("Op failed to apply; see preceding errors")
+		return false
+	return true
+
+
+## Pack the mutated scene and write it to disk. Returns false
+## (after printing an error) on pack/save failure.
+func _pack_and_save_adjust_scene(
+		root: Node, output_path: String) -> bool:
 	var packed_out := PackedScene.new()
 	var pack_err := packed_out.pack(root)
 	if pack_err != OK:
 		printerr("pack failed: %s" % pack_err)
-		get_tree().quit(1)
-		return
+		return false
 	var save_err := ResourceSaver.save(packed_out, output_path)
 	if save_err != OK:
 		printerr("save failed: %s" % save_err)
-		get_tree().quit(1)
-		return
-	print("Saved: %s" % output_path)
-	get_tree().quit(0)
+		return false
+	return true
 
 
 ## Extract a `ProcgenGrid` from an existing TileMapLayer by reading

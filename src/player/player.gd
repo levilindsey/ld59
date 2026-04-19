@@ -186,8 +186,8 @@ func _draw() -> void:
 					Color(1, 0, 1, 0.9),
 					1.0)
 			break
-	# Outline all cells within a small window around the body.
-	const _GRID_RADIUS := 6
+	# Outline all cells within a window around the body.
+	const _GRID_RADIUS := 20
 	var player_cx: int = int(floorf(global_position.x / cs))
 	var player_cy: int = int(floorf(global_position.y / cs))
 	for dy in range(-_GRID_RADIUS, _GRID_RADIUS + 1):
