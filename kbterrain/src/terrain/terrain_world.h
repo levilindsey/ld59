@@ -124,7 +124,7 @@ private:
 
 	// How often to step the flow CA. 2 means every other frame
 	// (~30Hz at 60fps).
-	static constexpr uint32_t FLOW_STEP_INTERVAL = 2;
+	static constexpr uint32_t FLOW_STEP_INTERVAL = 1;
 
 	// Max island size the CC pass will detach. Larger stays as part
 	// of the main world. Prevents "half the level detaches" cascade.

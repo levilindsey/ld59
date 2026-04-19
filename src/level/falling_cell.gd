@@ -157,25 +157,30 @@ func _try_evict_actor(body: Node) -> void:
 		if hs.y > 0.0:
 			actor_half_h = hs.y
 
-	# Stuck check first. If the actor isn't actually inside a
-	# collidable cell right now, do nothing.
 	var num_samples := int(ceil(actor_half_h * 2.0 / cs)) + 2
-	if not _actor_column_has_collidable(
-			actor, actor_half_h, num_samples):
+	# Fast path: already clear at current y? No-op.
+	if _test_clear_at_y(actor, actor.global_position.y,
+			actor_half_h, num_samples):
 		return
 
-	# Walk up a cell at a time. First candidate_y whose full actor
-	# span is clear wins.
-	for step in range(_STUCK_MAX_CELLS + 1):
-		var candidate_y := actor.global_position.y - (step + 1) * cs
-		if _test_clear_at_y(
-				actor, candidate_y, actor_half_h, num_samples):
-			actor.global_position = Vector2(
-					actor.global_position.x, candidate_y)
-			if "velocity" in actor:
-				var v: Vector2 = actor.get("velocity")
-				actor.set("velocity", Vector2(v.x, 0.0))
-			return
+	# Search expanding rings around current y. Try both directions
+	# at each radius; first clear position wins. Prefer upward
+	# (-dir) as the tiebreaker since a sand cell landing on the
+	# player usually means the obstacle is at or below the player's
+	# center and they need to rise, but if sand came from above and
+	# the player was standing on ground, downward doesn't help and
+	# upward is the only escape. The symmetric search handles both.
+	for step in range(1, _STUCK_MAX_CELLS + 2):
+		for dir in [-1, 1]:
+			var candidate_y: float = actor.global_position.y + dir * step * cs
+			if _test_clear_at_y(
+					actor, candidate_y, actor_half_h, num_samples):
+				actor.global_position = Vector2(
+						actor.global_position.x, candidate_y)
+				if "velocity" in actor:
+					var v: Vector2 = actor.get("velocity")
+					actor.set("velocity", Vector2(v.x, 0.0))
+				return
 	# No room within threshold: lethal.
 	if actor.has_method("apply_damage"):
 		actor.call("apply_damage", 999)
