@@ -424,10 +424,10 @@ func _process(delta: float) -> void:
 	_shader_mat.set_shader_parameter("pulse_freqs", packed_freqs)
 	_shader_mat.set_shader_parameter("pulse_count", active_count)
 
-	# Pack tagged sprites (bugs now, enemies later) into the tag-halo
-	# uniform. Each entry gives the shader a screen-space circle + a
-	# frequency id so pulse stipples can reveal the sprite even when
-	# its rendered pixels are too faint or small for palette-match to
+	# Pack tagged sprites (bugs + enemies) into the tag-halo uniform.
+	# Each entry gives the shader a screen-space circle + a frequency
+	# id so pulse stipples can reveal the sprite even when its
+	# rendered pixels are too faint or small for palette-match to
 	# catch. Radius scales with canvas zoom so the halo stays at a
 	# consistent visual size regardless of camera zoom.
 	var packed_tags: Array[Vector4] = []
@@ -453,6 +453,23 @@ func _process(delta: float) -> void:
 			# pointillist silhouette grows in / out with the sprite.
 			packed_tag_alphas[tag_count] = bug.modulate.a
 			tag_count += 1
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if tag_count >= _MAX_TAGGED_SPRITES:
+			break
+		var enemy := node as Enemy
+		if enemy == null:
+			continue
+		var enemy_screen_px: Vector2 = (enemy
+				.get_global_transform_with_canvas().origin)
+		var enemy_radius_px: float = (enemy.tag_radius_px
+				* absf(canvas_scale.x))
+		packed_tags[tag_count] = Vector4(
+				enemy_screen_px.x,
+				enemy_screen_px.y,
+				enemy_radius_px,
+				float(enemy.frequency))
+		packed_tag_alphas[tag_count] = enemy.modulate.a
+		tag_count += 1
 	_shader_mat.set_shader_parameter("tagged_sprites", packed_tags)
 	_shader_mat.set_shader_parameter(
 			"tagged_sprite_alphas", packed_tag_alphas)

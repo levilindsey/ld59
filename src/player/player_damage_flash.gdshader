@@ -14,6 +14,12 @@ uniform float pulse_radius_px : hint_range(0.0, 32.0) = 0.0;
 uniform float pulse_width_px : hint_range(0.5, 8.0) = 2.0;
 uniform float pulse_alpha : hint_range(0.0, 1.0) = 0.0;
 
+// Static silhouette outline, used by enemies to advertise their
+// frequency. Width 0 disables it so materials that don't opt in
+// (player, bugs) stay visually unchanged.
+uniform vec4 outline_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
+uniform float outline_width_px : hint_range(0.0, 8.0) = 0.0;
+
 
 // Safely sample sprite alpha; returns 0 when the UV goes outside the
 // drawable region so adjacent atlas frames don't leak into the ring
@@ -68,15 +74,22 @@ void fragment() {
 				tinted * modulate_rgba.rgb,
 				tex_color.a * modulate_rgba.a);
 	} else {
-		// Outside the sprite — render the pulse ring if active.
-		// The ring's color is authored by the game (damage red,
-		// eaten-pulse frequency color) and should NOT be multiplied
-		// by modulate RGB — doing so would double-tint a bug's
-		// eaten pulse. Apply modulate alpha only so the ring fades
-		// in lockstep with the sprite.
+		// Outside the sprite — optionally draw the frequency outline
+		// and overlay the pulse ring. The ring's color is authored
+		// by the game (damage red, eaten-pulse frequency color) and
+		// should NOT be multiplied by modulate RGB — doing so would
+		// double-tint a bug's eaten pulse. Apply modulate alpha only
+		// so the outline and ring fade in lockstep with the sprite.
+		vec2 tex_size = vec2(textureSize(TEXTURE, 0));
 		vec4 base = tex_color;
+		if (outline_width_px > 0.0) {
+			float neighbor = alpha_within(
+					TEXTURE, UV, outline_width_px, tex_size);
+			if (neighbor > 0.5) {
+				base = outline_color;
+			}
+		}
 		if (pulse_alpha > 0.001 && pulse_radius_px > 0.0) {
-			vec2 tex_size = vec2(textureSize(TEXTURE, 0));
 			float half_w = pulse_width_px * 0.5;
 			float outer = alpha_within(
 					TEXTURE, UV,
@@ -88,9 +101,9 @@ void fragment() {
 			// continuous product so it antialiases nicely.
 			float ring = smoothstep(0.2, 0.8, outer)
 					* (1.0 - smoothstep(0.2, 0.8, inner));
-			base = pulse_color
-					* ring
-					* pulse_alpha;
+			float ring_opacity = ring * pulse_alpha;
+			base.rgb = mix(base.rgb, pulse_color.rgb, ring_opacity);
+			base.a = base.a + (1.0 - base.a) * ring_opacity;
 		}
 		COLOR = vec4(base.rgb, base.a * modulate_rgba.a);
 	}
