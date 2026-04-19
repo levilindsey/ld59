@@ -19,6 +19,11 @@ const _PURSUIT_THRESHOLD := 0.3
 const _PERCEPTION_DECAY_PER_SEC := 0.25
 ## Knockback velocity decay rate (units of fraction per second).
 const _KNOCKBACK_DECAY_PER_SEC := 3.5
+## Grace period after taking damage: further damage is ignored and
+## the sprite blinks.
+const _INVINCIBILITY_SEC := 0.6
+## Blink period while invincible.
+const _BLINK_PERIOD_SEC := 0.1
 
 
 @export var frequency: int = Frequency.Type.RED
@@ -35,6 +40,8 @@ var _perception: float = 0.0
 var _velocity: Vector2 = Vector2.ZERO
 var _knockback_velocity: Vector2 = Vector2.ZERO
 var _is_dead: bool = false
+var _invincibility_remaining_sec := 0.0
+var _blink_accum_sec := 0.0
 
 
 func _ready() -> void:
@@ -59,6 +66,22 @@ func _process(delta: float) -> void:
 	_update_behavior(delta, player)
 
 	global_position += (_velocity + _knockback_velocity) * delta
+	_tick_invincibility(delta)
+
+
+func _tick_invincibility(delta: float) -> void:
+	if _invincibility_remaining_sec <= 0.0:
+		if not visible:
+			visible = true
+		return
+	_invincibility_remaining_sec -= delta
+	_blink_accum_sec += delta
+	if _blink_accum_sec >= _BLINK_PERIOD_SEC:
+		_blink_accum_sec = 0.0
+		visible = not visible
+	if _invincibility_remaining_sec <= 0.0:
+		visible = true
+		_blink_accum_sec = 0.0
 
 
 ## Override in subclasses. Read `_perception` to decide idle vs
@@ -94,11 +117,20 @@ func receive_pulse(
 	_apply_damage(pulse_damage)
 
 
+func apply_damage(amount: int) -> void:
+	_apply_damage(amount)
+
+
 func _apply_damage(amount: int) -> void:
+	if _is_dead or _invincibility_remaining_sec > 0.0:
+		return
 	_health -= amount
 	damaged.emit(self, amount)
 	if _health <= 0:
 		_die()
+		return
+	_invincibility_remaining_sec = _INVINCIBILITY_SEC
+	_blink_accum_sec = 0.0
 
 
 func _die() -> void:

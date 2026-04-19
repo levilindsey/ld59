@@ -24,9 +24,23 @@ const _FLUID_DAMAGE_TICK_SEC := 0.25
 ## across frames at varying physics steps.
 const _WEB_MAX_VERTICAL_SPEED_PX_PER_SEC := 120.0
 
+## Minimum interval between echo pulses (3 / second).
+const _ECHO_COOLDOWN_SEC := 1.0 / 3.0
+
+## Grace period after taking damage: further damage is ignored and
+## the sprite blinks.
+const _INVINCIBILITY_SEC := 0.8
+
+## Blink period while invincible: visibility toggles every half of
+## this many seconds.
+const _BLINK_PERIOD_SEC := 0.12
+
 
 var _is_in_web := false
 var _fluid_damage_accum_sec := 0.0
+var _echo_cooldown_sec := 0.0
+var _invincibility_remaining_sec := 0.0
+var _blink_accum_sec := 0.0
 
 
 var half_size := Vector2.INF
@@ -51,6 +65,24 @@ func destroy() -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
+	if _echo_cooldown_sec > 0.0:
+		_echo_cooldown_sec = maxf(0.0, _echo_cooldown_sec - delta)
+	_tick_invincibility(delta)
+
+
+func _tick_invincibility(delta: float) -> void:
+	if _invincibility_remaining_sec <= 0.0:
+		if not visible:
+			visible = true
+		return
+	_invincibility_remaining_sec -= delta
+	_blink_accum_sec += delta
+	if _blink_accum_sec >= _BLINK_PERIOD_SEC:
+		_blink_accum_sec = 0.0
+		visible = not visible
+	if _invincibility_remaining_sec <= 0.0:
+		visible = true
+		_blink_accum_sec = 0.0
 
 
 func _physics_process(delta: float) -> void:
@@ -110,6 +142,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _emit_echo_pulse() -> void:
 	if not is_instance_valid(G.echo):
 		return
+	if _echo_cooldown_sec > 0.0:
+		return
+	_echo_cooldown_sec = _ECHO_COOLDOWN_SEC
 	G.echo.emit_pulse(global_position, current_frequency)
 
 
@@ -118,7 +153,12 @@ func set_frequency(freq: int) -> void:
 
 
 func apply_damage(amount: int) -> void:
+	if _invincibility_remaining_sec > 0.0:
+		return
 	%PlayerHealth.apply_damage(amount)
+	if not %PlayerHealth.is_dead():
+		_invincibility_remaining_sec = _INVINCIBILITY_SEC
+		_blink_accum_sec = 0.0
 
 
 func apply_heal(amount: int) -> void:
