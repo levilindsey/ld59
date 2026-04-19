@@ -120,12 +120,12 @@ const _CEILING_BONK_DOUBLE_THRESHOLD_SEC := 0.4
 ## After entering idle-ceiling-attached, detach inputs are ignored for
 ## this long so held inputs or coincident events don't immediately slip
 ## the player back off the ceiling.
-const _POST_ATTACH_DETACH_LOCKOUT_SEC := 0.2
+const _POST_ATTACH_DETACH_LOCKOUT_SEC := 0.6
 
 ## Lockout applied at spawn, a touch longer than the normal post-attach
 ## lockout so the title screen/camera can settle before the player can
 ## take control.
-const _SPAWN_DETACH_LOCKOUT_SEC := 0.4
+const _SPAWN_DETACH_LOCKOUT_SEC := 0.8
 
 ## Extra downward y offset applied to the animator's AnimatedSprite2D
 ## while attached-idle, so the sprite reads as kissing the ceiling
@@ -184,6 +184,12 @@ var _is_in_spawn_grace := false
 ## Tracks whether the 1 px sprite offset is currently applied, so
 ## repeated attach/detach cycles can't compound the offset.
 var _attached_sprite_offset_applied := false
+
+## Previous-frame snapshot of `surface_state.is_touching_ceiling`. The
+## scaffolder clears `just_touched_ceiling` mid-frame (in
+## `clear_just_changed_state`) before our post-super bonk check can
+## read it, so we reconstruct the transition ourselves.
+var _was_touching_ceiling := false
 
 ## Per-frequency juice pool. Populated in `_ready()`; only the four
 ## gameplay frequencies (RED/GREEN/BLUE/YELLOW) are keys.
@@ -857,17 +863,22 @@ func _exit_attached_idle() -> void:
 		set_collision_layer_value(4, true)
 
 
-## Called after `super._physics_process` so `just_touched_ceiling` is
-## fresh for this frame. Two airborne ceiling touches within the
+## Called after `super._physics_process`. The scaffolder clears
+## `just_touched_ceiling` mid-super before we get here, so we
+## reconstruct the rising-edge transition ourselves from
+## `_was_touching_ceiling`. Two airborne ceiling touches within the
 ## double-bonk window trigger attachment. Outside of AIR, clears the
 ## stamp so stale bonks don't chain.
 func _check_ceiling_bonk_attach() -> void:
 	if _is_attached_idle:
 		return
+	var is_touching_ceiling := surface_state.is_touching_ceiling
+	var just_touched := is_touching_ceiling and not _was_touching_ceiling
+	_was_touching_ceiling = is_touching_ceiling
 	if surface_state.surface_type != SurfaceType.AIR:
 		_last_ceiling_bonk_time_sec = -INF
 		return
-	if not surface_state.just_touched_ceiling:
+	if not just_touched:
 		return
 	var now := G.time.get_scaled_play_time()
 	if now - _last_ceiling_bonk_time_sec \

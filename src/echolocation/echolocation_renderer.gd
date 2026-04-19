@@ -423,6 +423,8 @@ func _process(delta: float) -> void:
 	# consistent visual size regardless of camera zoom.
 	var packed_tags: Array[Vector4] = []
 	packed_tags.resize(_MAX_TAGGED_SPRITES)
+	var packed_tag_alphas: PackedFloat32Array = PackedFloat32Array()
+	packed_tag_alphas.resize(_MAX_TAGGED_SPRITES)
 	var tag_count := 0
 	if is_instance_valid(G.bugs):
 		var halo_radius_px: float = (_BUG_TAG_RADIUS_PX
@@ -438,8 +440,13 @@ func _process(delta: float) -> void:
 					bug_screen_px.y,
 					halo_radius_px,
 					float(bug.frequency))
+			# Fade the bug's stipple with its modulate alpha so the
+			# pointillist silhouette grows in / out with the sprite.
+			packed_tag_alphas[tag_count] = bug.modulate.a
 			tag_count += 1
 	_shader_mat.set_shader_parameter("tagged_sprites", packed_tags)
+	_shader_mat.set_shader_parameter(
+			"tagged_sprite_alphas", packed_tag_alphas)
 	_shader_mat.set_shader_parameter("tagged_sprite_count", tag_count)
 
 	# Advance active pings, fire pending ones whose scheduled time has

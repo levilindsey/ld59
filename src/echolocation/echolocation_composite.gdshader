@@ -211,6 +211,10 @@ uniform int palette_count = 0;
 // Packing: xy = screen-pixel center, z = halo radius in pixels,
 // w = Frequency enum id.
 uniform vec4 tagged_sprites[MAX_TAGGED_SPRITES];
+// Per-sprite opacity (0..1) — lets the stipple fade with the bug's
+// `modulate.a` fade-in / fade-out so the pointillist silhouette
+// doesn't pop in/out. One float per `tagged_sprites` entry.
+uniform float tagged_sprite_alphas[MAX_TAGGED_SPRITES];
 uniform int tagged_sprite_count = 0;
 // Threshold for counting a pixel as "background" (low luminance /
 // transparent). In Phase 1 we use this to keep the shader from
@@ -645,6 +649,7 @@ void fragment() {
 		}
 
 		int tag_type_id = 0;
+		float tag_alpha = 1.0;
 		bool is_sprite_tag = false;
 		for (int i = 0; i < MAX_TAGGED_SPRITES; i++) {
 			if (i >= tagged_sprite_count) {
@@ -654,6 +659,7 @@ void fragment() {
 			if (length(d) < tagged_sprites[i].z) {
 				is_sprite_tag = true;
 				tag_type_id = int(tagged_sprites[i].w);
+				tag_alpha = tagged_sprite_alphas[i];
 				break;
 			}
 		}
@@ -664,6 +670,17 @@ void fragment() {
 		int type_id = is_sprite_tag ? tag_type_id : bg_type_id;
 		vec3 type_color = is_sprite_tag
 				? tag_type_color : bg_type_color;
+
+		// Sprite-tagged pixels (bugs, future enemies) always stipple
+		// at full prominence, regardless of echo state. Bugs float in
+		// empty air where the density-gradient-derived `prominence`
+		// is zero, which would otherwise suppress their dots. Paired
+		// with the `raw_pulse_vis` override below, this lets bugs
+		// read as permanent pointillist silhouettes in their
+		// frequency color even when no pulse is active.
+		if (is_sprite_tag) {
+			prominence = 1.0;
+		}
 
 		// Don't light up the backdrop clear color. Tagged pixels
 		// (tiles or sprites) always count; other pixels only if
@@ -712,12 +729,26 @@ void fragment() {
 		// treatment (bigger soft-edge dots + brightness bump) and
 		// full stipple density. Non-matching tagged pixels stipple
 		// dimly at `non_matching_stipple_factor`.
-		bool is_matching = is_tagged && (
-				type_id == current_frequency
-				|| any_matching_pulse_active);
-		float frequency_match = is_tagged
-				? (is_matching ? 1.0 : non_matching_stipple_factor)
-				: 0.0;
+		//
+		// Sprite tags (bugs, enemies) are excluded from the matching
+		// emphasis — all bugs render with uniform stipple intensity
+		// regardless of the player's currently-selected frequency,
+		// so the selected-frequency bug doesn't pop visually over
+		// others. They still stipple at full density.
+		bool is_matching = is_tagged
+				&& !is_sprite_tag
+				&& (
+					type_id == current_frequency
+					|| any_matching_pulse_active);
+		float frequency_match;
+		if (is_sprite_tag) {
+			frequency_match = 1.0;
+		} else if (is_tagged) {
+			frequency_match = is_matching
+					? 1.0 : non_matching_stipple_factor;
+		} else {
+			frequency_match = 0.0;
+		}
 
 		// Distance falloff: stipple density tapers off the further
 		// the pixel is from the player, dropping to zero past
@@ -729,7 +760,16 @@ void fragment() {
 				stipple_fade_end_px,
 				to_player_len);
 
-		float pulse_reveal = raw_pulse_vis
+		// Sprite tags stipple unconditionally — substitute a
+		// full-strength synthetic pulse-vis for them so the reveal is
+		// active even with no in-flight echo. Scaled by the sprite's
+		// own alpha so the stipple grows in / fades out in lockstep
+		// with the sprite's modulate alpha. Terrain tiles still gate
+		// on real pulse visibility.
+		float effective_pulse_vis = is_sprite_tag
+				? tag_alpha : raw_pulse_vis;
+
+		float pulse_reveal = effective_pulse_vis
 				* prominence
 				* frequency_match
 				* has_content
@@ -791,8 +831,10 @@ void fragment() {
 		float d_here_outer = texture(
 				density_tex, world_to_density_uv(world_pos)).r;
 		bool inside_solid_cell = d_here_outer >= 0.99;
-		// (zero-out intentionally omitted so we can see raw c0 and
-		// identify where the teal band actually comes from.)
+		// (No zero-out here — blacking out the bleed shell looks
+		// worse than letting the faint bleed show through. The root
+		// cause of the leftover teal stripe is outside this shader
+		// (backbuffer contents) and needs to be addressed there.)
 		if (is_bg_tile && !overlay_sprite_here && inside_solid_cell) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
 			float u_base = float(bg_type_id) / slot_count_f;
