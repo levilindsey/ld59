@@ -23,22 +23,29 @@ signal ping_fired(ping: EchoPing)
 
 const _MAX_PULSES := 8
 const _MAX_TAGGED_SPRITES := 32
-## Shader ping pool. 32 slots — enough headroom for 24 rays from the
-## most-recently-emitted pulse plus residual pings from earlier ones.
-const _MAX_PINGS := 32
-## Number of rays cast per pulse arc. Per `docs/deferred.md` §1.1
-## design. Adjust if terrain gaps feel "missed" by the pings.
-const _BOUNCE_RAY_COUNT := 24
+## Shader ping pool. Large enough to hold all segments in a typical
+## pulse's radius plus residuals from earlier pulses still fading.
+## Uniform cost: MAX_PINGS × 2 vec4 = 256 vec4s; well within WebGL2
+## limits when combined with the other uniform arrays.
+const _MAX_PINGS := 128
 ## How long (seconds) each visual ping stays on screen after firing.
 const _PING_LIFETIME_SEC := 0.5
+## Minimum dot(outward_normal, toward_pulse) required to keep a
+## segment. Segments whose normal points AWAY from the pulse (i.e.,
+## back-of-wall surfaces hidden from the player) get culled. 0.0
+## keeps everything ≥ perpendicular; positive values tighten to
+## only strongly-facing surfaces.
+const _PING_PLAYER_FACING_THRESHOLD := 0.0
 ## Fallback cell-size-px when G.terrain.settings isn't available at
 ## raycast time. Matches TerrainSettings default.
 const _DEFAULT_CELL_SIZE_PX := 8.0
-## Cap on how many cells the surface-segment walk will extend in each
-## direction from a ping's hit point. 24 cells × default 8 px = 192 px
-## which covers most single walls; prevents runaway walks across long
-## straight surfaces in authored levels.
-const _PING_SEGMENT_MAX_CELLS := 24
+## Number of frames the damage-region outline flash stays visible after
+## a pulse stamps a cell. At 60 FPS, 30 frames ≈ 0.5 sec.
+const _DAMAGE_FLASH_FRAMES := 30
+## Damage radius (world px) used to enumerate cells that a pulse will
+## visibly flash. Matches `_DAMAGE_MAX_RADIUS_PX` in `terrain_level.gd`
+## so the visual region lines up with the actual damage region.
+const _DAMAGE_FLASH_RADIUS_PX := 420.0
 ## Halo radius for a bug's frequency tag, in WORLD pixels (the
 ## renderer scales this by canvas_scale before passing to the
 ## shader, so it tracks camera zoom). 6 = the radius of the bug's
@@ -67,7 +74,7 @@ const _BUG_TAG_RADIUS_PX := 6.0
 ## Matching-frequency pixels stipple at full density (1.0); non-
 ## matching pixels scale down to this value so the player's current
 ## frequency dominates visually.
-@export_range(0.0, 1.0) var non_matching_stipple_factor := 0.2
+@export_range(0.0, 1.0) var non_matching_stipple_factor := 0.5
 
 ## Cheap in-shader bloom on matching-type stipples:
 ## - `matching_bloom_size_multiplier`: Bayer tile is scaled up for
@@ -77,9 +84,9 @@ const _BUG_TAG_RADIUS_PX := 6.0
 ## - `matching_bloom_brightness_bump`: extra brightness multiplier
 ##   applied to matching stipple color, on top of the existing
 ##   saturation boost, pushing color past 1.0 for an overbright feel.
-@export_range(1.0, 3.0) var matching_bloom_size_multiplier := 1.5
-@export_range(0.0, 0.5) var matching_bloom_soft_width := 0.15
-@export_range(1.0, 3.0) var matching_bloom_brightness_bump := 1.4
+@export_range(1.0, 3.0) var matching_bloom_size_multiplier := 2.0
+@export_range(0.0, 0.5) var matching_bloom_soft_width := 0.22
+@export_range(1.0, 3.0) var matching_bloom_brightness_bump := 1.8
 
 @export_range(100.0, 2000.0) var default_pulse_speed_px_per_sec := 600.0
 @export_range(100.0, 4000.0) var default_pulse_max_radius_px := 1000.0
@@ -113,6 +120,32 @@ var _terrain_textures_dirty: bool = false
 ## Cell size in world px, cached from TerrainSettings the first time
 ## the textures get built. Default matches TerrainSettings default.
 var _density_cell_size_px: float = 8.0
+
+## Cached type-image bytes + dimensions + origin, used by the ping
+## scheduler's bulk surface scan. Updated in `_rebuild_terrain_textures`
+## alongside the corresponding GPU texture. Scanning the CPU-side
+## PackedByteArray is ~O(1) per cell access, making it cheap to walk
+## all visible surfaces every pulse without C++ cross-calls.
+var _type_image_bytes: PackedByteArray
+var _type_image_width: int = 0
+var _type_image_height: int = 0
+var _type_image_origin_cells: Vector2i = Vector2i.ZERO
+
+## Per-cell R8 texture marking "damage age" for each world cell. 255
+## = just damaged; decays to 0 in `_DAMAGE_FLASH_FRAMES` frames. Shader
+## samples this to draw a brief outline flash on the boundary of the
+## damaged region (see Option B in the echolocation plan). Dimensions
+## match the `type_tex`.
+var _damage_age_bytes: PackedByteArray
+var _damage_age_width: int = 0
+var _damage_age_height: int = 0
+var _damage_age_texture: ImageTexture
+## Active (non-zero) damage cells and their remaining ticks. Bounds
+## the per-frame decay cost to O(active), not O(full image).
+var _active_damage_cells: Dictionary = {}
+## Set whenever `_damage_age_bytes` changes, to schedule a texture
+## re-upload on the next `_process`.
+var _damage_age_dirty: bool = false
 
 
 func _enter_tree() -> void:
@@ -361,14 +394,17 @@ func _process(delta: float) -> void:
 
 	# Advance active pings, fire pending ones whose scheduled time has
 	# arrived, and pack into shader uniform arrays. Each entry uses
-	# two vec4s:
+	# three vec4s:
 	#   `pings[i]`          = (hit_uv.xy, age_sec, frequency)
 	#   `ping_segments[i]`  = (start_uv.xy, end_uv.xy)
+	#   `ping_normals[i]`   = (outward_normal.xy, unused, unused)
 	# `age_sec < 0` encodes "pending" (scheduled but not yet fired).
 	var packed_pings: Array[Vector4] = []
 	var packed_segments: Array[Vector4] = []
+	var packed_normals: Array[Vector4] = []
 	packed_pings.resize(_MAX_PINGS)
 	packed_segments.resize(_MAX_PINGS)
+	packed_normals.resize(_MAX_PINGS)
 	var ping_active_count := 0
 	for i in range(_MAX_PINGS):
 		var ping: EchoPing = _ping_pool[i]
@@ -412,10 +448,25 @@ func _process(delta: float) -> void:
 				hit_uv.x, hit_uv.y, ping.age_sec, float(ping.frequency))
 		packed_segments[ping_active_count] = Vector4(
 				start_uv.x, start_uv.y, end_uv.x, end_uv.y)
+		# Rotate normal through the canvas rotation so the shader's
+		# translation uses screen-space direction. Scale is uniform so
+		# direction is preserved; we don't multiply by canvas_scale
+		# (the translation magnitude is already in screen px via the
+		# shader's `ping_translate_distance_px`).
+		var normal_screen: Vector2 = ping.segment_normal.rotated(
+				canvas_rot)
+		packed_normals[ping_active_count] = Vector4(
+				normal_screen.x, normal_screen.y, 0.0, 0.0)
 		ping_active_count += 1
 	_shader_mat.set_shader_parameter("pings", packed_pings)
 	_shader_mat.set_shader_parameter("ping_segments", packed_segments)
+	_shader_mat.set_shader_parameter("ping_normals", packed_normals)
 	_shader_mat.set_shader_parameter("ping_count", ping_active_count)
+
+	# Damage-region outline flash. Decay active cells, re-upload the
+	# damage_age_tex if anything changed.
+	_decay_damage_flashes()
+	_upload_damage_age_texture()
 
 
 ## Fire a new pulse. Returns the EchoPulse on success or null if the
@@ -451,6 +502,7 @@ func emit_pulse(
 
 	_pool[slot] = pulse
 	_schedule_pings_for_pulse(pulse)
+	_stamp_damage_cells_for_pulse(pulse)
 	pulse_emitted.emit(pulse)
 	return pulse
 
@@ -469,74 +521,230 @@ func _find_free_ping_slot() -> int:
 	return -1
 
 
-## Cast bounce-back rays for a pulse the instant it's emitted, and
-## schedule a visual + audio ping for each ray that hits solid
-## terrain. Scheduled time is `_elapsed_sec + 2 × dist / speed`
-## (outgoing + returning travel). Rays are distributed uniformly
-## across the pulse's arc.
+## Enumerate every outward-facing surface segment near `pulse.center`
+## and schedule a ping per segment. Much cheaper than raycasting —
+## we walk the cached `_type_image_bytes` (PackedByteArray access is
+## O(1) per cell, no C++ crossings), find contiguous runs of solid
+## cells whose same-direction neighbor is empty, and build one segment
+## per run. Each ping's scheduled time follows the same `2 × dist /
+## speed` rule; `world_pos` is the closest point on the segment to the
+## pulse center so the line grows outward from there.
+##
+## Cost scales with the pulse's damage-radius bounding box (in cells),
+## not with a fixed ray count — a 400px pulse at 8px/cell scans a
+## ~100×100 = 10k-cell window, four times, for ~40k byte reads +
+## minimal arithmetic. Sub-millisecond in practice.
 func _schedule_pings_for_pulse(pulse: EchoPulse) -> void:
-	if not is_instance_valid(G.terrain):
+	if _type_image_bytes.is_empty():
 		return
-	var cell_size_px: float = _DEFAULT_CELL_SIZE_PX
-	if G.terrain.settings != null:
-		cell_size_px = G.terrain.settings.cell_size_px
-	if cell_size_px <= 0.0:
+	var cell_size: float = _density_cell_size_px
+	if cell_size <= 0.0:
+		return
+	var origin_cells: Vector2i = _type_image_origin_cells
+	var type_w: int = _type_image_width
+	var type_h: int = _type_image_height
+	if type_w <= 0 or type_h <= 0:
+		return
+
+	var pulse_cell_x: int = (int(floor(pulse.center.x / cell_size))
+			- origin_cells.x)
+	var pulse_cell_y: int = (int(floor(pulse.center.y / cell_size))
+			- origin_cells.y)
+	var radius_cells: int = int(ceil(pulse.max_radius_px / cell_size))
+	var min_cx: int = maxi(0, pulse_cell_x - radius_cells)
+	var max_cx: int = mini(type_w - 1, pulse_cell_x + radius_cells)
+	var min_cy: int = maxi(0, pulse_cell_y - radius_cells)
+	var max_cy: int = mini(type_h - 1, pulse_cell_y + radius_cells)
+	if min_cx > max_cx or min_cy > max_cy:
 		return
 
 	var is_full_circle: bool = pulse.arc_radians >= TAU - 0.01
-	# Distribute ray angles across the arc. For a full circle, step
-	# evenly without duplicating the last ray at the seam.
-	var step: float
-	var start_angle: float
-	if is_full_circle:
-		step = TAU / float(_BOUNCE_RAY_COUNT)
-		start_angle = 0.0
-	else:
-		# Center the fan on arc_direction_radians.
-		var count_f := float(maxi(_BOUNCE_RAY_COUNT - 1, 1))
-		step = pulse.arc_radians / count_f
-		start_angle = (pulse.arc_direction_radians
-				- pulse.arc_radians * 0.5)
+	var cos_half_arc: float = cos(pulse.arc_radians * 0.5)
+	var aim_x: float = cos(pulse.arc_direction_radians)
+	var aim_y: float = sin(pulse.arc_direction_radians)
+	var radius_sq: float = pulse.max_radius_px * pulse.max_radius_px
 
-	for i in range(_BOUNCE_RAY_COUNT):
-		var angle: float = start_angle + step * float(i)
-		var direction := Vector2(cos(angle), sin(angle))
-		# DDA march: start one cell off the origin to avoid hitting
-		# the cell the player is standing in (or overlapping a few px).
-		var dist: float = cell_size_px
-		var hit := false
-		var hit_pos := Vector2.ZERO
-		while dist <= pulse.max_radius_px:
-			hit_pos = pulse.center + direction * dist
-			if G.terrain.is_cell_non_empty(hit_pos):
-				hit = true
-				break
-			dist += cell_size_px
-		if not hit:
-			continue
-		var slot := _find_free_ping_slot()
-		if slot < 0:
-			# Out of slots — drop the remaining rays for this pulse.
-			break
-		var ping := EchoPing.new()
-		ping.world_pos = hit_pos
-		ping.frequency = pulse.frequency
-		ping.hit_angle_rad = angle
-		ping.hit_distance_px = dist
-		# Compute the colinear surface segment `hit_pos` sits on, so
-		# the shader can animate a line outward along the wall rather
-		# than a radial ring from the point.
-		var segment := _compute_surface_segment(
-				hit_pos, direction, cell_size_px)
-		ping.segment_start = segment[0]
-		ping.segment_end = segment[1]
-		# Return delay: pulse travels out at `speed_px_per_sec`, then
-		# echoes back at the same speed, so the full round-trip time
-		# is `2 × dist / speed`.
-		ping.scheduled_time_sec = (_elapsed_sec
-				+ 2.0 * dist / pulse.speed_px_per_sec)
-		ping.age_sec = -1.0
-		_ping_pool[slot] = ping
+	# NORTH faces — cell solid, cell above (cy - 1) empty. Outward
+	# normal points -y (up in screen coords). Segments on top edge.
+	var normal_north := Vector2(0.0, -1.0)
+	for cy in range(min_cy, max_cy + 1):
+		var run_start: int = -1
+		for cx in range(min_cx, max_cx + 2):
+			var has_face: bool = false
+			if cx <= max_cx and _type_byte_at(cx, cy) != 0:
+				if cy <= 0 or _type_byte_at(cx, cy - 1) == 0:
+					has_face = true
+			if has_face:
+				if run_start < 0:
+					run_start = cx
+			elif run_start >= 0:
+				var run_end: int = cx - 1
+				var sx: float = (
+						(run_start + origin_cells.x) * cell_size)
+				var ex: float = (
+						(run_end + 1 + origin_cells.x) * cell_size)
+				var y: float = (cy + origin_cells.y) * cell_size
+				if not _try_schedule_segment_ping(
+						pulse, Vector2(sx, y), Vector2(ex, y),
+						normal_north, is_full_circle, cos_half_arc,
+						aim_x, aim_y, radius_sq):
+					return
+				run_start = -1
+
+	# SOUTH faces — cell below (cy + 1) empty. Normal +y (down).
+	var normal_south := Vector2(0.0, 1.0)
+	for cy in range(min_cy, max_cy + 1):
+		var run_start: int = -1
+		for cx in range(min_cx, max_cx + 2):
+			var has_face: bool = false
+			if cx <= max_cx and _type_byte_at(cx, cy) != 0:
+				if (cy >= type_h - 1
+						or _type_byte_at(cx, cy + 1) == 0):
+					has_face = true
+			if has_face:
+				if run_start < 0:
+					run_start = cx
+			elif run_start >= 0:
+				var run_end: int = cx - 1
+				var sx: float = (
+						(run_start + origin_cells.x) * cell_size)
+				var ex: float = (
+						(run_end + 1 + origin_cells.x) * cell_size)
+				var y: float = ((cy + 1 + origin_cells.y)
+						* cell_size)
+				if not _try_schedule_segment_ping(
+						pulse, Vector2(sx, y), Vector2(ex, y),
+						normal_south, is_full_circle, cos_half_arc,
+						aim_x, aim_y, radius_sq):
+					return
+				run_start = -1
+
+	# WEST faces — cell to left (cx - 1) empty. Normal -x (left).
+	var normal_west := Vector2(-1.0, 0.0)
+	for cx in range(min_cx, max_cx + 1):
+		var run_start: int = -1
+		for cy in range(min_cy, max_cy + 2):
+			var has_face: bool = false
+			if cy <= max_cy and _type_byte_at(cx, cy) != 0:
+				if cx <= 0 or _type_byte_at(cx - 1, cy) == 0:
+					has_face = true
+			if has_face:
+				if run_start < 0:
+					run_start = cy
+			elif run_start >= 0:
+				var run_end: int = cy - 1
+				var sy: float = (
+						(run_start + origin_cells.y) * cell_size)
+				var ey: float = (
+						(run_end + 1 + origin_cells.y) * cell_size)
+				var x: float = (cx + origin_cells.x) * cell_size
+				if not _try_schedule_segment_ping(
+						pulse, Vector2(x, sy), Vector2(x, ey),
+						normal_west, is_full_circle, cos_half_arc,
+						aim_x, aim_y, radius_sq):
+					return
+				run_start = -1
+
+	# EAST faces — cell to right (cx + 1) empty. Normal +x (right).
+	var normal_east := Vector2(1.0, 0.0)
+	for cx in range(min_cx, max_cx + 1):
+		var run_start: int = -1
+		for cy in range(min_cy, max_cy + 2):
+			var has_face: bool = false
+			if cy <= max_cy and _type_byte_at(cx, cy) != 0:
+				if (cx >= type_w - 1
+						or _type_byte_at(cx + 1, cy) == 0):
+					has_face = true
+			if has_face:
+				if run_start < 0:
+					run_start = cy
+			elif run_start >= 0:
+				var run_end: int = cy - 1
+				var sy: float = (
+						(run_start + origin_cells.y) * cell_size)
+				var ey: float = (
+						(run_end + 1 + origin_cells.y) * cell_size)
+				var x: float = ((cx + 1 + origin_cells.x)
+						* cell_size)
+				if not _try_schedule_segment_ping(
+						pulse, Vector2(x, sy), Vector2(x, ey),
+						normal_east, is_full_circle, cos_half_arc,
+						aim_x, aim_y, radius_sq):
+					return
+				run_start = -1
+
+
+func _type_byte_at(cx: int, cy: int) -> int:
+	if (cx < 0 or cy < 0
+			or cx >= _type_image_width
+			or cy >= _type_image_height):
+		return 0
+	return _type_image_bytes[cy * _type_image_width + cx]
+
+
+## Schedule a ping for the given surface segment if it's in range and
+## within the pulse's arc, and its outward normal faces the pulse
+## emitter. Returns false only when the ping pool is exhausted
+## (caller halts further scan).
+func _try_schedule_segment_ping(
+		pulse: EchoPulse,
+		seg_start: Vector2,
+		seg_end: Vector2,
+		normal: Vector2,
+		is_full_circle: bool,
+		cos_half_arc: float,
+		aim_x: float,
+		aim_y: float,
+		radius_sq: float,
+) -> bool:
+	var seg_vec: Vector2 = seg_end - seg_start
+	var seg_len_sq: float = seg_vec.length_squared()
+	if seg_len_sq < 1e-6:
+		return true
+
+	# Player-facing cull: the segment's outward normal must be
+	# pointing roughly toward the pulse emitter. Skips back-of-wall
+	# surfaces that are hidden from the player.
+	var seg_midpoint: Vector2 = seg_start + seg_vec * 0.5
+	var to_pulse: Vector2 = pulse.center - seg_midpoint
+	var to_pulse_len: float = to_pulse.length()
+	if to_pulse_len > 1e-3:
+		var facing: float = normal.dot(to_pulse) / to_pulse_len
+		if facing < _PING_PLAYER_FACING_THRESHOLD:
+			return true
+
+	var to_start: Vector2 = pulse.center - seg_start
+	var proj_t: float = to_start.dot(seg_vec) / seg_len_sq
+	proj_t = clampf(proj_t, 0.0, 1.0)
+	var closest: Vector2 = seg_start + seg_vec * proj_t
+	var dx: float = closest.x - pulse.center.x
+	var dy: float = closest.y - pulse.center.y
+	var dist_sq: float = dx * dx + dy * dy
+	if dist_sq > radius_sq:
+		return true
+	var dist: float = sqrt(dist_sq)
+	if not is_full_circle and dist > 1e-3:
+		var cos_ang: float = (dx * aim_x + dy * aim_y) / dist
+		if cos_ang < cos_half_arc:
+			return true
+
+	var slot: int = _find_free_ping_slot()
+	if slot < 0:
+		return false
+
+	var ping := EchoPing.new()
+	ping.world_pos = closest
+	ping.segment_start = seg_start
+	ping.segment_end = seg_end
+	ping.segment_normal = normal
+	ping.frequency = pulse.frequency
+	ping.hit_angle_rad = atan2(dy, dx)
+	ping.hit_distance_px = dist
+	ping.scheduled_time_sec = (_elapsed_sec
+			+ 2.0 * dist / pulse.speed_px_per_sec)
+	ping.age_sec = -1.0
+	_ping_pool[slot] = ping
+	return true
 
 
 ## Shared world→screen-UV conversion for packing ping positions +
@@ -556,61 +764,122 @@ func _world_to_uv(
 	return screen_px / viewport_size
 
 
-## Walk along the surface tangent in both directions from `hit_pos`
-## to find the colinear segment's endpoints. The ray traveled in
-## `ray_direction` and stopped at `hit_pos`, so the surface normal
-## points roughly back toward the shooter (`-ray_direction`). For
-## marching-squares blocky terrain, snap to the dominant cardinal
-## axis so the walk follows a straight wall without zigzagging at
-## cell corners.
-##
-## Returns [segment_start, segment_end] in world px. Both endpoints
-## equal `hit_pos` if the walk finds no continuous surface.
-func _compute_surface_segment(
-		hit_pos: Vector2,
-		ray_direction: Vector2,
-		cell_size_px: float,
-) -> Array[Vector2]:
-	if cell_size_px <= 0.0:
-		return [hit_pos, hit_pos]
-	# Surface normal points back toward the shooter, opposite the ray
-	# direction. Snap to cardinal so `tangent` runs along a cell face.
-	var approx_normal: Vector2 = -ray_direction
-	var normal: Vector2
-	if absf(approx_normal.x) > absf(approx_normal.y):
-		normal = Vector2(signf(approx_normal.x), 0.0)
-	else:
-		normal = Vector2(0.0, signf(approx_normal.y))
-	if normal == Vector2.ZERO:
-		# Degenerate — ray direction was zero. Fall back to a point
-		# segment.
-		return [hit_pos, hit_pos]
-	var tangent := Vector2(-normal.y, normal.x)
-	# Sample points offset half a cell on either side of the surface.
-	# A cell continues the segment iff the inside side is still solid
-	# and the outside side is still empty.
-	var inside_offset: Vector2 = -normal * cell_size_px * 0.5
-	var outside_offset: Vector2 = normal * cell_size_px * 0.5
+## Write 255 into `_damage_age_bytes` at every cell that would take
+## damage from `pulse`, so the shader can render a fading outline
+## flash on the damaged region. Cheap GDScript walk over the pulse's
+## bounding box (checking distance + arc + type-match per cell).
+## Caller is `emit_pulse`, so this fires BEFORE the C++ damage pass
+## runs — cells we stamp here are the ones that will take damage in
+## this frame.
+func _stamp_damage_cells_for_pulse(pulse: EchoPulse) -> void:
+	# Only the four colored gameplay frequencies damage terrain. NONE
+	# and INDESTRUCTIBLE pulses never carve; skip their flash.
+	if (pulse.frequency < Frequency.Type.RED
+			or pulse.frequency > Frequency.Type.YELLOW):
+		return
+	if not is_instance_valid(G.terrain):
+		return
+	if _damage_age_texture == null or _damage_age_bytes.is_empty():
+		return
+	var cell_size: float = _density_cell_size_px
+	if cell_size <= 0.0:
+		return
 
-	var forward_end: Vector2 = hit_pos
-	for i in range(1, _PING_SEGMENT_MAX_CELLS + 1):
-		var p := hit_pos + tangent * float(i) * cell_size_px
-		if not G.terrain.is_cell_non_empty(p + inside_offset):
-			break
-		if G.terrain.is_cell_non_empty(p + outside_offset):
-			break
-		forward_end = p
+	var origin_cells: Vector2i = G.terrain.get_world_cell_origin()
+	var size_cells: Vector2i = G.terrain.get_world_cell_size()
+	# Guard against a mid-frame resize between rebuild_terrain_textures
+	# and this call.
+	if (size_cells.x != _damage_age_width
+			or size_cells.y != _damage_age_height):
+		return
 
-	var back_end: Vector2 = hit_pos
-	for i in range(1, _PING_SEGMENT_MAX_CELLS + 1):
-		var p := hit_pos - tangent * float(i) * cell_size_px
-		if not G.terrain.is_cell_non_empty(p + inside_offset):
-			break
-		if G.terrain.is_cell_non_empty(p + outside_offset):
-			break
-		back_end = p
+	var radius_cells: int = int(
+			ceil(_DAMAGE_FLASH_RADIUS_PX / cell_size))
+	var center_cx: int = int(floor(pulse.center.x / cell_size))
+	var center_cy: int = int(floor(pulse.center.y / cell_size))
+	var local_min_x: int = maxi(
+			0, center_cx - radius_cells - origin_cells.x)
+	var local_max_x: int = mini(
+			_damage_age_width - 1,
+			center_cx + radius_cells - origin_cells.x)
+	var local_min_y: int = maxi(
+			0, center_cy - radius_cells - origin_cells.y)
+	var local_max_y: int = mini(
+			_damage_age_height - 1,
+			center_cy + radius_cells - origin_cells.y)
+	var radius_sq: float = (
+			_DAMAGE_FLASH_RADIUS_PX * _DAMAGE_FLASH_RADIUS_PX)
+	var is_full_circle: bool = pulse.arc_radians >= TAU - 0.01
+	var half_arc: float = pulse.arc_radians * 0.5
+	var cos_half_arc: float = cos(half_arc)
+	var aim: Vector2 = Vector2(
+			cos(pulse.arc_direction_radians),
+			sin(pulse.arc_direction_radians))
 
-	return [back_end, forward_end]
+	var any_stamped: bool = false
+	for cy in range(local_min_y, local_max_y + 1):
+		for cx in range(local_min_x, local_max_x + 1):
+			var world_x: float = ((cx + origin_cells.x) * cell_size
+					+ cell_size * 0.5)
+			var world_y: float = ((cy + origin_cells.y) * cell_size
+					+ cell_size * 0.5)
+			var dx: float = world_x - pulse.center.x
+			var dy: float = world_y - pulse.center.y
+			var dist_sq: float = dx * dx + dy * dy
+			if dist_sq > radius_sq:
+				continue
+			if not is_full_circle and dist_sq > 1e-3:
+				var inv_len: float = 1.0 / sqrt(dist_sq)
+				var cos_ang: float = (dx * aim.x + dy * aim.y) * inv_len
+				if cos_ang < cos_half_arc:
+					continue
+			var world_p := Vector2(world_x, world_y)
+			if not G.terrain.is_cell_type_at(
+					world_p, pulse.frequency):
+				continue
+			var idx: int = cy * _damage_age_width + cx
+			_damage_age_bytes[idx] = 255
+			_active_damage_cells[Vector2i(cx, cy)] = _DAMAGE_FLASH_FRAMES
+			any_stamped = true
+	if any_stamped:
+		_damage_age_dirty = true
+
+
+## Decrement active-damage-cell ticks, updating stored bytes so the
+## shader sees a smoothly fading flash. Removes cells once they hit
+## zero. Called each frame from `_process`.
+func _decay_damage_flashes() -> void:
+	if _active_damage_cells.is_empty():
+		return
+	var to_remove: Array[Vector2i] = []
+	var scale: float = 255.0 / float(_DAMAGE_FLASH_FRAMES)
+	for key: Vector2i in _active_damage_cells:
+		var remaining: int = (_active_damage_cells[key] as int) - 1
+		var idx: int = key.y * _damage_age_width + key.x
+		if remaining <= 0:
+			_damage_age_bytes[idx] = 0
+			to_remove.append(key)
+		else:
+			_active_damage_cells[key] = remaining
+			_damage_age_bytes[idx] = int(float(remaining) * scale)
+	for key: Vector2i in to_remove:
+		_active_damage_cells.erase(key)
+	_damage_age_dirty = true
+
+
+## Re-upload the damage-age texture when `_damage_age_bytes` changed.
+## Rebuilds the wrapping `Image` each call because `ImageTexture.update`
+## wants a fresh Image — cheap at 500×500 R8 = 250 KB.
+func _upload_damage_age_texture() -> void:
+	if not _damage_age_dirty:
+		return
+	if _damage_age_width <= 0 or _damage_age_height <= 0:
+		return
+	var image := Image.create_from_data(
+			_damage_age_width, _damage_age_height, false,
+			Image.FORMAT_R8, _damage_age_bytes)
+	_damage_age_texture.update(image)
+	_damage_age_dirty = false
 
 
 func _on_chunk_modified(_coords: Vector2i) -> void:
@@ -658,6 +927,14 @@ func _rebuild_terrain_textures() -> void:
 	var origin_px: Vector2 = Vector2(
 			origin_cells.x * _density_cell_size_px,
 			origin_cells.y * _density_cell_size_px)
+
+	# Cache type bytes + dimensions for the ping scheduler's bulk
+	# surface scan (one PackedByteArray copy per chunk_modified event,
+	# not per pulse).
+	_type_image_bytes = type_image.get_data()
+	_type_image_width = size_cells.x
+	_type_image_height = size_cells.y
+	_type_image_origin_cells = origin_cells
 	_shader_mat.set_shader_parameter("density_tex", _density_texture)
 	_shader_mat.set_shader_parameter("type_tex", _type_texture)
 	_shader_mat.set_shader_parameter(
@@ -667,6 +944,23 @@ func _rebuild_terrain_textures() -> void:
 			Vector2(size_cells.x, size_cells.y))
 	_shader_mat.set_shader_parameter(
 			"density_cell_size_px", _density_cell_size_px)
+
+	# Allocate or resize the damage-age texture to match type_tex's
+	# cell dimensions. Reset to all-zero on bounds change.
+	if (_damage_age_width != size_cells.x
+			or _damage_age_height != size_cells.y
+			or _damage_age_texture == null):
+		_damage_age_width = size_cells.x
+		_damage_age_height = size_cells.y
+		_damage_age_bytes = PackedByteArray()
+		_damage_age_bytes.resize(size_cells.x * size_cells.y)
+		_active_damage_cells.clear()
+		var damage_image := Image.create_from_data(
+				_damage_age_width, _damage_age_height, false,
+				Image.FORMAT_R8, _damage_age_bytes)
+		_damage_age_texture = ImageTexture.create_from_image(damage_image)
+		_shader_mat.set_shader_parameter(
+				"damage_age_tex", _damage_age_texture)
 
 
 func _build_bayer_texture() -> Texture2D:

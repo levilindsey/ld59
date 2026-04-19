@@ -16,7 +16,7 @@ render_mode blend_mix, unshaded;
 const int MAX_PULSES = 8;
 const int MAX_PALETTE = 16;
 const int MAX_TAGGED_SPRITES = 32;
-const int MAX_PINGS = 32;
+const int MAX_PINGS = 128;
 
 uniform vec2 player_uv = vec2(0.5, 0.5);
 uniform vec2 screen_size_px = vec2(1152.0, 648.0);
@@ -77,24 +77,55 @@ uniform vec4 pulse_colors[MAX_PULSES];
 uniform vec4 pulse_cones[MAX_PULSES];
 uniform int pulse_count = 0;
 
-// Bounce-back pings. One entry per surface hit; scheduled by the
-// renderer when the pulse's ray cast finds a solid cell. Packing:
+// Bounce-back pings. One entry per surface segment; scheduled by
+// the renderer's bulk surface scan. Packing:
 //   pings[i]         = (hit_uv.xy, age_sec, frequency)
 //   ping_segments[i] = (start_uv.xy, end_uv.xy)
-// `hit_uv` is where the ray hit the surface; `start_uv`/`end_uv` are
-// the colinear surface segment that point lies on — each ping
-// animates as a line that grows outward from `hit_uv` toward both
-// endpoints, then fades.
+//   ping_normals[i]  = (outward_normal.xy, unused, unused)
+// `hit_uv` is the point on the segment closest to the pulse
+// emitter; `start_uv`/`end_uv` define the colinear surface segment;
+// `ping_normals` is the surface's outward normal (screen-space unit
+// vector). The line grows along the segment from `hit_uv`, then
+// drifts outward along the normal as the ping fades.
 // `age_sec < 0` encodes "pending / skip" defensively.
 uniform vec4 pings[MAX_PINGS];
 uniform vec4 ping_segments[MAX_PINGS];
+uniform vec4 ping_normals[MAX_PINGS];
 uniform int ping_count = 0;
 
 // Ping visual tuning.
-uniform float ping_line_thickness_px : hint_range(0.5, 8.0) = 1.5;
-uniform float ping_line_glow_px : hint_range(0.0, 6.0) = 1.5;
+uniform float ping_line_thickness_px : hint_range(0.5, 8.0) = 1.0;
+uniform float ping_line_glow_px : hint_range(0.0, 6.0) = 1.0;
 uniform float ping_grow_duration_frac : hint_range(0.05, 1.0) = 0.35;
 uniform float ping_lifetime_sec : hint_range(0.1, 2.0) = 0.5;
+// After the growth phase ends, the whole line drifts away from the
+// surface and toward the player by this many pixels over the rest
+// of the ping's lifetime. Suggests the echo's wavefront returning
+// home — not just a flash on the wall.
+uniform float ping_translate_distance_px : hint_range(0.0, 128.0)
+		= 24.0;
+
+// Damage-region flash. `damage_age_tex` is an R8 world-cell texture
+// where 1.0 = just damaged, 0.0 = never or long-ago. The renderer
+// stamps damaged cells and decays the value each frame. The flash
+// covers the ENTIRE damaged region (not just its outline); brightness
+// follows a delay → ramp-up → ramp-down curve so the effect reads as
+// "the echo returning" rather than an instant flash.
+uniform sampler2D damage_age_tex : filter_nearest, repeat_disable;
+// Peak brightness multiplier. Very faint by default — the effect is
+// supposed to suggest "a soft echo wash", not overpower the terrain.
+uniform float damage_flash_intensity : hint_range(0.0, 2.0) = 0.4;
+// Saturation: 0 = pure white, 1 = pure tile palette color. Default
+// leaves a faint tint so RED damage reads slightly pink-white, GREEN
+// slightly mint-white, etc.
+uniform float damage_flash_saturation : hint_range(0.0, 1.0) = 0.2;
+// Delay fraction (in "damage age" terms) before the flash starts
+// rising from zero. At stored_value > (1 - delay), brightness = 0.
+uniform float damage_flash_delay_frac : hint_range(0.0, 0.9) = 0.1;
+// Where in the decay the brightness peaks. Stored values between
+// (1 - delay) and peak give the rising ramp; from peak down to 0
+// the brightness fades linearly to zero.
+uniform float damage_flash_peak_frac : hint_range(0.05, 1.0) = 0.55;
 
 // Pulse shape tuning.
 uniform float edge_width_px : hint_range(1.0, 64.0) = 12.0;
@@ -130,12 +161,12 @@ uniform float gradient_gain : hint_range(0.5, 12.0) = 3.0;
 // Default chosen aggressive because the far tap's binary
 // "detected-an-edge" response tends to plateau across the interior
 // band before dropping out; a high floor trims that plateau.
-uniform float grad_floor : hint_range(0.0, 0.7) = 0.4;
+uniform float grad_floor : hint_range(0.0, 0.7) = 0.05;
 // Power curve applied to grad_mag after the noise-floor cut. Values
 // > 1 dim the tail of the gradient much faster than its head, so
 // the deep end of the surface→interior band reads as faintly
 // stippled while the surface itself stays bright.
-uniform float gradient_fade_curve : hint_range(0.5, 6.0) = 2.5;
+uniform float gradient_fade_curve : hint_range(0.5, 6.0) = 1.5;
 
 // Bayer dither for pointillism (8x8 ordered). Smaller tile = finer
 // stipples. Shader cost is constant regardless of tile size — it's
@@ -183,11 +214,10 @@ uniform float matching_saturation_boost : hint_range(1.0, 2.5)
 
 // Stipple-density factor applied to non-matching tagged pixels.
 // Matching pixels stipple at full density (1.0); non-matching pixels
-// stipple at this fraction. Low values make the player's current
-// frequency dominate visually — other types are still visible as
-// fainter speckles so shape reads but the matching color pops.
+// stipple at this fraction. Keeps other-type terrain legible as
+// fainter speckles while the matching color still dominates.
 uniform float non_matching_stipple_factor : hint_range(0.0, 1.0)
-		= 0.2;
+		= 0.5;
 
 // Cheap in-shader "bloom" applied to matching-type stipples:
 // - bayer tile is scaled up so each matching dot covers more pixels.
@@ -197,11 +227,11 @@ uniform float non_matching_stipple_factor : hint_range(0.0, 1.0)
 //   after the saturation boost, pushing past 1.0 for an HDR-ish
 //   overbright feel (clamps at the display).
 uniform float matching_bloom_size_multiplier : hint_range(1.0, 3.0)
-		= 1.5;
+		= 2.0;
 uniform float matching_bloom_soft_width : hint_range(0.0, 0.5)
-		= 0.15;
+		= 0.22;
 uniform float matching_bloom_brightness_bump : hint_range(1.0, 3.0)
-		= 1.4;
+		= 1.8;
 
 // Stipple color override. When alpha > 0, pulse-revealed pixels are
 // painted this color instead of the tile / scene pixel underneath.
@@ -369,32 +399,87 @@ void fragment() {
 		vec2 world_pos = world_origin
 				+ UV * screen_size_px * world_per_screen_px;
 
-		// --- Density-field SDF gradient ---------------------------
-		// Sample the density texture on a 2-tap central difference
-		// in world-px. Density is bilinear-filtered, so a single
-		// scale gives a smooth gradient from empty (0) to solid
-		// (1). `density_grad_tap_px` sets the central-difference
-		// radius in world px; wider = thicker surface band that
-		// fades deeper into interior, narrower = tight surface rim.
+		// --- Multi-scale density-field gradient --------------------
+		// Single-scale taps give a binary response (surface cell has
+		// a gradient, deep interior has zero) which reads as a flat
+		// stipple rim rather than a depth-gradient band. Sample the
+		// density at three scales (close, mid, far) so pixels a few
+		// cells deep into the interior still pick up a faint "a
+		// surface is this direction" signal at the farther taps; the
+		// weighted max gives a smooth stipple-density fade from
+		// surface into interior over ~3-4 cells.
 		//
-		// With true density as the source, there's no sprite /
-		// parallax contamination to filter out; we don't need the
-		// old multi-scale trick. Interior-fade still comes from the
-		// same tuning knobs (`grad_floor`, `gradient_gain`,
-		// `gradient_fade_curve`) applied to the 2-tap magnitude.
-		vec2 density_tap = vec2(density_grad_tap_px, density_grad_tap_px);
-		float d_L = texture(density_tex,
-				world_to_density_uv(world_pos - vec2(density_tap.x, 0.0))).r;
-		float d_R = texture(density_tex,
-				world_to_density_uv(world_pos + vec2(density_tap.x, 0.0))).r;
-		float d_U = texture(density_tex,
-				world_to_density_uv(world_pos - vec2(0.0, density_tap.y))).r;
-		float d_D = texture(density_tex,
-				world_to_density_uv(world_pos + vec2(0.0, density_tap.y))).r;
-		vec2 density_grad = vec2(d_R - d_L, d_D - d_U);
+		// The close-scale gradient is used for surface-normal /
+		// tangent (more locally accurate); the combined magnitude
+		// drives stipple density and the depth fade.
+		float tap_close = density_grad_tap_px;
+		float tap_mid = density_grad_tap_px * 3.0;
+		float tap_far = density_grad_tap_px * 6.0;
+		float d_close_L = texture(density_tex,
+				world_to_density_uv(
+						world_pos - vec2(tap_close, 0.0))).r;
+		float d_close_R = texture(density_tex,
+				world_to_density_uv(
+						world_pos + vec2(tap_close, 0.0))).r;
+		float d_close_U = texture(density_tex,
+				world_to_density_uv(
+						world_pos - vec2(0.0, tap_close))).r;
+		float d_close_D = texture(density_tex,
+				world_to_density_uv(
+						world_pos + vec2(0.0, tap_close))).r;
+		vec2 grad_close = vec2(
+				d_close_R - d_close_L, d_close_D - d_close_U);
 
-		float grad_mag = clamp(
-				length(density_grad) * gradient_gain, 0.0, 1.0);
+		float d_mid_L = texture(density_tex,
+				world_to_density_uv(
+						world_pos - vec2(tap_mid, 0.0))).r;
+		float d_mid_R = texture(density_tex,
+				world_to_density_uv(
+						world_pos + vec2(tap_mid, 0.0))).r;
+		float d_mid_U = texture(density_tex,
+				world_to_density_uv(
+						world_pos - vec2(0.0, tap_mid))).r;
+		float d_mid_D = texture(density_tex,
+				world_to_density_uv(
+						world_pos + vec2(0.0, tap_mid))).r;
+		vec2 grad_mid = vec2(
+				d_mid_R - d_mid_L, d_mid_D - d_mid_U);
+
+		float d_far_L = texture(density_tex,
+				world_to_density_uv(
+						world_pos - vec2(tap_far, 0.0))).r;
+		float d_far_R = texture(density_tex,
+				world_to_density_uv(
+						world_pos + vec2(tap_far, 0.0))).r;
+		float d_far_U = texture(density_tex,
+				world_to_density_uv(
+						world_pos - vec2(0.0, tap_far))).r;
+		float d_far_D = texture(density_tex,
+				world_to_density_uv(
+						world_pos + vec2(0.0, tap_far))).r;
+		vec2 grad_far = vec2(
+				d_far_R - d_far_L, d_far_D - d_far_U);
+
+		vec2 density_grad = grad_close;
+		// Clamp each scale to [0, 1] INDEPENDENTLY before combining.
+		// This way the far scale (which saturates even for pixels
+		// several cells deep) contributes a fixed ceiling rather
+		// than dominating. The weighted max then gives:
+		//   surface cell  → close scale wins (1.0)
+		//   1 cell deep   → mid scale capped at 0.5
+		//   2 cells deep  → far scale capped at 0.25
+		//   3 cells deep  → far scale partial, capped at ~0.125
+		//   4+ cells deep → zero
+		// i.e. a visible stipple gradient ~4 cells into solid.
+		float mag_close = clamp(length(grad_close) * gradient_gain,
+				0.0, 1.0);
+		float mag_mid = clamp(length(grad_mid) * gradient_gain,
+				0.0, 1.0);
+		float mag_far = clamp(length(grad_far) * gradient_gain,
+				0.0, 1.0);
+		float grad_mag = max(
+				mag_close,
+				max(mag_mid * 0.5, mag_far * 0.25));
 		// Noise-floor subtract: deep solid interior (smoothly 1
 		// everywhere) and deep empty exterior (smoothly 0
 		// everywhere) both give near-zero gradient; the floor trims
@@ -750,33 +835,43 @@ void fragment() {
 			} else {
 				tangent = seg / seg_length;
 			}
-			vec2 normal_dir = vec2(-tangent.y, tangent.x);
+			vec2 seg_perp = vec2(-tangent.y, tangent.x);
 
-			// Project the pixel onto the segment: `along_hit` is the
-			// position of the hit point on the segment (as measured
-			// from start_px), `along_pixel` is the current pixel's
-			// position. Negative or > seg_length means we're outside
-			// the segment bounds.
-			float along_hit = dot(hit_px - start_px, tangent);
-			float along_pixel = dot(px - start_px, tangent);
-			float perp_pixel = dot(px - start_px, normal_dir);
-			float dist_from_hit_along = abs(along_pixel - along_hit);
-
-			// Growth phase: at age=0 the line has zero extent; at
-			// age = grow_duration * lifetime it reaches `max_reach`,
-			// which is the distance from hit_px to the farther
-			// endpoint. (Closer endpoint is reached earlier.)
+			// Grow / fade phases and overall envelope.
 			float t = clamp(age / ping_lifetime_sec, 0.0, 1.0);
 			float grow_t = clamp(t / ping_grow_duration_frac, 0.0, 1.0);
+			float fade_t = 1.0 - smoothstep(
+					ping_grow_duration_frac, 1.0, t);
+
+			// Line drift: after the grow phase, the line translates
+			// perpendicular to the surface in the outward-normal
+			// direction — physically the echo radiating outward from
+			// the surface into empty space. Pixel is offset by the
+			// negative of the line's translation to achieve the same
+			// visual (equivalent to moving the line).
+			vec2 normal_dir = ping_normals[i].xy;
+			float translate_t = clamp(
+					(t - ping_grow_duration_frac)
+					/ max(1.0 - ping_grow_duration_frac, 1e-3),
+					0.0, 1.0);
+			vec2 line_offset = normal_dir
+					* translate_t * ping_translate_distance_px;
+			vec2 px_local = px - line_offset;
+
+			// Project the pixel onto the segment: `along_hit` is the
+			// position of the hit point on the segment, `along_pixel`
+			// the current (drifted) pixel's position. Negative or
+			// > seg_length means outside the segment bounds.
+			float along_hit = dot(hit_px - start_px, tangent);
+			float along_pixel = dot(px_local - start_px, tangent);
+			float perp_pixel = dot(px_local - start_px, seg_perp);
+			float dist_from_hit_along = abs(along_pixel - along_hit);
+
+			// Growth: at grow_t=0 reveal is zero; at grow_t=1 it
+			// reaches the farther endpoint (closer reached earlier).
 			float max_reach = max(
 					along_hit, seg_length - along_hit);
 			float reveal_reach = grow_t * max_reach;
-
-			// Overall brightness envelope: ramps up during growth,
-			// holds, then fades out. `fade_t` is 1 at growth end,
-			// linearly drops to 0 at lifetime end.
-			float fade_t = 1.0 - smoothstep(
-					ping_grow_duration_frac, 1.0, t);
 
 			// On-segment gate (only light up pixels between the two
 			// endpoints). Small smoothstep softens the segment ends.
@@ -820,7 +915,51 @@ void fragment() {
 			}
 			ping_rgb += ping_color * brightness;
 		}
-		out_rgb += ping_rgb * ring_mask;
+		// Pings are NOT masked by ring_mask — the line sits on the
+		// tile surface during its grow phase, and we want it visible
+		// there (not hidden "behind" the tile like the pulse ring
+		// is). Additive blend makes matching-type tiles briefly
+		// sparkle and empty-space lines (during the drift phase)
+		// glow over the sky.
+		out_rgb += ping_rgb;
+
+		// --- Damage-region whole-area flash --------------------------
+		// Entire damaged region lights up (not just its outline). The
+		// stored damage_age_tex value decays from 1→0 over the ping
+		// lifetime; we map it through a curve that gives a short
+		// delay followed by a quick rise + slower fall. Color is
+		// mostly white with a light tint of the tile's palette so the
+		// effect feels like a soft returning echo wash, not a
+		// frequency-colored highlight.
+		vec2 dmg_uv = world_to_type_uv(world_pos);
+		float dmg_here = texture(damage_age_tex, dmg_uv).r;
+		if (dmg_here > 0.001) {
+			// Ramp-in: brightness stays 0 while stored value is in
+			// the top `damage_flash_delay_frac` of its range (just-
+			// stamped cells are "waiting for the echo"). Between
+			// `1 - delay_frac` and `peak_frac`, smoothstep up. Then
+			// between `peak_frac` and `0`, smoothstep back down.
+			float delay_edge = 1.0 - damage_flash_delay_frac;
+			float ramp_in = 1.0
+					- smoothstep(damage_flash_peak_frac,
+							delay_edge, dmg_here);
+			float ramp_out = smoothstep(
+					0.0, damage_flash_peak_frac, dmg_here);
+			float envelope = ramp_in * ramp_out;
+
+			vec3 tile_tint = is_bg_tile
+					? palette_color_for_type(bg_type_id)
+					: vec3(1.0);
+			if (dot(tile_tint, tile_tint) < 1e-3) {
+				tile_tint = vec3(1.0);
+			}
+			// Mix toward white based on saturation (0 = pure white).
+			vec3 flash_color = mix(
+					vec3(1.0), tile_tint, damage_flash_saturation);
+			out_rgb += flash_color
+					* envelope
+					* damage_flash_intensity;
+		}
 
 		// Small dark floor so the ring never punches negative on
 		// pathological uniform values.
