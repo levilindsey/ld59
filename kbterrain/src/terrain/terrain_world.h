@@ -50,6 +50,10 @@ public:
 			int frequency_mask);
 	void carve(Vector2 world_pos, float radius_px, float strength);
 	void fill(Vector2 world_pos, float radius_px, float strength);
+	// Restore a single cell's type + health at `world_pos`. No-op if
+	// the cell is already occupied (caller owns the overlap policy).
+	// Used by `TerrainChunkFragment` merge-back on landing.
+	void paint_cell_at_world(Vector2 world_pos, int type, int health);
 
 	// --- Queries ----
 	float sample_density(Vector2 world_pos) const;

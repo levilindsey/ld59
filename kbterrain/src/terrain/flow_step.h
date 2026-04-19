@@ -94,7 +94,8 @@ private:
 			ChunkManager &manager,
 			int chunk_cells,
 			uint8_t iso,
-			bool prefer_right);
+			bool prefer_right,
+			std::vector<Vector2i> &dirty);
 
 	bool _try_liquid(
 			Chunk &chunk,
@@ -104,7 +105,8 @@ private:
 			ChunkManager &manager,
 			int chunk_cells,
 			uint8_t iso,
-			bool prefer_right);
+			bool prefer_right,
+			std::vector<Vector2i> &dirty);
 
 	// Execute a cell→cell move (possibly cross-chunk). Returns true
 	// on success. Updates density corners, type grids, health, and

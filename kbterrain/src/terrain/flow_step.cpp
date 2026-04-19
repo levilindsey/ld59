@@ -101,10 +101,12 @@ bool FlowStep::step_world(
 				bool moved = false;
 				if (t == TerrainSettings::TYPE_SAND) {
 					moved = _try_sand(*chunk, flow, cx, cy,
-							manager, chunk_cells, iso, prefer_right);
+							manager, chunk_cells, iso, prefer_right,
+							out_dirty_chunks);
 				} else if (t == TerrainSettings::TYPE_LIQUID) {
 					moved = _try_liquid(*chunk, flow, cx, cy,
-							manager, chunk_cells, iso, prefer_right);
+							manager, chunk_cells, iso, prefer_right,
+							out_dirty_chunks);
 				}
 				if (moved) {
 					any_moved = true;
@@ -196,17 +198,16 @@ bool FlowStep::_try_sand(
 		ChunkManager &manager,
 		int chunk_cells,
 		uint8_t iso,
-		bool prefer_right) {
+		bool prefer_right,
+		std::vector<Vector2i> &dirty) {
 	// Down.
 	Chunk *dst = nullptr;
 	ChunkFlow *dst_flow = nullptr;
 	int dx = 0, dy = 0;
 	if (_is_empty(chunk, cx, cy + 1, manager, chunk_cells, iso,
 				&dst, &dst_flow, &dx, &dy)) {
-		std::vector<Vector2i> scratch;
-		bool ok = _move_cell(chunk, flow, cx, cy,
-				*dst, *dst_flow, dx, dy, chunk_cells, scratch);
-		return ok;
+		return _move_cell(chunk, flow, cx, cy,
+				*dst, *dst_flow, dx, dy, chunk_cells, dirty);
 	}
 	// Diagonal down. Prefer side varies by frame.
 	const int first_side = prefer_right ? 1 : -1;
@@ -214,9 +215,8 @@ bool FlowStep::_try_sand(
 		const int side = (s_try == 0) ? first_side : -first_side;
 		if (_is_empty(chunk, cx + side, cy + 1, manager, chunk_cells,
 					iso, &dst, &dst_flow, &dx, &dy)) {
-			std::vector<Vector2i> scratch;
 			return _move_cell(chunk, flow, cx, cy,
-					*dst, *dst_flow, dx, dy, chunk_cells, scratch);
+					*dst, *dst_flow, dx, dy, chunk_cells, dirty);
 		}
 	}
 	return false;
@@ -230,9 +230,10 @@ bool FlowStep::_try_liquid(
 		ChunkManager &manager,
 		int chunk_cells,
 		uint8_t iso,
-		bool prefer_right) {
+		bool prefer_right,
+		std::vector<Vector2i> &dirty) {
 	if (_try_sand(chunk, flow, cx, cy, manager, chunk_cells,
-				iso, prefer_right)) {
+				iso, prefer_right, dirty)) {
 		return true;
 	}
 	// Sideways spread when down blocked.
@@ -244,9 +245,8 @@ bool FlowStep::_try_liquid(
 		const int side = (s_try == 0) ? first_side : -first_side;
 		if (_is_empty(chunk, cx + side, cy, manager, chunk_cells,
 					iso, &dst, &dst_flow, &dx, &dy)) {
-			std::vector<Vector2i> scratch;
 			return _move_cell(chunk, flow, cx, cy,
-					*dst, *dst_flow, dx, dy, chunk_cells, scratch);
+					*dst, *dst_flow, dx, dy, chunk_cells, dirty);
 		}
 	}
 	return false;

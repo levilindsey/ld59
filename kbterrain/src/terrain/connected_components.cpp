@@ -171,6 +171,8 @@ std::vector<DetachedIsland> ConnectedComponents::detach_islands(
 			const int32_t h = island.height_cells();
 			island.local_type.assign(
 					static_cast<size_t>(w) * h, TerrainSettings::TYPE_NONE);
+			island.local_health.assign(
+					static_cast<size_t>(w) * h, 0);
 			island.local_density.assign(
 					static_cast<size_t>(w + 1) * (h + 1), 0);
 			island.origin_px = Vector2(
@@ -188,6 +190,13 @@ std::vector<DetachedIsland> ConnectedComponents::detach_islands(
 						p.first, p.second,
 						&chunk, &local_cx, &local_cy);
 				island.local_type[ly * w + lx] = t;
+				if (chunk != nullptr) {
+					island.local_health[ly * w + lx] =
+							chunk->health_per_cell[
+									local_cy * chunk_cells + local_cx];
+				} else {
+					island.local_health[ly * w + lx] = 255;
+				}
 				// Set the 4 corners around this cell to 255.
 				for (int dy = 0; dy <= 1; dy++) {
 					for (int dx = 0; dx <= 1; dx++) {
