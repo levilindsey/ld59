@@ -24,6 +24,18 @@ const _FLUID_DAMAGE_TICK_SEC := 0.25
 ## across frames at varying physics steps.
 const _WEB_MAX_VERTICAL_SPEED_PX_PER_SEC := 120.0
 
+## Horizontal speed multiplier while submerged in LIQUID terrain.
+const _WATER_SPEED_MULTIPLIER := 0.45
+## Post-step cap on |velocity.y| while submerged. Keeps buoyancy and
+## sinking gentle so the player can orient mid-water.
+const _WATER_MAX_VERTICAL_SPEED_PX_PER_SEC := 160.0
+## Fraction of normal gravity applied while submerged. Anything < 1
+## feels floaty.
+const _WATER_GRAVITY_SCALE := 0.2
+## Upward impulse applied on each jump-press while submerged. Lets
+## the player "double-jump" upward through water repeatedly.
+const _WATER_SWIM_IMPULSE_PX_PER_SEC := 180.0
+
 ## Minimum interval between echo pulses (3 / second).
 const _ECHO_COOLDOWN_SEC := 1.0 / 3.0
 
@@ -37,10 +49,12 @@ const _BLINK_PERIOD_SEC := 0.12
 
 
 var _is_in_web := false
+var _is_in_water := false
 var _fluid_damage_accum_sec := 0.0
 var _echo_cooldown_sec := 0.0
 var _invincibility_remaining_sec := 0.0
 var _blink_accum_sec := 0.0
+var _pre_step_velocity_y := 0.0
 
 
 var half_size := Vector2.INF
@@ -90,15 +104,45 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_sample_web_overlap()
-	_current_max_horizontal_speed_multiplier = (
-			_WEB_SPEED_MULTIPLIER if _is_in_web else 1.0)
+	_sample_water_overlap()
+	if _is_in_water:
+		_current_max_horizontal_speed_multiplier = _WATER_SPEED_MULTIPLIER
+	elif _is_in_web:
+		_current_max_horizontal_speed_multiplier = _WEB_SPEED_MULTIPLIER
+	else:
+		_current_max_horizontal_speed_multiplier = 1.0
+	_pre_step_velocity_y = velocity.y
 	super._physics_process(delta)
-	if _is_in_web:
+	if _is_in_water:
+		# Scale the gravity delta applied by the scaffolder this
+		# frame so water feels floaty. Also handle swim jumps.
+		var gravity_delta := velocity.y - _pre_step_velocity_y
+		velocity.y = (
+				_pre_step_velocity_y
+				+ gravity_delta * _WATER_GRAVITY_SCALE)
+		if Input.is_action_just_pressed("jump"):
+			velocity.y = minf(
+					velocity.y,
+					-_WATER_SWIM_IMPULSE_PX_PER_SEC)
+		velocity.y = clampf(
+				velocity.y,
+				-_WATER_MAX_VERTICAL_SPEED_PX_PER_SEC,
+				_WATER_MAX_VERTICAL_SPEED_PX_PER_SEC)
+	elif _is_in_web:
 		velocity.y = clampf(
 				velocity.y,
 				-_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC,
 				_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC)
 	_apply_fluid_damage(delta)
+
+
+func _sample_water_overlap() -> void:
+	_is_in_water = false
+	if not is_instance_valid(G.terrain):
+		return
+	if G.terrain.is_cell_type_at(
+			global_position, Frequency.Type.LIQUID):
+		_is_in_water = true
 
 
 func _apply_fluid_damage(delta: float) -> void:
