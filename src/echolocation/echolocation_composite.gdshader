@@ -17,7 +17,7 @@ const int MAX_PULSES = 8;
 const int MAX_PALETTE = 16;
 const int MAX_TAGGED_SPRITES = 32;
 const int MAX_PINGS = 128;
-const int MAX_PARTICLES = 128;
+const int MAX_PARTICLES = 256;
 // Must match `Frequency.Type.LIQUID` in src/core/frequency.gd.
 // LIQUID cells bypass surface-depth gating so water reads through
 // its full body, not just at its boundary.
@@ -80,6 +80,11 @@ uniform float stipple_fade_end_px : hint_range(0.0, 2000.0)
 uniform vec4 pulses[MAX_PULSES];
 uniform vec4 pulse_colors[MAX_PULSES];
 uniform vec4 pulse_cones[MAX_PULSES];
+// Per-pulse frequency ids (Frequency.Type). Used so a cell's stipple
+// can match ANY active pulse's frequency — not just the player's
+// currently-selected one — so cells that are currently being damaged
+// by an in-flight pulse still stipple brightly.
+uniform int pulse_freqs[MAX_PULSES];
 uniform int pulse_count = 0;
 
 // Bounce-back pings. One entry per surface segment; scheduled by
@@ -648,19 +653,6 @@ void fragment() {
 				? 1.0
 				: step(background_luma_threshold, l0);
 
-		// Tagged pixels stipple under a pulse; matching-frequency
-		// pixels get full stipple density, non-matching tagged
-		// pixels get a reduced density (`non_matching_stipple_factor`)
-		// so the player's current frequency dominates while other
-		// types still show as faint speckles. The full bloom
-		// treatment (larger soft-edge dots + extra brightness) is
-		// applied below using `is_matching`.
-		bool is_matching =
-				is_tagged && type_id == current_frequency;
-		float frequency_match = is_tagged
-				? (is_matching ? 1.0 : non_matching_stipple_factor)
-				: 0.0;
-
 		// Near-field reveals EVERYTHING smoothly (background + tiles
 		// + player) with no dither, no frequency gating, no surface
 		// bias. This is the "you always see around you" light.
@@ -670,10 +662,15 @@ void fragment() {
 				to_player_len);
 
 		// Pulse contribution — dithered, surface-biased, frequency-
-		// gated.
+		// gated. Also track whether any active pulse's frequency
+		// matches this cell's type so the cell can be considered
+		// "matching" (and get the full bloom treatment) whenever it
+		// is being damaged by an in-flight pulse, even if the player
+		// has already switched away to a different frequency.
 		float raw_pulse_vis = 0.0;
 		vec3 ring_rgb = vec3(0.0);
 		float ring_alpha = 0.0;
+		bool any_matching_pulse_active = false;
 		for (int i = 0; i < MAX_PULSES; i++) {
 			if (i >= pulse_count) {
 				break;
@@ -685,7 +682,23 @@ void fragment() {
 					* ring_glow_strength;
 			ring_rgb += pulse_colors[i].rgb * r;
 			ring_alpha = max(ring_alpha, r);
+			if (type_id != 0 && pulse_freqs[i] == type_id) {
+				any_matching_pulse_active = true;
+			}
 		}
+
+		// Matching: either the cell's type matches the player's
+		// currently-selected frequency, OR some in-flight pulse is
+		// currently damaging this cell's type. Gives the full bloom
+		// treatment (bigger soft-edge dots + brightness bump) and
+		// full stipple density. Non-matching tagged pixels stipple
+		// dimly at `non_matching_stipple_factor`.
+		bool is_matching = is_tagged && (
+				type_id == current_frequency
+				|| any_matching_pulse_active);
+		float frequency_match = is_tagged
+				? (is_matching ? 1.0 : non_matching_stipple_factor)
+				: 0.0;
 
 		// Distance falloff: stipple density tapers off the further
 		// the pixel is from the player, dropping to zero past
@@ -1041,6 +1054,9 @@ void fragment() {
 				flat_color = vec3(1.0);
 			}
 			vec3 p_color = mix(flat_color, atlas_color, near_vis);
+			// Slight overbright so a palette-colored disk pops on
+			// the dark echo-void background.
+			p_color *= 1.3;
 			out_rgb = mix(out_rgb, p_color, edge);
 		}
 

@@ -255,8 +255,15 @@ void TerrainWorld::_bind_methods() {
 					"frequency_mask"),
 			&TerrainWorld::damage);
 	ClassDB::bind_method(
-			D_METHOD("damage_with_falloff", "world_pos", "radius_px",
-					"full_radius_px", "full_damage", "min_damage",
+			D_METHOD("damage_with_falloff", "world_pos",
+					"surface_max_radius_px",
+					"surface_full_radius_px",
+					"surface_full_damage",
+					"surface_min_damage",
+					"proximity_max_radius_px",
+					"proximity_full_radius_px",
+					"proximity_full_damage",
+					"proximity_min_damage",
 					"frequency_mask"),
 			&TerrainWorld::damage_with_falloff);
 	ClassDB::bind_method(
@@ -726,7 +733,8 @@ void TerrainWorld::fill(Vector2 world_pos, float radius_px, float strength) {
 }
 
 bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
-		int dmg, int frequency_mask, Vector2 emitter_world_pos,
+		int surface_dmg, int proximity_dmg,
+		int frequency_mask, Vector2 emitter_world_pos,
 		Vector2 cell_world_pos,
 		std::unordered_set<int64_t> *destroyed_this_pulse,
 		int32_t *out_world_cx, int32_t *out_world_cy) {
@@ -779,40 +787,44 @@ bool TerrainWorld::_apply_damage_to_cell(Chunk *chunk, int cx, int cy,
 	const bool open_w = neighbor_is_open(wcx - 1, wcy);
 	const bool open_e = neighbor_is_open(wcx + 1, wcy);
 	const bool is_surface = open_n || open_s || open_w || open_e;
-	if (!is_surface) {
+
+	// Surface component — only exposed cells take this, scaled by how
+	// squarely their outward normal faces the emitter. Back-facing
+	// surfaces get 30%, fully front-facing 100%.
+	int scaled_surface_dmg = 0;
+	if (is_surface && surface_dmg > 0) {
+		Vector2 outward(0.0f, 0.0f);
+		if (open_n) { outward.y -= 1.0f; }
+		if (open_s) { outward.y += 1.0f; }
+		if (open_w) { outward.x -= 1.0f; }
+		if (open_e) { outward.x += 1.0f; }
+		if (outward.length_squared() > 1e-6f) {
+			outward = outward.normalized();
+		}
+		const Vector2 to_emitter_vec =
+				emitter_world_pos - cell_world_pos;
+		const float to_emitter_len = to_emitter_vec.length();
+		float facing = 0.0f;
+		if (to_emitter_len > 1e-3f) {
+			const float dot_v = outward.dot(
+					to_emitter_vec / to_emitter_len);
+			facing = dot_v > 0.0f ? dot_v : 0.0f;
+		}
+		const float facing_mult = 0.3f + 0.7f * facing;
+		scaled_surface_dmg = static_cast<int>(
+				std::round(static_cast<float>(surface_dmg)
+						* facing_mult));
+	}
+
+	// Proximity component — short-range direct damage that bypasses
+	// the surface check. Small and sharp-falloff, so chunky interiors
+	// still chip a bit near the player without long-range spray.
+	const int total_dmg = scaled_surface_dmg + proximity_dmg;
+	if (total_dmg <= 0) {
 		return false;
 	}
 
-	// Composite outward normal = sum of directions where the neighbor
-	// is open, normalized. Cells exposed on multiple sides get the
-	// average of those directions (corner cells face diagonally).
-	Vector2 outward(0.0f, 0.0f);
-	if (open_n) { outward.y -= 1.0f; }
-	if (open_s) { outward.y += 1.0f; }
-	if (open_w) { outward.x -= 1.0f; }
-	if (open_e) { outward.x += 1.0f; }
-	if (outward.length_squared() > 1e-6f) {
-		outward = outward.normalized();
-	}
-
-	const Vector2 to_emitter_vec = emitter_world_pos - cell_world_pos;
-	const float to_emitter_len = to_emitter_vec.length();
-	float facing = 0.0f;
-	if (to_emitter_len > 1e-3f) {
-		const float dot_v = outward.dot(to_emitter_vec / to_emitter_len);
-		facing = dot_v > 0.0f ? dot_v : 0.0f;
-	}
-	// Back-facing (or perpendicular) surfaces take 30% damage; fully
-	// front-facing take 100%. Keeps back-of-wall erosion possible but
-	// slow, so the player has to approach surfaces they want gone.
-	const float facing_mult = 0.3f + 0.7f * facing;
-	const int adjusted_dmg = static_cast<int>(
-			std::round(static_cast<float>(dmg) * facing_mult));
-	if (adjusted_dmg <= 0) {
-		return false;
-	}
-
-	int hp = chunk->health_per_cell[idx] - adjusted_dmg;
+	int hp = chunk->health_per_cell[idx] - total_dmg;
 	if (hp <= 0) {
 		chunk->health_per_cell[idx] = 0;
 		chunk->type_per_cell[idx] = TerrainSettings::TYPE_NONE;
@@ -886,7 +898,8 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 				}
 				int32_t w_cx = 0, w_cy = 0;
 				const bool destroyed = _apply_damage_to_cell(
-						chunk, cx, cy, dmg, frequency_mask,
+						chunk, cx, cy, dmg, 0,
+						frequency_mask,
 						world_pos, cell_center, &destroyed_this_pulse,
 						&w_cx, &w_cy);
 				if (destroyed) {
@@ -1070,22 +1083,41 @@ Vector2 TerrainWorld::sample_fluid_velocity(Vector2 world_pos) const {
 }
 
 void TerrainWorld::damage_with_falloff(
-		Vector2 world_pos, float radius_px, float full_radius_px,
-		int full_dmg, int min_dmg, int frequency_mask) {
+		Vector2 world_pos,
+		float surface_max_radius_px,
+		float surface_full_radius_px,
+		int surface_full_dmg,
+		int surface_min_dmg,
+		float proximity_max_radius_px,
+		float proximity_full_radius_px,
+		int proximity_full_dmg,
+		int proximity_min_dmg,
+		int frequency_mask) {
 	_ensure_initialized();
-	if (radius_px <= 0.0f) {
+	if (surface_max_radius_px <= 0.0f
+			&& proximity_max_radius_px <= 0.0f) {
 		return;
 	}
-	if (full_radius_px < 0.0f) {
-		full_radius_px = 0.0f;
+	if (surface_full_radius_px < 0.0f) { surface_full_radius_px = 0.0f; }
+	if (surface_full_radius_px > surface_max_radius_px) {
+		surface_full_radius_px = surface_max_radius_px;
 	}
-	if (full_radius_px > radius_px) {
-		full_radius_px = radius_px;
+	if (proximity_full_radius_px < 0.0f) {
+		proximity_full_radius_px = 0.0f;
 	}
-	const float falloff_band = std::max(
-			radius_px - full_radius_px, 1e-3f);
+	if (proximity_full_radius_px > proximity_max_radius_px) {
+		proximity_full_radius_px = proximity_max_radius_px;
+	}
+	const float surface_falloff_band = std::max(
+			surface_max_radius_px - surface_full_radius_px, 1e-3f);
+	const float proximity_falloff_band = std::max(
+			proximity_max_radius_px - proximity_full_radius_px, 1e-3f);
+	// Query chunks using the OUTER (surface) radius; proximity is a
+	// strict subset so we iterate the union once.
+	const float outer_radius_px = std::max(
+			surface_max_radius_px, proximity_max_radius_px);
 	auto coords = _manager->chunks_affected_by_splat(
-			world_pos, radius_px, _cells_cached,
+			world_pos, outer_radius_px, _cells_cached,
 			_cell_size_px_cached);
 
 	// Same pattern as `damage`: collect destroyed cells, then run
@@ -1105,7 +1137,7 @@ void TerrainWorld::damage_with_falloff(
 		int min_x, min_y, max_x, max_y;
 		terrain::cells_affected_by_circle(
 				chunk->cells, origin, _cell_size_px_cached,
-				world_pos, radius_px, 0.0f,
+				world_pos, outer_radius_px, 0.0f,
 				min_x, min_y, max_x, max_y);
 		if (max_x >= chunk->cells) {
 			max_x = chunk->cells - 1;
@@ -1118,7 +1150,11 @@ void TerrainWorld::damage_with_falloff(
 		}
 
 		bool any_change = false;
-		const float r_sq = radius_px * radius_px;
+		const float outer_r_sq = outer_radius_px * outer_radius_px;
+		const float surface_r_sq =
+				surface_max_radius_px * surface_max_radius_px;
+		const float proximity_r_sq =
+				proximity_max_radius_px * proximity_max_radius_px;
 		for (int cy = min_y; cy <= max_y; cy++) {
 			for (int cx = min_x; cx <= max_x; cx++) {
 				const Vector2 cell_center = Vector2(
@@ -1129,41 +1165,67 @@ void TerrainWorld::damage_with_falloff(
 				const float dx = cell_center.x - world_pos.x;
 				const float dy = cell_center.y - world_pos.y;
 				const float d_sq = dx * dx + dy * dy;
-				if (d_sq > r_sq) {
+				if (d_sq > outer_r_sq) {
 					continue;
 				}
 				const float dist = std::sqrt(d_sq);
-				int cell_dmg;
-				if (dist <= full_radius_px) {
-					cell_dmg = full_dmg;
-				} else {
-					float t = (dist - full_radius_px)
-							/ falloff_band;
-					if (t < 0.0f) {
-						t = 0.0f;
+
+				// Surface component — linear falloff.
+				int surface_cell_dmg = 0;
+				if (d_sq <= surface_r_sq && surface_full_dmg > 0) {
+					if (dist <= surface_full_radius_px) {
+						surface_cell_dmg = surface_full_dmg;
+					} else {
+						float t = (dist - surface_full_radius_px)
+								/ surface_falloff_band;
+						if (t < 0.0f) { t = 0.0f; }
+						if (t > 1.0f) { t = 1.0f; }
+						surface_cell_dmg = static_cast<int>(
+								std::round(
+										static_cast<float>(
+												surface_full_dmg)
+										* (1.0f - t)
+										+ static_cast<float>(
+												surface_min_dmg)
+										* t));
 					}
-					if (t > 1.0f) {
-						t = 1.0f;
-					}
-					// Ease-out (quadratic): damage drops fast just
-					// past the full-damage radius, then asymptotes
-					// slowly toward `min_dmg` near the max range.
-					// 1 - (1-t)^2 maps [0,1] -> [0,1] with steep
-					// rise at t=0 and gentle slope at t=1.
-					const float inv = 1.0f - t;
-					const float ease_t = 1.0f - inv * inv;
-					cell_dmg = static_cast<int>(
-							std::round(static_cast<float>(full_dmg)
-									* (1.0f - ease_t)
-									+ static_cast<float>(min_dmg)
-											* ease_t));
 				}
-				if (cell_dmg <= 0) {
+
+				// Proximity component — cubic ease-out. Sharp drop
+				// just past full-radius, softer approach to min. A
+				// bit sharper than the old quadratic so only very
+				// close cells get big proximity damage.
+				int proximity_cell_dmg = 0;
+				if (d_sq <= proximity_r_sq
+						&& proximity_full_dmg > 0) {
+					if (dist <= proximity_full_radius_px) {
+						proximity_cell_dmg = proximity_full_dmg;
+					} else {
+						float t = (dist - proximity_full_radius_px)
+								/ proximity_falloff_band;
+						if (t < 0.0f) { t = 0.0f; }
+						if (t > 1.0f) { t = 1.0f; }
+						const float inv = 1.0f - t;
+						const float ease_t = 1.0f - inv * inv * inv;
+						proximity_cell_dmg = static_cast<int>(
+								std::round(
+										static_cast<float>(
+												proximity_full_dmg)
+										* (1.0f - ease_t)
+										+ static_cast<float>(
+												proximity_min_dmg)
+										* ease_t));
+					}
+				}
+
+				if (surface_cell_dmg <= 0
+						&& proximity_cell_dmg <= 0) {
 					continue;
 				}
 				int32_t w_cx = 0, w_cy = 0;
 				const bool destroyed = _apply_damage_to_cell(
-						chunk, cx, cy, cell_dmg,
+						chunk, cx, cy,
+						surface_cell_dmg, proximity_cell_dmg,
 						frequency_mask, world_pos, cell_center,
 						&destroyed_this_pulse,
 						&w_cx, &w_cy);
