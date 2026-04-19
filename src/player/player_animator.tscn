@@ -2,6 +2,16 @@
 
 [ext_resource type="Script" uid="uid://c021w8e8kl5k" path="res://src/player/player_animator.gd" id="1_script"]
 [ext_resource type="Texture2D" uid="uid://rihqreb0nh5o" path="res://assets/images/scratch/kittenbaticorn.png" id="2_tex"]
+[ext_resource type="Shader" path="res://src/player/player_damage_flash.gdshader" id="3_damage_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_damage"]
+shader = ExtResource("3_damage_shader")
+shader_parameter/flash_color = Color(1, 0.2, 0.2, 1)
+shader_parameter/flash_strength = 0.0
+shader_parameter/pulse_color = Color(1, 0.35, 0.35, 1)
+shader_parameter/pulse_radius_px = 0.0
+shader_parameter/pulse_width_px = 2.0
+shader_parameter/pulse_alpha = 0.0
 
 [sub_resource type="AtlasTexture" id="Frame000"]
 atlas = ExtResource("2_tex")
@@ -932,6 +942,7 @@ script = ExtResource("1_script")
 animated_sprite = NodePath("AnimatedSprite2D")
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1025595397]
+material = SubResource("ShaderMaterial_damage")
 position = Vector2(0, -5)
 sprite_frames = SubResource("SpriteFrames_main")
 animation = &"idle_floor"

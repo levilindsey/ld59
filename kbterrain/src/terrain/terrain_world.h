@@ -114,6 +114,11 @@ public:
 	// when no chunks exist. Used by the echolocation shader for
 	// per-pixel type classification (replaces palette-match).
 	Ref<Image> build_type_image() const;
+	// Build a single R8 Image of every chunk's per-cell health (byte
+	// value 0..255). Same dimensions as the type image. Used by the
+	// echolocation shader to overlay progressive damage-tier cracks
+	// on partially-damaged cells.
+	Ref<Image> build_health_image() const;
 	// Upper-left world cell coordinate corresponding to pixel (0, 0) of
 	// the density/type images. Equals `min_chunk_coord × cells`.
 	Vector2i get_world_cell_origin() const;
@@ -215,7 +220,8 @@ private:
 			Vector2 emitter_world_pos, Vector2 cell_world_pos,
 			std::unordered_set<int64_t> *destroyed_this_pulse = nullptr,
 			int32_t *out_world_cx = nullptr,
-			int32_t *out_world_cy = nullptr);
+			int32_t *out_world_cy = nullptr,
+			bool *out_took_damage = nullptr);
 	void _free_chunk_rids(terrain::Chunk *chunk);
 
 	// Run CC on the world-cell coords of cells that were destroyed

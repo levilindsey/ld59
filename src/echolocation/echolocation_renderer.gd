@@ -134,6 +134,10 @@ var _debug_frames_remaining: int = 10
 ## (avoids a texture alloc every damage event).
 var _density_texture: ImageTexture
 var _type_texture: ImageTexture
+## Per-cell current health, rebuilt from C++ on every `chunk_modified`.
+## Feeds the shader's damage-tier crack overlay — cells visibly crack
+## as their health drops, before the final destruction pop.
+var _health_texture: ImageTexture
 ## Set by `_on_chunk_modified` to coalesce multiple dirty chunks in
 ## one frame (the flow CA can dirty many per tick). Drained in
 ## `_process`.
@@ -201,6 +205,12 @@ func _ready() -> void:
 	_shader_mat.set_shader_parameter(
 			"surface_atlas",
 			PlaceholderTerrainTextures.make_surface_atlas())
+	_shader_mat.set_shader_parameter(
+			"damage_tier_atlas",
+			PlaceholderTerrainTextures.make_damage_tier_atlas())
+	_shader_mat.set_shader_parameter(
+			"damage_tier_count",
+			PlaceholderTerrainTextures.DAMAGE_TIER_COUNT)
 	_shader_mat.set_shader_parameter(
 			"atlas_slot_count", Frequency.ATLAS_SLOT_COUNT)
 	_shader_mat.set_shader_parameter("near_radius_px", near_radius_px)
@@ -1014,6 +1024,7 @@ func _rebuild_terrain_textures() -> void:
 		return
 	var density_image: Image = G.terrain.build_density_image()
 	var type_image: Image = G.terrain.build_type_image()
+	var health_image: Image = G.terrain.build_health_image()
 	if density_image == null or type_image == null:
 		# No chunks baked yet — try again on the next chunk_modified.
 		_terrain_textures_dirty = true
@@ -1037,6 +1048,18 @@ func _rebuild_terrain_textures() -> void:
 			_type_texture = ImageTexture.create_from_image(type_image)
 		else:
 			_type_texture.update(type_image)
+	if health_image != null:
+		if _health_texture == null:
+			_health_texture = ImageTexture.create_from_image(health_image)
+		else:
+			var existing_health_size: Vector2i = Vector2i(
+					_health_texture.get_size())
+			if existing_health_size != health_image.get_size():
+				_health_texture = ImageTexture.create_from_image(
+						health_image)
+			else:
+				_health_texture.update(health_image)
+		_shader_mat.set_shader_parameter("health_tex", _health_texture)
 
 	if G.terrain.settings != null:
 		_density_cell_size_px = G.terrain.settings.cell_size_px

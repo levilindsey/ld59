@@ -74,6 +74,17 @@ const _INVINCIBILITY_SEC := 0.8
 ## this many seconds.
 const _BLINK_PERIOD_SEC := 0.12
 
+## Duration of the red-flash tint on the player sprite body.
+const _DAMAGE_FLASH_DURATION_SEC := 0.35
+## Duration of the outline-pulse ring expanding outward from the
+## sprite's 1-pixel silhouette after a hit.
+const _DAMAGE_PULSE_DURATION_SEC := 0.5
+## Final radius the pulse ring reaches before fading. Bounded by how
+## much transparent border exists in the sprite's frame quad — the
+## kittenbaticorn frames have a few pixels of padding, so ~6 px
+## reads as a soft halo before it clips.
+const _DAMAGE_PULSE_MAX_RADIUS_PX := 6.0
+
 ## Post-jump stuck detection: if `move_and_slide` produced less total
 ## displacement than this after the jump impulse, we consider the
 ## player wedged.
@@ -104,6 +115,9 @@ var _echo_cooldown_sec := 0.0
 var _current_cooldown_duration := _ECHO_COOLDOWN_SEC
 var _invincibility_remaining_sec := 0.0
 var _blink_accum_sec := 0.0
+## Current damage-hit flash / outline-pulse tween, if any. Killed
+## on each subsequent hit so overlapping hits restart the animation.
+var _damage_hit_tween: Tween = null
 var _pre_step_velocity_y := 0.0
 ## Set true on the frame a jump is triggered so that we check, on the
 ## following frame (once `move_and_slide` has had a chance to apply
@@ -630,9 +644,47 @@ func apply_damage(amount: int) -> void:
 	if _invincibility_remaining_sec > 0.0:
 		return
 	%PlayerHealth.apply_damage(amount)
+	_play_damage_hit_animation()
 	if not %PlayerHealth.is_dead():
 		_invincibility_remaining_sec = _INVINCIBILITY_SEC
 		_blink_accum_sec = 0.0
+
+
+## Kick off the red-flash + outward-pulse animation on the sprite's
+## ShaderMaterial. The material lives on the PlayerAnimator's
+## AnimatedSprite2D and exposes `flash_strength`, `pulse_radius_px`,
+## and `pulse_alpha` uniforms. Re-hitting cancels any in-flight
+## tween so the animation restarts cleanly.
+func _play_damage_hit_animation() -> void:
+	if animator == null:
+		return
+	var sprite: AnimatedSprite2D = animator.animated_sprite
+	if sprite == null or sprite.material == null:
+		return
+	var mat: ShaderMaterial = sprite.material as ShaderMaterial
+	if mat == null:
+		return
+	if _damage_hit_tween != null and _damage_hit_tween.is_valid():
+		_damage_hit_tween.kill()
+	_damage_hit_tween = create_tween()
+	_damage_hit_tween.set_parallel(true)
+	# Body tint: peak immediately, decay fast.
+	mat.set_shader_parameter("flash_strength", 0.85)
+	_damage_hit_tween.tween_property(
+			mat, "shader_parameter/flash_strength",
+			0.0, _DAMAGE_FLASH_DURATION_SEC
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Outline pulse: ring radius grows from 1 → max, alpha fades to 0.
+	mat.set_shader_parameter("pulse_radius_px", 1.0)
+	mat.set_shader_parameter("pulse_alpha", 1.0)
+	_damage_hit_tween.tween_property(
+			mat, "shader_parameter/pulse_radius_px",
+			_DAMAGE_PULSE_MAX_RADIUS_PX, _DAMAGE_PULSE_DURATION_SEC
+	).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_damage_hit_tween.tween_property(
+			mat, "shader_parameter/pulse_alpha",
+			0.0, _DAMAGE_PULSE_DURATION_SEC
+	).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 
 func apply_heal(amount: int) -> void:

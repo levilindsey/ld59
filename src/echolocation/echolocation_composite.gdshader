@@ -289,6 +289,14 @@ uniform sampler2D interior_atlas : source_color, repeat_disable,
 		filter_nearest;
 uniform sampler2D surface_atlas : source_color, repeat_disable,
 		filter_nearest;
+// Damage-tier crack overlay atlas — horizontal strip of per-tier
+// crack patterns (L8). Sampled .r as crack intensity (0 = clean, 1 =
+// full crack); darkens the tile's interior art accordingly.
+// `health_tex` is R8 per-cell with 1.0 = full HP, 0 = destroyed.
+uniform sampler2D damage_tier_atlas : repeat_disable, filter_nearest;
+uniform sampler2D health_tex : filter_nearest, repeat_disable;
+uniform int damage_tier_count = 5;
+uniform float damage_overlay_strength : hint_range(0.0, 1.5) = 0.9;
 uniform int atlas_slot_count = 8;
 uniform float interior_scale_px : hint_range(4.0, 128.0) = 32.0;
 uniform float surface_scale_along_px : hint_range(4.0, 128.0) = 32.0;
@@ -783,6 +791,43 @@ void fragment() {
 					interior_v);
 			vec3 interior_rgb = texture(
 					interior_atlas, interior_uv).rgb;
+
+			// --- Damage-tier crack overlay --------------------------
+			// Look up the cell's current health (R8 texture), map the
+			// damage fraction to a tier index, sample the crack atlas,
+			// and darken the interior art where cracks land. Cells at
+			// full HP (health_norm == 1) skip the overlay entirely;
+			// cells at 20% HP show the heaviest tier, just short of
+			// shattering. Gives progressive visual feedback as cells
+			// chip down over multiple pulses, instead of popping cold.
+			float health_norm = texture(
+					health_tex,
+					world_to_type_uv(world_pos)).r;
+			float damage_frac = 1.0 - health_norm;
+			if (damage_frac > 0.01 && damage_tier_count > 1) {
+				float tier_f = damage_frac
+						* float(damage_tier_count);
+				int tier = clamp(
+						int(tier_f),
+						0, damage_tier_count - 1);
+				float tier_u_base = float(tier)
+						/ float(damage_tier_count);
+				float tier_u_width = 1.0
+						/ float(damage_tier_count);
+				vec2 crack_uv = vec2(
+						tier_u_base + interior_u_frac
+								* tier_u_width,
+						interior_v);
+				float crack = texture(
+						damage_tier_atlas, crack_uv).r;
+				// Darker "crevice" color under the cracks — keeps the
+				// frequency tint but reads as shadow / fracture.
+				vec3 crack_rgb = interior_rgb * 0.2;
+				interior_rgb = mix(
+						interior_rgb,
+						crack_rgb,
+						crack * damage_overlay_strength);
+			}
 
 			// Surface band — aligned with authored cell boundaries.
 			//
