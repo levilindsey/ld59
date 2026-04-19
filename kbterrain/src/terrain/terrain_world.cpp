@@ -126,6 +126,8 @@ void TerrainWorld::_bind_methods() {
 			&TerrainWorld::sample_density);
 	ClassDB::bind_method(D_METHOD("is_solid", "world_pos"),
 			&TerrainWorld::is_solid);
+	ClassDB::bind_method(D_METHOD("is_cell_non_empty", "world_pos"),
+			&TerrainWorld::is_cell_non_empty);
 	ClassDB::bind_method(
 			D_METHOD("get_surface_height", "world_x", "search_max_y_px"),
 			&TerrainWorld::get_surface_height);
@@ -712,11 +714,10 @@ void TerrainWorld::paint_cell_at_world(
 	}
 	chunk->type_per_cell[idx] = static_cast<uint8_t>(type);
 	chunk->health_per_cell[idx] = static_cast<uint8_t>(health);
-	const int s = _cells_cached + 1;
-	chunk->density[cy * s + cx] = 255;
-	chunk->density[cy * s + cx + 1] = 255;
-	chunk->density[(cy + 1) * s + cx] = 255;
-	chunk->density[(cy + 1) * s + cx + 1] = 255;
+	// Refresh corners so newly-shared boundaries with still-NONE
+	// neighbors don't leave stray 255 corners (which cause the
+	// neighbor to render a half-cell sliver).
+	refresh_corners_after_clear(chunk, cx, cy);
 	chunk->generation.fetch_add(1);
 	_queue_remesh(chunk);
 }
@@ -890,6 +891,30 @@ float TerrainWorld::sample_density(Vector2 world_pos) const {
 bool TerrainWorld::is_solid(Vector2 world_pos) const {
 	return sample_density(world_pos) * 255.0f
 			>= static_cast<float>(_iso_cached);
+}
+
+bool TerrainWorld::is_cell_non_empty(Vector2 world_pos) const {
+	if (!_manager) {
+		return false;
+	}
+	const Vector2i coord = ChunkManager::world_to_chunk(
+			world_pos, _cells_cached, _cell_size_px_cached);
+	auto it = _manager->all().find(coord);
+	if (it == _manager->all().end()) {
+		return false;
+	}
+	Chunk *chunk = it->second.get();
+	const Vector2 origin = chunk->origin_px(_cell_size_px_cached);
+	int cx = static_cast<int>(
+			std::floor((world_pos.x - origin.x) / _cell_size_px_cached));
+	int cy = static_cast<int>(
+			std::floor((world_pos.y - origin.y) / _cell_size_px_cached));
+	if (cx < 0 || cy < 0
+			|| cx >= _cells_cached || cy >= _cells_cached) {
+		return false;
+	}
+	return chunk->type_per_cell[chunk->cell_index(cx, cy)]
+			!= TerrainSettings::TYPE_NONE;
 }
 
 float TerrainWorld::get_surface_height(float world_x,

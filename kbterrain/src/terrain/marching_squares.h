@@ -74,6 +74,10 @@ inline uint32_t pack_rgba8(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 //
 // `iso` is the density threshold: cells with any corner >= iso
 // contribute to the mesh.
+// `collision_skip_type` is a cell-type byte that, when matched,
+// causes the cell to render but emit no boundary_segments (so it is
+// invisible to physics). Use 0 (TYPE_NONE) to disable — NONE cells
+// never emit segments anyway. Pass LIQUID to make water non-solid.
 void mesh_chunk(
 		const uint8_t *density,
 		int cells,
@@ -83,7 +87,8 @@ void mesh_chunk(
 		uint32_t per_cell_color_rgba,
 		const uint8_t *type_grid,
 		const uint32_t *type_to_color_rgba,
-		MeshResult &out);
+		MeshResult &out,
+		uint8_t collision_skip_type = 0);
 
 } // namespace terrain
 } // namespace godot

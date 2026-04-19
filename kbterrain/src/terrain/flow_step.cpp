@@ -171,17 +171,14 @@ bool FlowStep::_is_empty(
 	if (target->type_per_cell[idx] != TerrainSettings::TYPE_NONE) {
 		return false;
 	}
-	// Also treat high-density empty-type cells as solid (carve
-	// created a slab of density but no type — rare but defensive).
-	const int s = chunk_cells + 1;
-	const uint8_t d0 = target->density[ty * s + tx];
-	const uint8_t d1 = target->density[ty * s + tx + 1];
-	const uint8_t d2 = target->density[(ty + 1) * s + tx];
-	const uint8_t d3 = target->density[(ty + 1) * s + tx + 1];
-	const uint8_t max_d = std::max({ d0, d1, d2, d3 });
-	if (max_d >= iso) {
-		return false;
-	}
+	// Type is authoritative. An earlier defensive "max corner
+	// density < iso" check used to live here, but corners of a
+	// cleared cell can still read 255 when a non-NONE neighbor
+	// shares them (e.g., a liquid cell directly above a just-
+	// destroyed plug). That blocked liquid from draining into
+	// the very hole that was just opened.
+	(void)iso;
+	(void)chunk_cells;
 
 	if (out_chunk) *out_chunk = target;
 	if (out_flow) *out_flow = &_get_or_create_flow(target_coords, chunk_cells);

@@ -21,6 +21,8 @@ const _STUCK_MAX_CELLS := 4
 ## Safety: if a cell never finds terrain below (level has no floor),
 ## despawn after this many seconds instead of falling forever.
 const _MAX_LIFETIME_SEC := 8.0
+## Set true to print landing diagnostics.
+const _DEBUG_LANDING := false
 
 
 var _type: int = Frequency.Type.NONE
@@ -43,11 +45,12 @@ func _ready() -> void:
 	# now.
 	collision_mask = 1 << 3
 	body_entered.connect(_on_body_entered)
-	if is_instance_valid(G.terrain) and G.terrain.settings != null:
-		_cell_size_px = G.terrain.settings.cell_size_px
-	_build_collision_and_mesh()
 
 
+# Must be called immediately after `add_child` so the cell knows its
+# type before building its mesh/collision. `_ready` alone can't do
+# this because it fires on tree-entry, before the spawner has a
+# chance to pass in per-cell data.
 func configure(
 		world_pos: Vector2,
 		type: int,
@@ -57,6 +60,9 @@ func configure(
 	_type = type
 	_health = health
 	_delay_sec = delay_sec
+	if is_instance_valid(G.terrain) and G.terrain.settings != null:
+		_cell_size_px = G.terrain.settings.cell_size_px
+	_build_collision_and_mesh()
 
 
 func _physics_process(delta: float) -> void:
@@ -95,11 +101,15 @@ func _check_landing(pre_y: float) -> void:
 	for test_cy in range(start_cy + 1, end_cy + 2):
 		var probe_y := (test_cy + 0.5) * cs
 		var probe := Vector2(global_position.x, probe_y)
-		if G.terrain.is_solid(probe):
+		if G.terrain.is_cell_non_empty(probe):
 			var landing_cy := test_cy - 1
 			global_position.y = (landing_cy + 0.5) * cs
 			var landing_cx := int(floor(global_position.x / cs))
 			global_position.x = (landing_cx + 0.5) * cs
+			if _DEBUG_LANDING:
+				print("FallingCell land type=%d at cell (%d,%d) pre_y=%.2f post_y=%.2f"
+						% [_type, landing_cx, landing_cy,
+								pre_y, global_position.y])
 			_land()
 			return
 
