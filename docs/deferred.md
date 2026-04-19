@@ -52,11 +52,57 @@ until Phase 5 playtest.
 `PlayerHealth.died`.
 
 ### 1.6 Web build + jam-submission deploy
-**Status**: build script (`kbterrain/build_web.ps1`) + custom
-Emscripten-template setup documented in
-`kbterrain/web-template-setup.md`; not actually exported.
-**Constraints**: pin Emscripten 4.0.11 (skip 4.0.3–4.0.6 due to
-GDExtension regression). Custom-host with COOP/COEP headers.
+**Status**: build toolchain fully shipped. Custom dlink+threads web
+export template built and installed in both `4.6.stable/` and
+`4.6.2.stable/` Godot template caches; kbterrain extension built
+for wasm32 (`libkbterrain.web.template_{debug,release}.wasm32.wasm`);
+project exported to `build/web/`; deploy zip at
+`build/kittenbaticorn-web.zip` (~22 MB). Local smoke test works at
+`http://localhost:8080` via `web/server.js` (COOP/COEP headers
+confirmed). **Not yet deployed to a real host.**
+**Remaining**: upload the zip to itch.io (check "SharedArrayBuffer
+support") OR push `build/web/` to Cloudflare Pages / Netlify (both
+pick up the `_headers` file already copied into the export root) OR
+rsync to a self-hosted box behind HTTPS.
+**Constraints**: Emscripten pinned to 4.0.11 (skip 4.0.3–4.0.6 due
+to GDExtension regression). HTTPS required for SharedArrayBuffer in
+production.
+
+### 1.7 Coyote enemy — placeholder art
+`src/enemies/coyote.tscn` uses white-pixel rectangles for
+body/head/tail/legs. Behavior (ground-chase, wall-bounce jump,
+vertical-jump-at-player, gravity + ground raycast) works. Needs a
+real spritesheet + animation states (idle / run / jump / fall)
+matching the kittenbaticorn art style.
+
+### 1.8 Spider web tile — placeholder art
+`src/level/web_tile.tscn` uses a semi-transparent 16×16 square + two
+45° white-line "strands". Needs real web art; consider
+frequency-tinted variations and a "tattered" sprite when
+`_health` drops below a threshold.
+
+### 1.9 Player wall / ceiling animations missing
+`character.gd._process_animation` calls `animator.play("climb_up")`,
+`play("climb_down")`, `play("rest_on_wall")`, `play("crawl_on_ceiling")`
+when the player enters wall/ceiling states. None of those animations
+exist in `player_animator.tscn`. AnimatedSprite2D emits warnings and
+the sprite freezes on its last frame if those states are ever
+reached. Either author frames or extend
+`PlayerAnimator._ANIMATION_NAME_MAPPING` to route them onto existing
+animations (e.g. wall → `jump_rise`, ceiling-crawl → `walk`).
+
+### 1.10 Fragment detach particle burst
+PLAN.md Phase 4 listed this as polish. CC detach path ships without
+it. When an un-anchored island becomes a `TerrainChunkFragment`, a
+one-shot dust/particle effect at the detach seam would make it read
+as "sheared off" rather than "materialized."
+
+### 1.11 Enemy spawn point wiring for Coyote
+`Coyote.tscn` is implemented but no level scene currently references
+it via an `EnemySpawnPoint.enemy_scene` export. First level that
+wants coyotes needs to drag the scene onto a spawn point (single-shot
+or respawning). Same gap applies if additional web-tile clusters are
+authored before the TileMap custom-data route is fully playtested.
 
 ---
 
@@ -68,6 +114,13 @@ Schema authored on `default_tile_set.tres`; loader reads per-tile
 Health falls back to 255 when `initial_health` is unset (0 treated
 as unset, since Godot returns default 0 for never-written int
 custom data).
+**Open follow-through**:
+- Not every atlas tile has `custom_data_0` assigned — untagged
+  tiles silently fall back to `default_terrain_type`. Do a full
+  TileSet audit before an authored level ships.
+- `custom_data_1` (health) is currently unset on every atlas tile,
+  so everything is 255 HP. Decide per-type values (web low, sand
+  medium, indestructible n/a) before bulk-authoring.
 
 ### 2.2 Bug spawn-region stacking semantics
 **Status**: implementation is additive with min-rate-floor safety;
@@ -93,13 +146,39 @@ terrain top. Author may want to revisit if visible character ever
 needs to sit lower or higher within the body.
 
 ### 2.5 Damage CC island detach
-**Status**: `_detach_islands_from_seeds` is **disabled inside
-`damage_with_falloff`** because the test rect has no INDESTRUCTIBLE
-border to anchor the flood, so the entire region was being detached
-as one giant unanchored island. The user has since added a
-`test_rect_border_cells` (default 2) authoring path that bakes an
-INDESTRUCTIBLE perimeter. **Re-enable the CC pass** (or move the
-disable behind a flag) once levels reliably ship with anchor cells.
+**Status**: **re-enabled.** The fallback arena now bakes an
+INDESTRUCTIBLE border via `bake_rect_with_border` (default 2 cells
+thick), and authored levels can paint anchor cells via the TileSet
+custom data. `damage_with_falloff` now calls
+`_detach_islands_from_seeds` as normal.
+**Remaining risk**: if a future level ships with NO anchor cells
+(an island floating in space), the whole thing will detach on first
+pulse. Belt-and-suspenders option: cap the flood size check to some
+fraction of the level bounds, but that adds complexity. Punt unless
+an author trips it.
+
+### 2.6 WEB frequency type consistency across layers
+`terrain_level.gd` references `Frequency.Type.WEB` and the TileSet
+has `custom_data_0` values extending past `YELLOW = 7` (8, 10, 11
+observed). **Verify**:
+- `Frequency.Type` enum defines WEB (and any other new values) at
+  the expected integer positions.
+- `TerrainSettings::Type` (C++) mirrors the same values exactly
+  (`terrain_settings.h` comment says "must match
+  `src/core/frequency.gd`"; silent divergence would mean web tiles
+  take damage on the wrong frequency or never take damage).
+- `_frequency_to_bit` in `terrain_world.cpp` handles the new
+  values (it short-circuits on `freq > 30` but hasn't been audited
+  for the specific new ones).
+- The composite shader's palette and per-tile atlas slots include
+  WEB (otherwise web tiles render with a missing/default color).
+
+### 2.7 Per-tile `initial_health` values in the TileSet
+`custom_data_1` schema exists but every atlas tile currently leaves
+it unset, so the loader falls back to 255 for everything. Once the
+damage-tier shader (1.2) lands, per-tile durability differences
+start mattering — pick values (e.g. web 64, sand 128, RGB/Y 255,
+indestructible n/a since the damage path early-outs on that type).
 
 ---
 
@@ -154,6 +233,33 @@ once we want true continuous smooth surfaces (sand piles, liquid
 splats), iso may need to be a per-context value or partial-density
 splat needs to use a different threshold.
 
+### 3.8 Web export template install is Godot-version-brittle
+`kbterrain/build_web_template.ps1` copies the built zips into BOTH
+`%APPDATA%/Godot/export_templates/4.6.stable/` and
+`.../4.6.2.stable/`. Godot looks up the cache path by the full
+`X.Y.Z.stable` version string it reports, so a point upgrade
+(e.g. 4.6.3) will again fail with "Template file not found" until
+the list is extended and re-run. Either re-run the build script
+with the new version added to `$GodotTemplateCaches`, or symlink
+the existing zips into the new path.
+
+### 3.9 Web bundle size dominated by Godot engine
+Final zip is ~22 MB. `index.side.wasm` alone is ~40 MB uncompressed
+(~13 MB in-zip), and that's Godot's threaded web runtime — not
+something we can trim without a custom single-threaded template
+(`threads=no`) + a `threads=no` extension + runtime
+synchronous-meshing fallback. Out of scope for the jam; revisit if
+target bandwidth becomes a constraint.
+
+### 3.10 Flow CA "binary cell" simplification
+`flow_step` moves whole cells (type flips, density corners
+recomputed from neighborhood) rather than analog mass transfer.
+Inside actively-flowing regions, carved (partial-density) corners
+are squared off on the fly — visible as a cleanup pass on sand
+slopes. Fine for the jam aesthetic; if we want smooth sand piles
+or compressible liquid later, flow has to go analog (w-shadow mass
+transfer) and density corners become source of truth, not type.
+
 ---
 
 ## 4. Architectural Follow-Ups
@@ -198,9 +304,12 @@ per-cell health?
 
 ## 5. Workarounds to Revisit
 
-### 5.1 Damage CC disabled
-See 2.5 — re-enable after INDESTRUCTIBLE-border becomes the level-
-authoring norm.
+### 5.1 Damage CC detach — resolved
+See 2.5. Re-enabled after the fallback arena learned to bake an
+INDESTRUCTIBLE border (and the TileSet custom-data path let
+authored levels paint anchors). Keep this entry as a breadcrumb so
+if the "single unanchored island" bug resurfaces on a new level
+shape, the fix direction is obvious.
 
 ### 5.2 Editor-mode synchronous mesh path
 `TerrainWorld._editor_mode` runs marching squares synchronously in
@@ -208,7 +317,32 @@ authoring norm.
 
 ### 5.3 Test coverage gaps
 Many GUT integration tests listed in `PLAN.md` are stubs. Ship-
-defer until post-jam.
+defer until post-jam. Phase 4 specifically missing:
+`test_flow_step.h`, `test_connected_components.h`,
+`test_terrain_fragment_mesh.h` (C++); `test_fragment_falls_and_rests.gd`,
+`test_sand_piles.gd` (GUT).
+
+### 5.4 `godot --headless --export-release` flaky exit code
+Godot sometimes exits with non-zero or null `$LASTEXITCODE` after a
+successful export (internal ObjectDB-leak warning bumps status).
+`scripts/export_web.ps1` treats the presence of the output
+`index.html` as the source of truth rather than the exit code. Watch
+this if a future Godot release fixes shutdown — the extra tolerance
+would mask a real failure.
+
+### 5.5 PowerShell arg interpolation with scons
+`-j$jobs` caused scons to see the literal string `$jobs`. The fix
+is `"-j$jobs"` (quoted). Same pattern will recur if we add more
+parametric scons invocations; in general, when passing PowerShell
+variables through to external tools, quote the composite argument.
+
+### 5.6 `emsdk_env.ps1` doesn't propagate env to the caller
+`emsdk_env.ps1` → `emsdk.ps1 construct_env` runs in a subprocess
+whose env changes die with it; the parent shell's `$env:PATH` is
+never updated. `build_web_template.ps1` manually prepends
+`$EmsdkDir`, `$EmsdkDir\upstream\emscripten`, and the node/python
+tool dirs to `$env:PATH`. Keep the manual prepend in any future
+script that needs `emcc` on PATH.
 
 ---
 
@@ -229,7 +363,36 @@ debug as "up to date" even when source changed. Workaround: run
 `scons platform=windows target=template_debug -c && scons
 platform=windows target=template_debug install` to force.
 
+### 6.4 Web export preset `extensions_support` + `thread_support`
+Both MUST be `true` in `export_presets.cfg`'s `[preset.0.options]`
+for the custom dlink+threads template to actually get used. If they
+regress to `false`, Godot silently falls back to the stock web
+template, which either refuses the GDExtension or runs without
+threads (our C++ terrain worker deadlocks on `std::thread`). Already
+set correctly; watch for accidental regressions on future edits via
+the Godot export UI.
+
+### 6.5 `default_bus_layout` path (not UID) in project.godot
+`buses/default_bus_layout` references `res://default_bus_layout.tres`
+directly rather than `uid://…`. UID-based project-level resource
+references emitted `Unrecognized UID` warnings during
+`godot --headless --export-release`. Stick with `res://` paths for
+resources referenced from `project.godot` to avoid the UID cache
+miss during headless export.
+
+### 6.6 Web export filter
+`export_presets.cfg`'s Web preset has
+`exclude_filter="web/*, kbterrain/*, scripts/*, docs/*, test/*,
+build/*, addons/gut/*, *.md, *.ps1"`. Dropped ~2.6 MB (17%) from
+the pck compared to the unfiltered baseline by excluding the npm
+deps, GUT framework, and other host-side artifacts. If new top-level
+directories appear that contain non-shippable assets (source,
+scripts, test data), extend the filter.
+
 ---
 
-*Last updated: April 18, 2026. Generated from session-history audit
-plus current-session knowledge.*
+*Last updated: April 18, 2026 (desktop session). Generated from
+session-history audit plus current-session knowledge. Includes
+web-deploy toolchain build-out, Phase 4 CC detach re-enable after
+anchor authoring landed, Phase 3 TileSet custom-data shipping, and
+bundle-size filter work.*
