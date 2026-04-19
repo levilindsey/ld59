@@ -112,10 +112,12 @@
     - 
 - Level generation:
     - 
-
+- Music
+- SFX
 
 # Stretch
 
+- Background art
 - Polish player and enemy sprite shading.
 - Polish level sprites.
 - 

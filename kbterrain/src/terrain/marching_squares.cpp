@@ -241,6 +241,7 @@ void mesh_chunk(
 		MeshResult &out,
 		uint8_t collision_skip_type) {
 	out.clear();
+	(void)collision_skip_type;
 
 	const int stride = cells + 1;
 
@@ -286,13 +287,6 @@ void mesh_chunk(
 
 			emit_interior(cs, origin, cell_size_px, d, iso, color, out);
 
-			// Boundary segments. Skip for cells whose type is flagged
-			// non-collidable (e.g., liquid — renders but doesn't
-			// block the player).
-			if (collision_skip_type != 0
-					&& type_here == collision_skip_type) {
-				continue;
-			}
 			const CaseEdges &ce = CASE_TABLE[cs];
 			for (int s = 0; s < ce.count; s++) {
 				const int e_a = ce.segments[s * 2 + 0];

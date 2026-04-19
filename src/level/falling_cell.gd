@@ -100,7 +100,7 @@ func _check_landing(pre_y: float) -> void:
 	for test_cy in range(start_cy + 1, end_cy + 2):
 		var probe_y := (test_cy + 0.5) * cs
 		var probe := Vector2(global_position.x, probe_y)
-		if G.terrain.is_cell_non_empty(probe):
+		if G.terrain.is_cell_collidable(probe):
 			var landing_cy := test_cy - 1
 			global_position.y = (landing_cy + 0.5) * cs
 			var landing_cx := int(floor(global_position.x / cs))
@@ -130,7 +130,17 @@ func _land() -> void:
 # required push exceeds `_STUCK_MAX_CELLS`, the actor is damaged
 # heavily (player) or killed outright (bug/enemy).
 func _evict_actors_from_cell() -> void:
+	# Always try to evict the player after a non-liquid cell paints.
+	# The stuck-check inside `_try_evict_actor` is cheap and handles
+	# the "no-op if already clear" path, so we don't need an AABB
+	# pre-check here. Pre-checks using hand-computed bounding boxes
+	# had false negatives when the player's half_size geometry was
+	# smaller than the cell, letting the player fall through.
+	if is_instance_valid(G.level) and is_instance_valid(G.level.player):
+		_try_evict_actor(G.level.player)
 	for body in get_overlapping_bodies():
+		if body == G.level.player:
+			continue
 		_try_evict_actor(body)
 
 
@@ -139,18 +149,29 @@ func _try_evict_actor(body: Node) -> void:
 		return
 	var actor := body as Node2D
 	var cs := _cell_size_px
-	var cell_top_y := global_position.y - cs * 0.5
-	if actor.global_position.y > global_position.y + cs * 0.5:
+
+	# Vertical half-extent of the actor's collision shape.
+	var actor_half_h := cs * 0.5
+	if "half_size" in actor:
+		var hs: Vector2 = actor.get("half_size")
+		if hs.y > 0.0:
+			actor_half_h = hs.y
+
+	# Stuck check first. If the actor isn't actually inside a
+	# collidable cell right now, do nothing.
+	var num_samples := int(ceil(actor_half_h * 2.0 / cs)) + 2
+	if not _actor_column_has_collidable(
+			actor, actor_half_h, num_samples):
 		return
+
+	# Walk up a cell at a time. First candidate_y whose full actor
+	# span is clear wins.
 	for step in range(_STUCK_MAX_CELLS + 1):
-		var try_y := cell_top_y - (step + 0.5) * cs
-		var probe := Vector2(actor.global_position.x, try_y)
-		if not G.terrain.is_cell_non_empty(probe):
+		var candidate_y := actor.global_position.y - (step + 1) * cs
+		if _test_clear_at_y(
+				actor, candidate_y, actor_half_h, num_samples):
 			actor.global_position = Vector2(
-					actor.global_position.x,
-					cell_top_y - (step + 1) * cs)
-			# Pure displacement: don't carry over any falling
-			# velocity the actor may have had before the push-up.
+					actor.global_position.x, candidate_y)
 			if "velocity" in actor:
 				var v: Vector2 = actor.get("velocity")
 				actor.set("velocity", Vector2(v.x, 0.0))
@@ -160,6 +181,59 @@ func _try_evict_actor(body: Node) -> void:
 		actor.call("apply_damage", 999)
 	else:
 		actor.queue_free()
+
+
+func _actor_column_has_collidable(
+		actor: Node2D,
+		actor_half_h: float,
+		num_samples: int) -> bool:
+	return _probe_actor_rect(
+			actor, actor.global_position.y, actor_half_h, num_samples)
+
+
+func _test_clear_at_y(
+		actor: Node2D,
+		candidate_y: float,
+		actor_half_h: float,
+		num_samples: int) -> bool:
+	return not _probe_actor_rect(
+			actor, candidate_y, actor_half_h, num_samples)
+
+
+# Sample the actor's AABB at x=left, x=center, x=right across
+# `num_samples` rows of y. Returns true if any sample is in a
+# collidable cell. Single-column sampling missed when the painted
+# cell was horizontally offset from the actor's center (common
+# because the player is narrower than one cell so its x rarely
+# aligns with a cell's column boundary).
+func _probe_actor_rect(
+		actor: Node2D,
+		center_y: float,
+		actor_half_h: float,
+		num_samples: int) -> bool:
+	var half_w := _cell_size_px * 0.5
+	if "half_size" in actor:
+		var hs: Vector2 = actor.get("half_size")
+		if hs.x > 0.0:
+			half_w = hs.x
+	# Leave a 1 px inset so we don't accidentally probe the cells
+	# ADJACENT to the actor when its bounds are exactly on a cell
+	# boundary.
+	var inset := 1.0
+	var x_center := actor.global_position.x
+	var x_left := x_center - half_w + inset
+	var x_right := x_center + half_w - inset
+	var xs: Array[float] = [x_left, x_center, x_right]
+	var top := center_y - actor_half_h
+	var bottom := center_y + actor_half_h
+	for i in num_samples:
+		var t := float(i) / float(max(num_samples - 1, 1))
+		var sample_y := lerpf(top, bottom, t)
+		for x in xs:
+			if G.terrain.is_cell_collidable(
+					Vector2(x, sample_y)):
+				return true
+	return false
 
 
 func _on_body_entered(body: Node) -> void:
