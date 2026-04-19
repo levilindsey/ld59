@@ -92,10 +92,10 @@ reached. Either author frames or extend
 animations (e.g. wall → `jump_rise`, ceiling-crawl → `walk`).
 
 ### 1.10 Fragment detach particle burst
-PLAN.md Phase 4 listed this as polish. CC detach path ships without
-it. When an un-anchored island becomes a `TerrainChunkFragment`, a
+PLAN.md Phase 4 listed this as polish. The FallingCell-based detach
+path ships without it. When an un-anchored island detaches, a
 one-shot dust/particle effect at the detach seam would make it read
-as "sheared off" rather than "materialized."
+as "sheared off" rather than "dissolved into tiles."
 
 ### 1.11 Enemy spawn point wiring for Coyote
 `Coyote.tscn` is implemented but no level scene currently references
@@ -103,6 +103,43 @@ it via an `EnemySpawnPoint.enemy_scene` export. First level that
 wants coyotes needs to drag the scene onto a spawn point (single-shot
 or respawning). Same gap applies if additional web-tile clusters are
 authored before the TileMap custom-data route is fully playtested.
+
+### 1.12 FallingCell landing at spawn position "restores" the chunk
+If a detached chunk's bottom row is resting against non-INDESTRUCTIBLE
+terrain (e.g., colored neighbor cells that happen to also be part of
+the main world but aren't anchor-typed), each FallingCell's landing
+probe finds the cell directly below as collidable on frame 1 and
+paints back at its *original* position. Net: the chunk looks like it
+didn't collapse. **Only triggers** when the chunk-to-main-world
+contact is via a solid (not air/liquid) shared edge.
+**Mitigations considered**:
+- Require FallingCell to move a minimum distance before painting
+  (say, 2 px). Clean but discards "chunk just shifts slightly" cases.
+- Skip the paint if landing_cy equals spawn_cy.
+**Why deferred**: rare in authored levels (most detachable chunks
+hang in air); noisy to fix correctly. Covered by the new CC
+diagnostic prints (item 5.7) so authors can spot it via logs.
+
+### 1.13 CC detach diagnostic prints still live
+`connected_components.cpp` currently `UtilityFunctions::print`s on
+every BFS — `[CC] detaching island at seed ...` and
+`[CC] skipping detach at seed ... anchored=... over_budget=...`.
+Useful while debugging the "chunk didn't collapse" report but spammy
+at scale. Gate behind a `#ifdef KBTERRAIN_CC_DEBUG` (or similar
+runtime flag) before ship.
+
+### 1.14 FallingCell `_actor_column_has_collidable` helper is unused
+Leftover from a prior eviction rewrite. Now that eviction uses exact
+AABB overlap + push-out, the helper doesn't have a caller. Safe to
+delete; parked instead of cleaning immediately in case another
+eviction path needs it.
+
+### 1.15 Falling-cell merge-back when player overlaps: preserve velocity?
+`_try_evict_actor` currently zeros `velocity.y` after pushing the
+actor out. Good for fall-through avoidance, but in cases where sand
+pushes the player *sideways* (e.g., a pile collapses against them)
+the horizontal part of velocity is untouched. Revisit if side-hit
+collisions feel wrong.
 
 ---
 
@@ -141,17 +178,21 @@ than the 14×21 sprite. This hides the bottom-row pixel overlap with
 terrain top. Author may want to revisit if visible character ever
 needs to sit lower or higher within the body.
 
-### 2.5 Damage CC island detach
-**Status**: **re-enabled.** The fallback arena now bakes an
+### 2.5 Damage CC island detach — re-enabled + tuned
+**Status**: re-enabled. The fallback arena now bakes an
 INDESTRUCTIBLE border via `bake_rect_with_border` (default 2 cells
 thick), and authored levels can paint anchor cells via the TileSet
-custom data. `damage_with_falloff` now calls
+custom data. `damage_with_falloff` calls
 `_detach_islands_from_seeds` as normal.
-**Remaining risk**: if a future level ships with NO anchor cells
-(an island floating in space), the whole thing will detach on first
-pulse. Belt-and-suspenders option: cap the flood size check to some
-fraction of the level bounds, but that adds complexity. Punt unless
-an author trips it.
+**Budget**: `MAX_DETACH_FLOOD` bumped from 5000 to 50000 to let
+legitimately-large chunks fully explore before the "assume main
+world" safety fires. Diagnostic prints installed (see 1.13).
+**Remaining risk**: CC only treats `INDESTRUCTIBLE` as an anchor.
+Any colored path back to the main world counts as "still attached,"
+even if the player's mental model is that they severed the chunk.
+When authoring, make sure every solid path back to an anchor is
+cleanly cuttable by the player's frequency, or expect the chunk to
+stay put.
 
 ### 2.6 WEB frequency type consistency across layers
 `terrain_level.gd` references `Frequency.Type.WEB` and the TileSet
@@ -175,6 +216,29 @@ it unset, so the loader falls back to 255 for everything. Once the
 damage-tier shader (1.2) lands, per-tile durability differences
 start mattering — pick values (e.g. web 64, sand 128, RGB/Y 255,
 indestructible n/a since the damage path early-outs on that type).
+
+### 2.8 Flow-sim rule tuning — "drop-aware teleport" constants
+The top-layer lateral spread uses `_LATERAL_REACH = 32` and
+`_MAX_DROP = 64`. These control how far water "sees" when looking
+for a drain. Works well for jam-scale levels; revisit if pool
+widths exceed 32 cells (top-layer won't find drains across pool)
+or if pit depths exceed 64 cells (won't teleport all the way down).
+
+### 2.9 Wedge-kick tuning on jump
+`_WEDGE_KICK_PX_PER_SEC = 220` horizontal, `_WEDGE_POP_UP_PX_PER_SEC
+= 240` vertical. Values picked without playtesting multiple gap
+sizes — could feel too weak in a narrow 1-cell V, too strong in a
+wider diagonal gap. Tune against real stuck cases.
+
+### 2.10 Continuous `_unstick_from_terrain` threshold
+Fires only when a collidable cell is *fully embedded* in the player's
+vertical extent (cell top & bottom both strictly inside the player's
+AABB). Normal floor resting — penetration ~1-3 px — never triggers.
+Tight tradeoff: a sand cell landing and overlapping the player by
+5-7 px won't register as stuck and depends on FallingCell's one-shot
+eviction to push the player out. If that path ever misses, the
+continuous check won't rescue. Watch for "half-stuck" visuals where
+the player is partially inside a cell for a frame.
 
 ---
 
@@ -257,6 +321,68 @@ slopes. Fine for the jam aesthetic; if we want smooth sand piles
 or compressible liquid later, flow has to go analog (w-shadow mass
 transfer) and density corners become source of truth, not type.
 
+### 3.11 Lateral water oscillation on flat pool surface
+Top-layer liquid cells with empty lateral neighbors alternate
+directions every step (prefer_right flips by parity). On a truly
+flat pool with an extra cell on top, this manifests as the top cell
+shimmying back and forth by 1 px at 30 Hz. Accepted: the
+alternative rules that killed the shimmer (vel_x commit, column-
+depth rule) introduced *worse* behavior (mound trapping, blocked
+spread). The drop-aware lateral teleport handles the real-problem
+case — tall mounds — and leaves the cosmetic shimmy. Looks like
+"water shimmering" at the rim rather than actual jitter.
+
+### 3.12 Fragment chunks now per-cell FallingCells, not RigidBody2D
+PLAN.md Phase 4 described `TerrainChunkFragment` as a rigid body
+that spins and tumbles. We bailed on that path because Godot's 2D
+rigid-body physics was unstable for small detached groups (wedging,
+tunneling, velocity explosions). Replaced with `FallingCell.gd`:
+each cell falls straight down under scalar gravity, stagger-
+delayed by row (bottom falls first), lands on the first collidable
+below it, and paints back into the terrain. No rotation, no rigid
+body. Visually less dynamic but orders of magnitude more
+predictable. `terrain_chunk_fragment.{gd,tscn}` files remain in the
+repo unused; delete when a cleanup pass happens.
+
+### 3.13 Water cells are non-collidable in physics
+`TerrainWorld` runs marching squares **twice per chunk** — once on
+the real density field for rendering (so water renders normally),
+then again on a collision-only density field where LIQUID cells'
+corners are zeroed (so no collision segments are emitted along
+water-air or water-solid interfaces). The collision-density build
+runs on the main thread with cross-chunk `ChunkManager` access so
+shared boundary corners stay consistent with neighbor chunks. Pool
+surfaces are non-colliding — the player swims through — while the
+pool's solid walls/floor stay collidable.
+
+### 3.14 Synchronous collision shape update on main thread
+`_queue_remesh` runs `mesh_chunk` on the collision-density snapshot
+and calls `shape_set_data` **synchronously** before handing the job
+to the worker. The worker's async remesh still handles the render
+mesh; its collision output (when it eventually integrates) overwrites
+with the same data. Reason: without the sync step, a big detach
+left stale collision shapes active for several frames while the
+worker queue cleared, and the player collided with "phantom" chunks
+at old positions. The duplicated work is cheap (microseconds per
+chunk).
+
+### 3.15 Neighbor-chunk remesh cascade scoped to rare events
+`_queue_remesh_and_neighbors` (which also re-queues the 4 axial
+neighbor chunks) is called for bake / damage / paint / CC detach.
+Flow-step uses plain `_queue_remesh` (no cascade) because flow
+mutates hundreds of cells per tick and the 5× cascade overwhelmed
+the worker queue, making flow appear to "freeze" visually. Trade-
+off: water moving across a chunk seam briefly has stale collision on
+the neighbor chunk until something else triggers its remesh. Barely
+observable in practice.
+
+### 3.16 Player wedge-kick is input-gated, not continuous
+`_apply_wedge_kick_if_stuck` fires only on jump-press, not every
+frame. If the player gets wedged without pressing jump (e.g., falling
+into a 1-cell V), they're stuck until they press jump. Deliberate —
+continuous nudging would fight normal contact-with-wall behavior
+(sliding along a vertical wall, for instance).
+
 ---
 
 ## 4. Architectural Follow-Ups
@@ -295,6 +421,32 @@ per-cell health?
   TRIANGLES all using the same per-cell alpha (no Gouraud blend
   inside a cell — they all share one cell's health). Simpler than B,
   more correct than naive A.
+
+### 4.4 Flow sim — ballistic lateral teleport
+Top-layer liquid cells scan out to `_LATERAL_REACH = 32` cells each
+direction, look for the furthest supported empty cell whose downward
+scan finds a non-empty settle floor, and teleport directly to that
+settle position (drop > 0 only). Runs as a second pass after the
+main bottom-up flow scan. Effect: water drains tall mounds in one
+or two steps instead of 1 cell/step, so a water source that drops
+onto a container doesn't pile up indefinitely.
+**Known edge**: drop == 0 deliberately declines the move. That's
+what keeps a single-cell rim stable on a flat pool; it's also the
+source of the residual shimmy described in 3.11.
+**Breaks on walls** was a bug — lateral scan must `break` (not
+`continue`) on a blocked path cell, else water teleports through
+containers. Fixed; don't regress this.
+
+### 4.5 FallingCell merge-back semantics
+Each FallingCell paints back into terrain when it lands, and
+`paint_cell_at_world` allows overwriting NONE or LIQUID cells (so
+sand can displace water). Any other occupied target refuses the
+paint. One-shot eviction runs after paint: `_evict_actors_from_cell`
+AABB-checks the player and any `get_overlapping_bodies()` returns,
+then `_try_evict_actor` pushes them out using the cell vs actor
+AABB, preferring the smaller-displacement direction, falling back
+to a few cells further if blocked. Lethal if no clearance within
+`_STUCK_MAX_CELLS + 1` steps.
 
 ---
 
@@ -339,6 +491,39 @@ never updated. `build_web_template.ps1` manually prepends
 `$EmsdkDir`, `$EmsdkDir\upstream\emscripten`, and the node/python
 tool dirs to `$env:PATH`. Keep the manual prepend in any future
 script that needs `emcc` on PATH.
+
+### 5.7 CC detach diagnostic prints
+`connected_components.cpp` is currently logging every BFS outcome
+(detach / skip-anchored / skip-over-budget). Use this to debug the
+"chunk didn't collapse" case — the log tells you which failure
+fired. Remove or gate-with-define before ship.
+
+### 5.8 Damage & CC corner-density refresh
+Both the per-cell `_apply_damage_to_cell` destroy path and the CC
+detach path now rebuild corner densities from the surrounding type
+neighborhood after clearing a cell, instead of blindly zeroing all 4
+corners. Fixes the "ground under a detached chunk is no longer
+solid" symptom (corner shared with surviving neighbor stays 255).
+Keep this invariant if new cell-removal paths appear.
+
+### 5.9 `is_solid()` is corner-density-based; use `is_cell_collidable()` for cell queries
+`TerrainWorld.is_solid(pos)` samples the raw density field
+(top-left corner of containing cell), so a cell whose corner was
+poked to 255 by an adjacent anchor reads as "solid" even when its
+own type is NONE. Added `is_cell_non_empty` / `is_cell_type_at` /
+`is_cell_collidable` that query `type_per_cell` directly. Use those
+for anything cell-granular (FallingCell landing checks, player
+stuck detection, water-vs-solid tests). `is_solid` still has its
+place for continuous queries like raycasts into density, but never
+for "what type is THIS cell."
+
+### 5.10 Flow step `_try_sand_move` must gate the liquid-swap path on source type
+Sand source + LIQUID target → swap. Any other source + LIQUID
+target → decline. If the source-type gate is missing, a LIQUID cell
+above another LIQUID cell `_swap_cells` with itself (no-op but
+returns success), which blocks the caller from trying sideways in
+the same scan and manifested as water freezing mid-fall. Keep the
+gate in place.
 
 ---
 
@@ -385,10 +570,37 @@ deps, GUT framework, and other host-side artifacts. If new top-level
 directories appear that contain non-shippable assets (source,
 scripts, test data), extend the filter.
 
+### 6.7 DLL lock requires full Godot restart
+Windows file-locks `libkbterrain.windows.template_debug.x86_64.dll`
+while any Godot process has it loaded. A new build lands as
+`~libkbterrain…` next to the in-use one. Full editor restart picks
+up the new DLL; an in-editor "Reload" or re-opening the project
+window is not sufficient. Confirmed via run logs showing the "new"
+DLL still behaving as the previous compile.
+
+### 6.8 Chunk `FLOW_STEP_INTERVAL` ticked at 2 (30 Hz)
+`terrain_world.h` sets `FLOW_STEP_INTERVAL = 2`, i.e., flow_step
+runs every 2 physics frames (effective 30 Hz). Tried 1 (every
+frame, 60 Hz) to speed water spread; the doubled per-frame activity
+caused visible vibration on pool surfaces the user rejected.
+Kept at 2 as the compromise between responsiveness and visual
+calm; the drop-aware lateral teleport does the heavy lifting for
+spread speed.
+
+### 6.9 Settings debug flag `start_with_full_juice`
+`settings.tres` exposes a bool that seeds the player with
+`MAX_JUICE = 10` in every colored frequency on `_ready`. Useful for
+playtesting pulse behavior without bug-hunting. Default in the
+script is `false`; the committed `.tres` instance override is `true`
+right now (for current testing). Flip the `.tres` value before a
+public build.
+
 ---
 
-*Last updated: April 18, 2026 (desktop session). Generated from
-session-history audit plus current-session knowledge. Includes
-web-deploy toolchain build-out, Phase 4 CC detach re-enable after
-anchor authoring landed, Phase 3 TileSet custom-data shipping, and
-bundle-size filter work.*
+*Last updated: April 19, 2026. Generated from session-history audit
+plus current-session knowledge. Includes the FallingCell per-cell
+detach rewrite, liquid-aware two-pass collision meshing, sync
+collision shape updates, neighbor-chunk cascade scoping, drop-aware
+lateral water spread, swim physics, wedge-kick on jump, conservative
+continuous player stuck check, sand-through-water swap, CC budget
+bump + diagnostics, and corner-density refresh for damage/CC paths.*

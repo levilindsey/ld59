@@ -114,6 +114,7 @@
     - 
 - Music
 - SFX
+- Fix player collision with floor.
 - Water should damage cat
 - Start hanging from the ceiling.
 - Can also come to rest again against the ceiling
@@ -123,4 +124,4 @@
 - Background art
 - Polish player and enemy sprite shading.
 - Polish level sprites.
-- 
+- Better music!!
