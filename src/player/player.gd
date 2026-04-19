@@ -74,6 +74,20 @@ const _INVINCIBILITY_SEC := 0.8
 ## this many seconds.
 const _BLINK_PERIOD_SEC := 0.12
 
+## Post-jump stuck detection: if `move_and_slide` produced less total
+## displacement than this after the jump impulse, we consider the
+## player wedged.
+const _JUMP_STUCK_DISPLACEMENT_THRESHOLD_PX := 1.0
+
+## How far out (in cell-size increments) we search for the nearest
+## open space when unsticking a wedged jump.
+const _UNSTICK_MAX_RING_RADIUS := 8
+
+## AABB-shrink used by `_aabb_overlaps_collidable` so that normal
+## resting contact with a floor/wall (collision-resolution puts us
+## flush against the cell) doesn't count as overlap.
+const _AABB_OVERLAP_EPSILON_PX := 0.5
+
 
 signal juice_changed(frequency: int, new_value: int)
 signal frequency_selection_changed(frequency: int)
@@ -91,6 +105,10 @@ var _current_cooldown_duration := _ECHO_COOLDOWN_SEC
 var _invincibility_remaining_sec := 0.0
 var _blink_accum_sec := 0.0
 var _pre_step_velocity_y := 0.0
+## Set true on the frame a jump is triggered so that we check, on the
+## following frame (once `move_and_slide` has had a chance to apply
+## the jump impulse), whether the player actually moved.
+var _check_jump_displacement_next_step := false
 
 ## Per-frequency juice pool. Populated in `_ready()`; only the four
 ## gameplay frequencies (RED/GREEN/BLUE/YELLOW) are keys.
@@ -166,7 +184,17 @@ func _physics_process(delta: float) -> void:
 	else:
 		_current_max_horizontal_speed_multiplier = 1.0
 	_pre_step_velocity_y = velocity.y
+	var pos_before_super := global_position
 	super._physics_process(delta)
+	if _check_jump_displacement_next_step:
+		_check_jump_displacement_next_step = false
+		var displacement := global_position - pos_before_super
+		if (displacement.length_squared()
+				< _JUMP_STUCK_DISPLACEMENT_THRESHOLD_PX
+				* _JUMP_STUCK_DISPLACEMENT_THRESHOLD_PX):
+			_unstick_to_nearest_open_space()
+	if just_triggered_jump:
+		_check_jump_displacement_next_step = true
 	if _is_in_water:
 		# Scale the gravity delta applied by the scaffolder this
 		# frame so water feels floaty. Also handle swim jumps.
@@ -188,17 +216,57 @@ func _physics_process(delta: float) -> void:
 				-_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC,
 				_WEB_MAX_VERTICAL_SPEED_PX_PER_SEC)
 	_apply_fluid_damage(delta)
+	_snap_to_terrain_surface()
 	_unstick_from_terrain()
 
 
+## Workaround for a Godot 2D physics issue where `CharacterBody2D`'s
+## depenetration against our per-cell `ConvexPolygonShape2D` terrain
+## lets the capsule settle with its center on the surface instead of
+## its bottom. Result: the capsule sinks into floors by half its
+## height and leaves a matching gap below ceilings. Manually snap the
+## body's origin to the first collidable cell top at the player's x
+## when the body is inside terrain. No-op when the capsule is already
+## above the surface (normal airborne / jumping state).
+func _snap_to_terrain_surface() -> void:
+	if not is_instance_valid(G.terrain) or G.terrain.settings == null:
+		return
+	var cs: float = G.terrain.settings.cell_size_px
+	# Walk downward from the body origin in cell steps and return the
+	# top of the first collidable cell we hit. If the body is already
+	# inside a solid cell, the first iteration matches and we snap
+	# straight up to its top.
+	var x := global_position.x
+	var start_y := global_position.y
+	const _MAX_STEPS := 4
+	for step in _MAX_STEPS:
+		var probe_y := start_y + step * cs
+		if G.terrain.is_cell_collidable(Vector2(x, probe_y)):
+			var cell_top := floorf(probe_y / cs) * cs
+			print("snap-check: y=", global_position.y,
+					" step=", step, " probe=", probe_y,
+					" cell_top=", cell_top,
+					" will_snap=", global_position.y > cell_top)
+			# Only snap upward: don't pull the player down onto terrain
+			# they weren't previously touching.
+			if global_position.y > cell_top:
+				global_position.y = cell_top
+				if velocity.y > 0.0:
+					velocity.y = 0.0
+			return
+	print("snap-check: y=", start_y,
+			" no collidable cell below within ",
+			_MAX_STEPS * cs, " px")
+
+
 ## Continuous stuck check. Conservative: only triggers when a
-## collidable cell is fully embedded in the player's vertical
-## extent — i.e., overlap of at least a full cell height (8 px).
-## This ignores the normal few-pixel penetration of CharacterBody2D
+## collidable cell is fully embedded in the player's AABB. This
+## ignores the normal few-pixel penetration of CharacterBody2D
 ## resting on a floor, only firing when sand/solid has truly filled
 ## a chunk of the player's interior. Backs up FallingCell's one-
 ## shot eviction for cases where terrain FLOW moves cells in C++
-## without going through the FallingCell paint path.
+## without going through the FallingCell paint path. Searches in 2D
+## cell-aligned rings for the closest non-embedded position.
 func _unstick_from_terrain() -> void:
 	if not is_instance_valid(G.terrain) or G.terrain.settings == null:
 		return
@@ -206,30 +274,44 @@ func _unstick_from_terrain() -> void:
 	var hh: float = half_size.y if half_size.y > 0.0 else cs * 0.5
 	var hw: float = half_size.x if half_size.x > 0.0 else cs * 0.5
 
-	if not _is_cell_fully_embedded(global_position.y, hh, hw, cs):
+	if not _is_cell_fully_embedded(global_position, hh, hw, cs):
 		return
 
-	const _MAX_STEPS := 8
-	for step in range(1, _MAX_STEPS + 1):
-		for dir in [-1, 1]:
-			var try_y: float = global_position.y + dir * step * cs
-			if not _is_cell_fully_embedded(try_y, hh, hw, cs):
-				global_position = Vector2(global_position.x, try_y)
-				velocity.y = 0.0
-				return
+	for r in range(1, _UNSTICK_MAX_RING_RADIUS + 1):
+		var has_best := false
+		var best_pos := Vector2.ZERO
+		var best_dist_sq := INF
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if absi(dx) != r and absi(dy) != r:
+					continue
+				var try_pos: Vector2 = (
+						global_position
+						+ Vector2(dx * cs, dy * cs))
+				if _is_cell_fully_embedded(try_pos, hh, hw, cs):
+					continue
+				var d := try_pos.distance_squared_to(global_position)
+				if d < best_dist_sq:
+					best_dist_sq = d
+					best_pos = try_pos
+					has_best = true
+		if has_best:
+			global_position = best_pos
+			velocity = Vector2.ZERO
+			return
 
 
-## True iff any collidable cell has BOTH its top and bottom edges
-## inside the player's vertical AABB (shrunk by a small x-inset so
-## glancing side contact doesn't count). Requires a full 8 px of y
-## overlap before triggering — normal resting contact doesn't.
+## True iff any collidable cell fits entirely inside the player's
+## AABB at `center` (shrunk by a small x-inset so glancing side
+## contact doesn't count). Normal resting contact produces only a
+## few pixels of overlap and doesn't trigger.
 func _is_cell_fully_embedded(
-		center_y: float, hh: float, hw: float, cs: float) -> bool:
+		center: Vector2, hh: float, hw: float, cs: float) -> bool:
 	const _X_INSET := 1.0
-	var p_left := global_position.x - hw + _X_INSET
-	var p_right := global_position.x + hw - _X_INSET
-	var p_top := center_y - hh
-	var p_bottom := center_y + hh
+	var p_left := center.x - hw + _X_INSET
+	var p_right := center.x + hw - _X_INSET
+	var p_top := center.y - hh
+	var p_bottom := center.y + hh
 
 	var first_cx := int(floor(p_left / cs))
 	var last_cx := int(floor(p_right / cs))
@@ -305,40 +387,72 @@ func _unhandled_input(event: InputEvent) -> void:
 		select_next_frequency()
 	elif event.is_action_pressed("ability"):
 		_emit_echo_pulse()
-	elif event.is_action_pressed("jump"):
-		_apply_wedge_kick_if_stuck()
 
 
-## If the player is wedged against solid terrain on both sides
-## (e.g., stuck in a 1-cell-wide diagonal gap), apply a horizontal
-## impulse toward the side with more room so they can pop free. If
-## neither side has more room, nudge upward a bit.
-const _WEDGE_KICK_PX_PER_SEC := 220.0
-const _WEDGE_POP_UP_PX_PER_SEC := 240.0
-
-func _apply_wedge_kick_if_stuck() -> void:
+## If the jump impulse failed to move the player AND their collision
+## box currently overlaps collidable cells, teleport to the nearest
+## cell-aligned offset where the box fits. Velocity is zeroed so the
+## carry-over jump impulse doesn't push them right back into terrain.
+func _unstick_to_nearest_open_space() -> void:
 	if not is_instance_valid(G.terrain) or G.terrain.settings == null:
 		return
 	var cs: float = G.terrain.settings.cell_size_px
-	# Probe one cell to each side at the player's center y.
-	var left_probe := Vector2(
-			global_position.x - half_size.x - cs * 0.5,
-			global_position.y)
-	var right_probe := Vector2(
-			global_position.x + half_size.x + cs * 0.5,
-			global_position.y)
-	var left_blocked: bool = G.terrain.is_cell_collidable(left_probe)
-	var right_blocked: bool = G.terrain.is_cell_collidable(right_probe)
-	if not left_blocked and not right_blocked:
+	var hh: float = half_size.y if half_size.y > 0.0 else cs * 0.5
+	var hw: float = half_size.x if half_size.x > 0.0 else cs * 0.5
+	var aabb_offset: Vector2 = collision_shape.position
+	if not _aabb_overlaps_collidable(
+			global_position + aabb_offset, hh, hw, cs):
+		# We didn't move, but we're not overlapping terrain — likely
+		# just a ceiling-kiss or a jump into a tight but walkable
+		# space. Leave us alone.
 		return
-	if left_blocked and not right_blocked:
-		velocity.x = _WEDGE_KICK_PX_PER_SEC
-	elif right_blocked and not left_blocked:
-		velocity.x = -_WEDGE_KICK_PX_PER_SEC
-	else:
-		# Both sides blocked — pop upward a bit extra on top of the
-		# normal jump.
-		velocity.y = minf(velocity.y, -_WEDGE_POP_UP_PX_PER_SEC)
+	for r in range(1, _UNSTICK_MAX_RING_RADIUS + 1):
+		var has_best := false
+		var best_pos := Vector2.ZERO
+		var best_dist_sq := INF
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if absi(dx) != r and absi(dy) != r:
+					continue
+				var try_pos: Vector2 = (
+						global_position
+						+ Vector2(dx * cs, dy * cs))
+				if _aabb_overlaps_collidable(
+						try_pos + aabb_offset, hh, hw, cs):
+					continue
+				var d := try_pos.distance_squared_to(global_position)
+				if d < best_dist_sq:
+					best_dist_sq = d
+					best_pos = try_pos
+					has_best = true
+		if has_best:
+			global_position = best_pos
+			velocity = Vector2.ZERO
+			return
+
+
+## True iff the player's AABB (centered at `center`, shrunk by
+## `_AABB_OVERLAP_EPSILON_PX` on every side) overlaps any collidable
+## cell. The shrink ignores grazing contact.
+func _aabb_overlaps_collidable(
+		center: Vector2, hh: float, hw: float, cs: float) -> bool:
+	var p_left := center.x - hw + _AABB_OVERLAP_EPSILON_PX
+	var p_right := center.x + hw - _AABB_OVERLAP_EPSILON_PX
+	var p_top := center.y - hh + _AABB_OVERLAP_EPSILON_PX
+	var p_bottom := center.y + hh - _AABB_OVERLAP_EPSILON_PX
+	if p_left >= p_right or p_top >= p_bottom:
+		return false
+	var first_cx := int(floor(p_left / cs))
+	var last_cx := int(floor(p_right / cs))
+	var first_cy := int(floor(p_top / cs))
+	var last_cy := int(floor(p_bottom / cs))
+	for cy in range(first_cy, last_cy + 1):
+		for cx in range(first_cx, last_cx + 1):
+			var ccx := cx * cs + cs * 0.5
+			var ccy := cy * cs + cs * 0.5
+			if G.terrain.is_cell_collidable(Vector2(ccx, ccy)):
+				return true
+	return false
 
 
 func _emit_echo_pulse() -> void:

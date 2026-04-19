@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://c1qdd50ca4hst" path="res://src/player/player.gd" id="1_rxibo"]
 [ext_resource type="Resource" uid="uid://ctj0jafyt6dls" path="res://src/player/player_movement_settings.tres" id="2_244u8"]
 [ext_resource type="PackedScene" uid="uid://br1b7cse0hxmt" path="res://src/player/player_animator.tscn" id="2_mf2ua"]
-[ext_resource type="PackedScene" uid="uid://b2kx7y8mp0q4r" path="res://src/bugs/bug_region_probe.tscn" id="4_probe"]
 [ext_resource type="Script" uid="uid://cbm40k837ptou" path="res://src/player/player_health.gd" id="5_health"]
 
 [sub_resource type="CapsuleShape2D" id="CapsuleShape2D_5f2sf"]
@@ -31,9 +30,6 @@ unique_name_in_owner = true
 position = Vector2(0, -7.5)
 shape = SubResource("CapsuleShape2D_5f2sf")
 metadata/_edit_lock_ = true
-
-[node name="BugRegionProbe" parent="." unique_id=2011799926 instance=ExtResource("4_probe")]
-position = Vector2(0, -7.5)
 
 [node name="WebSensor" type="Area2D" parent="." unique_id=315784456]
 unique_name_in_owner = true

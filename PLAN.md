@@ -366,8 +366,8 @@ damages only matching tiles.
 ### Bug system (GDScript)
 
 - [x] `Bug` scene + script (typed, TTL, drift, opacity fade)
-- [x] `BugSpawner` + `BugRegionProbe` (Area2D on player)
-- [x] `BugSpawnRegion : Area2D` with `frequency` + `rate_delta`
+- [x] `BugSpawner` iterates `BugSpawnRegion` group, point-in-rect
+- [x] `BugSpawnRegion : Node2D` with `frequency`, `rate_delta`, `size`
 - [x] Rate stacking (additive, clamped ≥ 0 per frequency)
 - [x] Annulus-sampled spawn positions, reject-on-solid up to 8 tries
 - [x] Bug consumption: set player frequency

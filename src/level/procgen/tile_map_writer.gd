@@ -157,18 +157,16 @@ static func _make_bug_region(
 		bug_spawn_region_script: Script) -> Node:
 	if bug_spawn_region_script == null:
 		return null
-	var area := Area2D.new()
-	area.name = "BugSpawnRegion_%s" % [h.tile]
-	area.set_script(bug_spawn_region_script)
-	area.set("frequency", h.frequency)
-	area.set("rate_delta", float(h.params.get("rate_delta", 1.0)))
-	var shape := CollisionShape2D.new()
-	var rect := RectangleShape2D.new()
+	var region := Node2D.new()
+	region.name = "BugSpawnRegion_%s" % [h.tile]
+	region.set_script(bug_spawn_region_script)
+	region.set("frequency", h.frequency)
+	region.set("rate_delta", float(h.params.get("rate_delta", 1.0)))
 	var sz: Vector2i = h.params.get("size_tiles", Vector2i(10, 8))
-	rect.size = Vector2(sz.x * _TILE_SIZE_PX, sz.y * _TILE_SIZE_PX)
-	shape.shape = rect
-	area.add_child(shape)
-	return area
+	region.set(
+			"size",
+			Vector2(sz.x * _TILE_SIZE_PX, sz.y * _TILE_SIZE_PX))
+	return region
 
 
 static func _make_enemy_spawn(

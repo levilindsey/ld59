@@ -1,10 +1,11 @@
 class_name BugSpawner
 extends Node2D
-## Ticks per-frequency spawn rates from the player's BugRegionProbe
-## and instantiates Bug scenes in an annulus around the player.
-## Stacks region contributions additively, applies a per-frequency
-## minimum-rate floor to prevent soft-lock, and rejects candidate
-## positions that fall inside a solid tile.
+## Ticks per-frequency spawn rates by iterating authored
+## BugSpawnRegion nodes (grouped at runtime) and instantiates Bug
+## scenes in an annulus around the player. Stacks region
+## contributions additively, applies a per-frequency minimum-rate
+## floor to prevent soft-lock, and rejects candidate positions that
+## fall inside a solid tile.
 ##
 ## Lives under Level so it's torn down on level reset.
 
@@ -109,10 +110,11 @@ func _process(delta: float) -> void:
 	if not is_instance_valid(G.level) or not is_instance_valid(G.level.player):
 		return
 
-	var probe := _find_probe(G.level.player)
+	var player_pos: Vector2 = G.level.player.global_position
+	var stacked_deltas := _aggregate_region_deltas(player_pos)
 
 	for freq: int in _SPAWN_FREQUENCIES:
-		var rate := _compute_rate(freq, probe)
+		var rate := _compute_rate(freq, stacked_deltas.get(freq, 0.0))
 		if rate <= 0.0:
 			continue
 
@@ -123,13 +125,26 @@ func _process(delta: float) -> void:
 			_try_spawn(freq)
 
 
-func _compute_rate(freq: int, probe: BugRegionProbe) -> float:
+## Sum `rate_delta` across every region whose rect contains
+## `player_pos`, bucketed by frequency. Unused frequencies are
+## absent from the result.
+func _aggregate_region_deltas(player_pos: Vector2) -> Dictionary:
+	var deltas: Dictionary = {}
+	for node in get_tree().get_nodes_in_group(BugSpawnRegion.GROUP):
+		var region := node as BugSpawnRegion
+		if region == null:
+			continue
+		if not region.contains_point(player_pos):
+			continue
+		deltas[region.frequency] = (
+				deltas.get(region.frequency, 0.0) + region.rate_delta)
+	return deltas
+
+
+func _compute_rate(freq: int, stacked_delta: float) -> float:
 	var base: float = base_rates.get(freq, 0.0)
-	var stacked: float = base
-	if is_instance_valid(probe):
-		stacked += probe.get_rate_for(freq)
 	var floor_rate: float = min_rate_floor.get(freq, 0.0)
-	return maxf(stacked, floor_rate)
+	return maxf(base + stacked_delta, floor_rate)
 
 
 func _try_spawn(freq: int) -> void:
@@ -196,9 +211,3 @@ func _sample_exp_threshold() -> float:
 		u = 0.999999
 	return -log(1.0 - u)
 
-
-func _find_probe(player: Player) -> BugRegionProbe:
-	for child in player.get_children():
-		if child is BugRegionProbe:
-			return child as BugRegionProbe
-	return null
