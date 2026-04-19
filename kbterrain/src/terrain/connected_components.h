@@ -35,6 +35,10 @@ struct DetachedIsland {
 	std::vector<uint8_t> local_density;
 	// Dense local type buffer, size width * height.
 	std::vector<uint8_t> local_type;
+	// Dense local health buffer, size width * height. Zero for empty
+	// cells; mirrors the cell's health in the main world at the moment
+	// of detach so merge-back can restore the exact state.
+	std::vector<uint8_t> local_health;
 
 	// Origin in world pixels (upper-left of the bounding box).
 	Vector2 origin_px;

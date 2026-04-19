@@ -132,7 +132,10 @@ func _on_fragment_detached(
 		mesh_verts: PackedVector2Array,
 		mesh_indices: PackedInt32Array,
 		mesh_colors: PackedColorArray,
-		collision_segments: PackedVector2Array) -> void:
+		collision_segments: PackedVector2Array,
+		island_size_cells: Vector2i,
+		cell_types: PackedByteArray,
+		cell_healths: PackedByteArray) -> void:
 	if not is_instance_valid(fragment_scene):
 		return
 	var fragment: TerrainChunkFragment = fragment_scene.instantiate()
@@ -142,7 +145,10 @@ func _on_fragment_detached(
 			mesh_verts,
 			mesh_indices,
 			mesh_colors,
-			collision_segments)
+			collision_segments,
+			island_size_cells,
+			cell_types,
+			cell_healths)
 
 
 func _connect_pulse_damage() -> void:

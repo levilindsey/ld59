@@ -62,14 +62,12 @@ GDExtension regression). Custom-host with COOP/COEP headers.
 
 ## 2. Pending Design Decisions
 
-### 2.1 Tile custom data layers (`type`, `initial_health`)
-**Status**: `TileSet` schema not yet authored; `TerrainLevelLoader`
-still uses single hard-coded `default_terrain_type` per level. The
-"final ideal" editor tooling depends on this.
-**Plan**: add `type: int` + `initial_health: int` custom data layers
-to `default_tile_set.tres`, extend
-`TerrainLevelLoader.bake_from_tile_map_layer` to read them per cell.
-Roughly half a day of work.
+### 2.1 Tile custom data layers (`type`, `initial_health`) — **DONE**
+Schema authored on `default_tile_set.tres`; loader reads per-tile
+`type` + `initial_health`; WEB_* tiles route to Area2D spawns.
+Health falls back to 255 when `initial_health` is unset (0 treated
+as unset, since Godot returns default 0 for never-written int
+custom data).
 
 ### 2.2 Bug spawn-region stacking semantics
 **Status**: implementation is additive with min-rate-floor safety;

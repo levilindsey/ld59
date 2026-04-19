@@ -86,9 +86,14 @@ static func bake_from_tile_map_layer(
 		var health_from_data: int = _read_custom_data_int(
 				tml, tile_pos, _CUSTOM_DATA_HEALTH, -1)
 		tile_type[tile_pos] = resolved_type
+		# Godot returns the default int (0) for tiles whose
+		# `initial_health` custom data was never explicitly set, so
+		# we can't distinguish "unset" from "explicitly 0". Treat 0
+		# as "not set" and fall back to 255; designers who want a
+		# nearly-dead tile can use 1.
 		tile_health[tile_pos] = (
 				health_from_data
-				if health_from_data >= 0
+				if health_from_data > 0
 				else 255)
 
 	_bake_from_solid_map(terrain, tile_type, tile_health,

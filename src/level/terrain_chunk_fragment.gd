@@ -25,6 +25,11 @@ var _mesh_canvas_rid: RID = RID()
 var _rest_accum_sec := 0.0
 var _lifetime_sec := 0.0
 var _damage_cooldown_sec := 0.0
+var _merged := false
+var _island_size_cells := Vector2i.ZERO
+var _cell_types: PackedByteArray = PackedByteArray()
+var _cell_healths: PackedByteArray = PackedByteArray()
+var _cell_size_px := 0.0
 
 
 func _ready() -> void:
@@ -45,12 +50,20 @@ func build(
 		mesh_verts: PackedVector2Array,
 		mesh_indices: PackedInt32Array,
 		mesh_colors: PackedColorArray,
-		collision_segments: PackedVector2Array) -> void:
+		collision_segments: PackedVector2Array,
+		island_size_cells: Vector2i,
+		cell_types: PackedByteArray,
+		cell_healths: PackedByteArray) -> void:
 	global_position = origin_world
 	linear_velocity = initial_velocity
+	_island_size_cells = island_size_cells
+	_cell_types = cell_types
+	_cell_healths = cell_healths
+	if is_instance_valid(G.terrain) and G.terrain.settings != null:
+		_cell_size_px = G.terrain.settings.cell_size_px
 
 	_build_mesh(mesh_verts, mesh_indices, mesh_colors)
-	_build_collision(collision_segments)
+	_build_collision(mesh_verts, mesh_indices)
 
 
 func _build_mesh(
@@ -67,14 +80,24 @@ func _build_mesh(
 			_mesh_canvas_rid, indices, verts, colors)
 
 
-func _build_collision(segments: PackedVector2Array) -> void:
-	if segments.is_empty():
+# RigidBody2D requires convex shapes; ConcavePolygonShape2D is
+# only valid on StaticBody2D. Emit one ConvexPolygonShape2D per
+# triangle from the mesh.
+func _build_collision(
+		verts: PackedVector2Array,
+		indices: PackedInt32Array) -> void:
+	if verts.is_empty() or indices.is_empty():
 		return
-	var shape := ConcavePolygonShape2D.new()
-	shape.segments = segments
-	var coll := CollisionShape2D.new()
-	coll.shape = shape
-	add_child(coll)
+	var tri_count := indices.size() / 3
+	for i in tri_count:
+		var a := verts[indices[i * 3 + 0]]
+		var b := verts[indices[i * 3 + 1]]
+		var c := verts[indices[i * 3 + 2]]
+		var shape := ConvexPolygonShape2D.new()
+		shape.points = PackedVector2Array([a, b, c])
+		var coll := CollisionShape2D.new()
+		coll.shape = shape
+		add_child(coll)
 
 
 func _physics_process(delta: float) -> void:
@@ -90,7 +113,35 @@ func _physics_process(delta: float) -> void:
 	if (
 			_rest_accum_sec >= _REST_DESPAWN_SEC
 			or _lifetime_sec >= _MAX_LIFETIME_SEC):
+		_merge_into_terrain()
 		queue_free()
+
+
+func _merge_into_terrain() -> void:
+	if _merged:
+		return
+	_merged = true
+	if (
+			not is_instance_valid(G.terrain)
+			or _cell_size_px <= 0.0
+			or _island_size_cells == Vector2i.ZERO
+			or _cell_types.is_empty()):
+		return
+	var w := _island_size_cells.x
+	var h := _island_size_cells.y
+	var xform := global_transform
+	for ly in h:
+		for lx in w:
+			var idx := ly * w + lx
+			var type := int(_cell_types[idx])
+			if type == Frequency.Type.NONE:
+				continue
+			var local_center := Vector2(
+					(lx + 0.5) * _cell_size_px,
+					(ly + 0.5) * _cell_size_px)
+			var world_pos := xform * local_center
+			G.terrain.paint_cell_at_world(
+					world_pos, type, int(_cell_healths[idx]))
 
 
 func _exit_tree() -> void:
