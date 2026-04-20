@@ -170,9 +170,16 @@ func _setup_runtime() -> void:
 				tw, tml, default_terrain_type,
 				self, web_tile_scene)
 		# The tilemap was authoring-only; remove it now that the MS
-		# version is what drives gameplay. queue_free (rather than
-		# just visible=false) guarantees no stray rendering path can
-		# bring the tiles back onto the screen.
+		# version is what drives gameplay. Hide immediately for the
+		# current frame (queue_free doesn't take effect until the
+		# frame ends), then queue_free so the node is actually gone
+		# on the next frame. Also null out the tile_set so even if
+		# something keeps a reference, there's nothing to render.
+		tml.visible = false
+		tml.enabled = false
+		tml.modulate = Color(1, 1, 1, 0)
+		print("[bake] tml.visible=%s tml.enabled=%s tml in tree=%s"
+				% [tml.visible, tml.enabled, tml.is_inside_tree()])
 		tml.queue_free()
 	else:
 		_bake_fallback_arena(tw)

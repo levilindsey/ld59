@@ -3,7 +3,8 @@
     "allow": [
       "Bash(powershell -ExecutionPolicy Bypass -File kbterrain/build_web.ps1)",
       "Bash(powershell -ExecutionPolicy Bypass -File kbterrain\\\\build_windows.ps1)",
-      "Bash(powershell -ExecutionPolicy Bypass -File kbterrain/build_windows.ps1)"
+      "Bash(powershell -ExecutionPolicy Bypass -File kbterrain/build_windows.ps1)",
+      "Bash(powershell -ExecutionPolicy Bypass -File scripts/export_web.ps1)"
     ]
   }
 }

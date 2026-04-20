@@ -19,6 +19,9 @@ func _enter_tree() -> void:
 
 	Scaffolder.set_up()
 
+	G.fatal()
+	get_tree().quit()
+
 
 func _ready() -> void:
 	G.print("main._ready", ScaffolderLog.CATEGORY_SYSTEM_INITIALIZATION)
