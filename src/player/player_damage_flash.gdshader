@@ -20,13 +20,6 @@ uniform float pulse_alpha : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 outline_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float outline_width_px : hint_range(0.0, 16.0) = 0.0;
 
-// DIAGNOSTIC: when true, paint EVERY outside-sprite pixel within the
-// mesh quad with `outline_color`, bypassing the neighbor-alpha check.
-// Used to verify the material is actually attached and the shader is
-// running on enemies. Leave false for normal play. Remove once the
-// outline is confirmed working.
-uniform bool outline_debug_paint_all = false;
-
 
 // Sample sprite alpha at `uv`. Uses `TEXTURE_PIXEL_SIZE`-derived
 // offsets at callsites; no UV-bounds guard here because with
@@ -73,15 +66,6 @@ void fragment() {
 	// preserve it here so the body renders in its frequency color.
 	vec4 modulate_rgba = COLOR;
 
-	// DIAGNOSTIC short-circuit: paint every fragment in the mesh quad
-	// with `outline_color`. If enemies don't change to a solid rect of
-	// that color, the material isn't being applied — nothing below
-	// this line is running for them.
-	if (outline_debug_paint_all) {
-		COLOR = vec4(outline_color.rgb, 1.0);
-		return;
-	}
-
 	if (tex_color.a > 0.5) {
 		// Sprite body — tint toward flash_color. Preserve sprite
 		// alpha so the edges stay anti-aliased with the scene.
@@ -100,14 +84,10 @@ void fragment() {
 		vec2 pixel_size = TEXTURE_PIXEL_SIZE;
 		vec4 base = tex_color;
 		if (outline_width_px > 0.0) {
-			if (outline_debug_paint_all) {
+			float neighbor = alpha_within(
+					TEXTURE, UV, outline_width_px, pixel_size);
+			if (neighbor > 0.5) {
 				base = outline_color;
-			} else {
-				float neighbor = alpha_within(
-						TEXTURE, UV, outline_width_px, pixel_size);
-				if (neighbor > 0.5) {
-					base = outline_color;
-				}
 			}
 		}
 		if (pulse_alpha > 0.001 && pulse_radius_px > 0.0) {

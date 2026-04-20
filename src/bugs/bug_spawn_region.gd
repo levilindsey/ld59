@@ -38,7 +38,7 @@ const _EDITOR_LABEL_OFFSET := Vector2(4, 14)
 ## Rectangular extent of the region in pixels, centered on this
 ## node's position. Used for both the point-in-rect test and the
 ## in-editor debug annotation.
-@export var size: Vector2 = Vector2(160, 128):
+@export var size: Vector2 = Vector2(320, 256):
 	set(value):
 		size = value
 		queue_redraw()

@@ -1113,26 +1113,6 @@ void fragment() {
 		float ring_mask = is_tagged ? 0.0 : 1.0;
 		vec3 out_rgb = max(near_contribution, pulse_contribution)
 				+ ring_rgb * ring_mask;
-		// DEBUG: region classifier.
-		//   MAGENTA = halo zone in UNPAINTED cell (bleed ring).
-		//             If teal shows here, layer-0 render is
-		//             painting past the authored cell edge.
-		//   CYAN    = halo zone in a PAINTED cell (inner rim).
-		//             inside_solid_cell gate keeps the interior
-		//             block from running; textured_rgb = c0.
-		//   YELLOW  = density >= 0.99 but the fragment is in an
-		//             UNPAINTED cell. Unpainted cell whose 4
-		//             corners all clamp to 255 because every
-		//             adjacent cell is painted. Normal shader
-		//             path still runs; any teal here is layer 0.
-		if (d_here_outer > 0.01 && d_here_outer < 0.99) {
-			out_rgb = fragment_in_painted_cell
-					? vec3(0.0, 1.0, 1.0)
-					: vec3(1.0, 0.0, 1.0);
-		} else if (d_here_outer >= 0.99 && !fragment_in_painted_cell
-				&& in_world_bbox) {
-			out_rgb = vec3(1.0, 1.0, 0.0);
-		}
 
 		// --- Bounce-back pings ----------------------------------------
 		// Each ping is a line drawn along the continuous colinear

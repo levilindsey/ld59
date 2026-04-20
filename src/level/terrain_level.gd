@@ -145,12 +145,35 @@ func _setup_runtime() -> void:
 
 	var tml := _get_tile_map_layer()
 	if is_instance_valid(tml) and tml.get_used_cells().size() > 0:
+		# Log the first few tile positions so we can diagnose any
+		# offset between the authored TileMapLayer positions and the
+		# cells we end up baking into the TerrainWorld. Only prints
+		# once per level load and bounded to ~5 entries so it stays
+		# cheap.
+		var used := tml.get_used_cells()
+		var sample_count: int = min(5, used.size())
+		print("[bake] tile_size=%s cells_per_tile=%s"
+				% [tml.tile_set.tile_size,
+					int(tml.tile_set.tile_size.x)
+							/ int(terrain_settings.cell_size_px)
+							if terrain_settings != null else -1])
+		for i in range(sample_count):
+			var tp: Vector2i = used[i]
+			print("[bake] tile_pos=%s world=%s map_to_local=%s"
+					% [
+						tp,
+						Vector2(tp.x * tml.tile_set.tile_size.x,
+								tp.y * tml.tile_set.tile_size.y),
+						tml.map_to_local(tp),
+					])
 		TerrainLevelLoader.bake_from_tile_map_layer(
 				tw, tml, default_terrain_type,
 				self, web_tile_scene)
-		# The tilemap was authoring-only; hide it now that the MS
-		# version is what drives gameplay.
-		tml.visible = false
+		# The tilemap was authoring-only; remove it now that the MS
+		# version is what drives gameplay. queue_free (rather than
+		# just visible=false) guarantees no stray rendering path can
+		# bring the tiles back onto the screen.
+		tml.queue_free()
 	else:
 		_bake_fallback_arena(tw)
 

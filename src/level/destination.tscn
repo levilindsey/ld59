@@ -16,6 +16,9 @@ shape = SubResource("CircleShape2D_dest")
 [node name="Mama" parent="." instance=ExtResource("2_animator")]
 scale = Vector2(2, 2)
 
+[node name="AnimatedSprite2D" parent="Mama" index="0"]
+flip_h = true
+
 [node name="BigMeowPlayer" type="AudioStreamPlayer2D" parent="." unique_id=1923764501]
 unique_name_in_owner = true
 stream = ExtResource("3_bigmeow")
