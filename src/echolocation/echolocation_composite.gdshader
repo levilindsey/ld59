@@ -66,6 +66,15 @@ uniform float density_grad_tap_px : hint_range(0.5, 16.0) = 4.0;
 uniform float near_radius_px : hint_range(0.0, 512.0) = 80.0;
 uniform float near_fade_px : hint_range(0.0, 128.0) = 32.0;
 
+// Minimum visibility for "sprite-like" pixels (non-terrain, non-
+// tagged, non-empty luma) outside the near-field halo. Keeps the
+// player sprite, enemies, and their frequency outlines readable in
+// the dark — their visibility clamps to this value when `near_vis`
+// would drop below it. Terrain tiles and background stay on the
+// full near_vis fade. 1.0 = sprites never darken; 0.0 = previous
+// behavior (sprites fade to black with distance).
+uniform float sprite_ambient_vis : hint_range(0.0, 1.0) = 1.0;
+
 // Distance attenuation for pulse stippling (separate from the
 // traveling-wave envelope). Pixels closer than `stipple_fade_start_px`
 // stipple at full density; from there to `stipple_fade_end_px` the
@@ -311,10 +320,12 @@ uniform int atlas_slot_count = 8;
 uniform float interior_scale_px : hint_range(4.0, 128.0) = 32.0;
 uniform float surface_scale_along_px : hint_range(4.0, 128.0) = 32.0;
 // Depth (world px) the surface accent band extends from the cell
-// surface INTO the solid. Default matches `density_cell_size_px` so
-// the accent stays within the surface cell's own bounds and doesn't
-// bleed into interior cells below.
-uniform float surface_depth_px : hint_range(1.0, 32.0) = 8.0;
+// surface INTO the solid. Set to 0 to disable the accent entirely
+// (`outward_probe` collapses to the fragment's own position, which
+// reads density 1 for every interior fragment; v saturates at 1.0
+// where the surface atlas is transparent, so band_mix = 0 and only
+// the interior texture is drawn).
+uniform float surface_depth_px : hint_range(0.0, 32.0) = 0.0;
 // RGB distance from the expected terrain palette color above which
 // the near-field atlas override is skipped and the scene pixel (c0)
 // is kept instead. The composite classifies terrain by world-space
@@ -871,14 +882,6 @@ void fragment() {
 		// overlay sprite owns this pixel and we keep c0 instead of
 		// overwriting it with the atlas texture.
 		vec3 textured_rgb = c0;
-		bool overlay_sprite_here = is_bg_tile
-				&& distance(c0, bg_type_color)
-						> overlay_sprite_diff_threshold;
-		// `is_bg_tile` comes from a type-texture sample with a +0.5
-		// offset that can bleed half a cell beyond the authored
-		// solid region. Reinforce with a density-at-fragment gate:
-		// only run the texturing path where the fragment is actually
-		// inside the solid (d_here near 1).
 		// Out-of-bbox density clamps to the boundary corners (which
 		// are 255 wherever a painted cell touches the bbox edge), so
 		// force zero outside the bbox instead.
@@ -906,13 +909,33 @@ void fragment() {
 							* 255.0 + 0.5);
 		}
 		bool fragment_in_painted_cell = bg_type_id_floor != 0;
+		vec3 bg_type_color_strict = fragment_in_painted_cell
+				? palette_color_for_type(bg_type_id_floor)
+				: vec3(0.0);
+		// Two overlay-sprite checks so type transitions don't get mis-
+		// classified. `overlay_sprite_at_bleed` uses the Voronoi-sampled
+		// palette (so the bleed-mitigation path can tell a 1-px mesh-
+		// color bleed from a real sprite at any spot near a painted
+		// edge). `overlay_sprite_at_fragment` uses the STRICTLY
+		// contained cell's palette (so the interior block recognises
+		// the mesh color as "its own" even when the fragment is in the
+		// half of the cell whose Voronoi neighbour is a different
+		// type — otherwise the type-boundary row gets the interior
+		// block skipped and the raw saturated mesh palette leaks out).
+		bool overlay_sprite_at_bleed = is_bg_tile
+				&& distance(c0, bg_type_color)
+						> overlay_sprite_diff_threshold;
+		bool overlay_sprite_at_fragment = fragment_in_painted_cell
+				&& distance(c0, bg_type_color_strict)
+						> overlay_sprite_diff_threshold;
 		// Mesh-rasterization bleed mitigation. Godot's 2D renderer
 		// bleeds the mesh color up to 1 pixel past the authored cell
 		// edge in the backbuffer. Since `is_bg_tile` uses the half-
 		// cell Voronoi halo, it's still true in that bleed ring, so
 		// we can detect "pixel just outside a painted cell" and
 		// sample `c0` 2 pixels further out to skip past the bleed.
-		if (is_bg_tile && !inside_solid_cell && !overlay_sprite_here) {
+		if (is_bg_tile && !inside_solid_cell
+				&& !overlay_sprite_at_bleed) {
 			vec2 snap_n;
 			if (abs(surface_normal.x) > abs(surface_normal.y)) {
 				snap_n = vec2(sign(surface_normal.x), 0.0);
@@ -922,7 +945,7 @@ void fragment() {
 			vec2 offset_uv = SCREEN_UV + snap_n * 2.0 / screen_size_px;
 			textured_rgb = texture(screen_tex, offset_uv).rgb;
 		}
-		if (fragment_in_painted_cell && !overlay_sprite_here
+		if (fragment_in_painted_cell && !overlay_sprite_at_fragment
 				&& inside_solid_cell) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
 			float u_base = float(bg_type_id_floor) / slot_count_f;
@@ -992,40 +1015,44 @@ void fragment() {
 			// Used directly as the atlas v-axis, this maps "distance
 			// from surface" to the atlas's vertical fade.
 			//
-			// Tangent is snapped to the dominant cardinal direction so
-			// the `along` coordinate stays monotonic along a given
-			// wall — avoids flicker at cell boundaries where the raw
-			// gradient direction could rotate.
-			vec2 snapped_normal;
-			if (abs(surface_normal.x) > abs(surface_normal.y)) {
-				snapped_normal = vec2(
-						sign(surface_normal.x), 0.0);
+			// Surface accent. When `surface_depth_px == 0` the accent
+			// is disabled entirely: the atlas row at v = 1 is not
+			// perfectly transparent in every authored palette, so
+			// simply collapsing `outward_probe` to the fragment's own
+			// position still blends a faint bottom-row color over the
+			// interior. Short-circuit here so the disabled case truly
+			// paints only the interior texture.
+			if (surface_depth_px > 0.0) {
+				vec2 snapped_normal;
+				if (abs(surface_normal.x) > abs(surface_normal.y)) {
+					snapped_normal = vec2(
+							sign(surface_normal.x), 0.0);
+				} else {
+					snapped_normal = vec2(
+							0.0, sign(surface_normal.y));
+				}
+				vec2 tangent = vec2(
+						-snapped_normal.y, snapped_normal.x);
+				float along = fract(
+						dot(world_pos, tangent)
+						/ surface_scale_along_px);
+				vec2 outward_probe = world_pos
+						+ snapped_normal * surface_depth_px;
+				float d_out = texture(density_tex,
+						world_to_density_uv(outward_probe)).r;
+				float v = clamp(d_out, 0.0, 1.0);
+				vec2 surface_uv = vec2(
+						u_base + along * u_width, v);
+				vec4 surface_sample = texture(
+						surface_atlas, surface_uv);
+				float band_mix = surface_sample.a;
+				textured_rgb = mix(
+						interior_rgb,
+						surface_sample.rgb,
+						band_mix);
 			} else {
-				snapped_normal = vec2(
-						0.0, sign(surface_normal.y));
+				textured_rgb = interior_rgb;
 			}
-			vec2 tangent = vec2(
-					-snapped_normal.y, snapped_normal.x);
-			float along = fract(
-					dot(world_pos, tangent) / surface_scale_along_px);
-			vec2 outward_probe = world_pos
-					+ snapped_normal * surface_depth_px;
-			float d_out = texture(
-					density_tex, world_to_density_uv(outward_probe)).r;
-			float v = clamp(d_out, 0.0, 1.0);
-			vec2 surface_uv = vec2(
-					u_base + along * u_width, v);
-			vec4 surface_sample = texture(
-					surface_atlas, surface_uv);
-
-			// Visibility gate: only render accent where the fragment
-			// itself is INSIDE solid. We already know
-			// `inside_solid_cell` from the outer guard, so the atlas
-			// alpha (authored per-column fade) is the only additional
-			// shaping the mix needs here.
-			float band_mix = surface_sample.a;
-			textured_rgb = mix(
-					interior_rgb, surface_sample.rgb, band_mix);
 		}
 
 		// --- Echo-pulse stipple color: flat palette per type -------
@@ -1070,12 +1097,42 @@ void fragment() {
 		// where a tile or a tagged sprite (bug, future enemy) sits,
 		// so the expanding color ring passes visibly over the sky
 		// but not across tile / bug art.
-		vec3 near_contribution = textured_rgb * near_vis;
+		// Sprite pixels (not terrain, not tagged-halo, not empty
+		// backdrop) clamp their near-field visibility to a floor so
+		// they stay readable outside the close-by halo — matches the
+		// player's own body and the frequency-outline around enemies,
+		// which otherwise fade into black with distance. Terrain and
+		// empty sky keep the raw near_vis fade.
+		bool is_sprite_pixel = !is_tagged && has_content > 0.5;
+		float effective_near_vis = is_sprite_pixel
+				? max(near_vis, sprite_ambient_vis)
+				: near_vis;
+		vec3 near_contribution = textured_rgb * effective_near_vis;
 		vec3 pulse_contribution = stipple_rgb * dithered_pulse_reveal
 				* (1.0 - near_vis);
 		float ring_mask = is_tagged ? 0.0 : 1.0;
 		vec3 out_rgb = max(near_contribution, pulse_contribution)
 				+ ring_rgb * ring_mask;
+		// DEBUG: region classifier.
+		//   MAGENTA = halo zone in UNPAINTED cell (bleed ring).
+		//             If teal shows here, layer-0 render is
+		//             painting past the authored cell edge.
+		//   CYAN    = halo zone in a PAINTED cell (inner rim).
+		//             inside_solid_cell gate keeps the interior
+		//             block from running; textured_rgb = c0.
+		//   YELLOW  = density >= 0.99 but the fragment is in an
+		//             UNPAINTED cell. Unpainted cell whose 4
+		//             corners all clamp to 255 because every
+		//             adjacent cell is painted. Normal shader
+		//             path still runs; any teal here is layer 0.
+		if (d_here_outer > 0.01 && d_here_outer < 0.99) {
+			out_rgb = fragment_in_painted_cell
+					? vec3(0.0, 1.0, 1.0)
+					: vec3(1.0, 0.0, 1.0);
+		} else if (d_here_outer >= 0.99 && !fragment_in_painted_cell
+				&& in_world_bbox) {
+			out_rgb = vec3(1.0, 1.0, 0.0);
+		}
 
 		// --- Bounce-back pings ----------------------------------------
 		// Each ping is a line drawn along the continuous colinear

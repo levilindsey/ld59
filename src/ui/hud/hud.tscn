@@ -1,13 +1,15 @@
-[gd_scene load_steps=7 format=3 uid="uid://bt1la6s52krxe"]
+[gd_scene format=3 uid="uid://bt1la6s52krxe"]
 
 [ext_resource type="Theme" uid="uid://cl3pkwueh4mag" path="res://src/core/main_theme.tres" id="1_4rn03"]
 [ext_resource type="Script" uid="uid://cvmchc2851mho" path="res://src/ui/hud/hud.gd" id="1_eqvli"]
+[ext_resource type="Texture2D" uid="uid://bsjvhue0o81e3" path="res://assets/images/scratch/q.png" id="3_bpdxj"]
+[ext_resource type="Texture2D" uid="uid://darhn138pvccn" path="res://assets/images/scratch/e.png" id="6_qtkbr"]
 [ext_resource type="Texture2D" uid="uid://g8krq86co53s" path="res://assets/images/scratch/title.png" id="8_bpdxj"]
 [ext_resource type="Texture2D" uid="uid://3iakxs6hl0gt" path="res://assets/images/scratch/controls.png" id="9_qtkbr"]
-[ext_resource type="PackedScene" uid="uid://cl9y3k4m7vq8x" path="res://src/ui/hud/health_bar.tscn" id="10_hb"]
+[ext_resource type="PackedScene" uid="uid://cmay3k4m7vq8x" path="res://src/ui/hud/health_bar.tscn" id="10_hb"]
 [ext_resource type="PackedScene" uid="uid://d2cvs8tm1kn0j" path="res://src/ui/hud/juice_bar_row.tscn" id="11_juice"]
 
-[node name="Hud" type="PanelContainer"]
+[node name="Hud" type="PanelContainer" unique_id=1041782707]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -17,7 +19,7 @@ mouse_filter = 2
 theme = ExtResource("1_4rn03")
 script = ExtResource("1_eqvli")
 
-[node name="MarginContainer" type="MarginContainer" parent="."]
+[node name="MarginContainer" type="MarginContainer" parent="." unique_id=1923377252]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/margin_left = 10
@@ -25,110 +27,123 @@ theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 10
 theme_override_constants/margin_bottom = 10
 
-[node name="GameState" type="HBoxContainer" parent="MarginContainer"]
+[node name="GameState" type="HBoxContainer" parent="MarginContainer" unique_id=1784338939]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="LeftContent" type="VBoxContainer" parent="MarginContainer/GameState"]
+[node name="LeftContent" type="VBoxContainer" parent="MarginContainer/GameState" unique_id=650176444]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(144, 0)
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 4
 
-[node name="HealthBar" parent="MarginContainer/GameState/LeftContent" instance=ExtResource("10_hb")]
+[node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/GameState/LeftContent" unique_id=66660191]
+layout_mode = 2
+
+[node name="TextureRect" type="TextureRect" parent="MarginContainer/GameState/LeftContent/HBoxContainer" unique_id=1524431336]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_vertical = 8
+texture = ExtResource("3_bpdxj")
+stretch_mode = 3
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer/GameState/LeftContent/HBoxContainer" unique_id=1428634014]
+layout_mode = 2
+
+[node name="HealthBar" parent="MarginContainer/GameState/LeftContent/HBoxContainer/VBoxContainer" unique_id=589975168 instance=ExtResource("10_hb")]
 unique_name_in_owner = true
 layout_mode = 2
 
-[node name="JuiceBarRow" parent="MarginContainer/GameState/LeftContent" instance=ExtResource("11_juice")]
+[node name="JuiceBarRow" parent="MarginContainer/GameState/LeftContent/HBoxContainer/VBoxContainer" unique_id=403952881 instance=ExtResource("11_juice")]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
 
-[node name="Spacer" type="Control" parent="MarginContainer/GameState"]
+[node name="TextureRect2" type="TextureRect" parent="MarginContainer/GameState/LeftContent/HBoxContainer" unique_id=430433343]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_vertical = 8
+texture = ExtResource("6_qtkbr")
+stretch_mode = 3
+
+[node name="Spacer" type="Control" parent="MarginContainer/GameState" unique_id=1588832998]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="MiddleContent" type="VBoxContainer" parent="MarginContainer/GameState"]
+[node name="MiddleContent" type="VBoxContainer" parent="MarginContainer/GameState" unique_id=697118432]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Spacer2" type="Control" parent="MarginContainer/GameState"]
+[node name="Spacer2" type="Control" parent="MarginContainer/GameState" unique_id=1867531806]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="RightContent" type="VBoxContainer" parent="MarginContainer/GameState"]
+[node name="RightContent" type="VBoxContainer" parent="MarginContainer/GameState" unique_id=2091282343]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 
-[node name="HBoxContainer2" type="HBoxContainer" parent="MarginContainer"]
+[node name="HBoxContainer2" type="HBoxContainer" parent="MarginContainer" unique_id=1435323949]
 layout_mode = 2
 
-[node name="Spacer" type="Control" parent="MarginContainer/HBoxContainer2"]
+[node name="Spacer" type="Control" parent="MarginContainer/HBoxContainer2" unique_id=1323484027]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer/HBoxContainer2"]
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer/HBoxContainer2" unique_id=983239476]
 layout_mode = 2
 
-[node name="Control" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer"]
+[node name="Control" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer" unique_id=351650491]
 layout_mode = 2
 
-[node name="Title" type="TextureRect" parent="MarginContainer/HBoxContainer2/VBoxContainer/Control"]
+[node name="Title" type="TextureRect" parent="MarginContainer/HBoxContainer2/VBoxContainer/Control" unique_id=356293377]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -102.0
-offset_top = 48.0
-offset_bottom = 96.0
+offset_left = -146.5
+offset_top = 41.0
+offset_right = 0.5
+offset_bottom = 82.0
 grow_horizontal = 2
 scale = Vector2(2, 2)
 size_flags_horizontal = 4
 size_flags_vertical = 0
 texture = ExtResource("8_bpdxj")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer/HBoxContainer2/VBoxContainer"]
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer/HBoxContainer2/VBoxContainer" unique_id=1678944571]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Control" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer"]
+[node name="Control" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer" unique_id=1493362032]
 custom_minimum_size = Vector2(0, 440)
 layout_mode = 2
 
-[node name="Control5" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer"]
+[node name="Control5" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer" unique_id=825857789]
 layout_mode = 2
 
-[node name="Controls" type="TextureRect" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Control5"]
+[node name="Controls" type="TextureRect" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Control5" unique_id=456170150]
 unique_name_in_owner = true
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -54.5
-offset_top = 20.0
-offset_right = 69.5
-offset_bottom = 70.0
-grow_horizontal = 2
-grow_vertical = 2
+layout_mode = 0
+offset_left = 19.0
+offset_right = 89.0
+offset_bottom = 74.0
 size_flags_horizontal = 4
 size_flags_vertical = 4
 texture = ExtResource("9_qtkbr")
 
-[node name="Credits" type="VBoxContainer" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer"]
+[node name="Credits" type="VBoxContainer" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer" unique_id=210429971]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Label" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits"]
+[node name="Label" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits" unique_id=999096751]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9843137, 0.9764706, 0.9372549, 1)
 theme_override_colors/font_outline_color = Color(0.11764706, 0.09803922, 0.18039216, 1)
@@ -137,11 +152,11 @@ theme_override_font_sizes/font_size = 12
 text = "Made by"
 horizontal_alignment = 1
 
-[node name="Control2" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits"]
+[node name="Control2" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits" unique_id=1061488586]
 custom_minimum_size = Vector2(0, 8)
 layout_mode = 2
 
-[node name="Label4" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits"]
+[node name="Label4" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits" unique_id=392399913]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9843137, 0.9764706, 0.9372549, 1)
 theme_override_colors/font_outline_color = Color(0.11764706, 0.09803922, 0.18039216, 1)
@@ -150,9 +165,9 @@ theme_override_font_sizes/font_size = 18
 text = "Levi Lindsey"
 horizontal_alignment = 1
 
-[node name="Control3" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer"]
+[node name="Control3" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer" unique_id=1721546490]
 layout_mode = 2
 
-[node name="Spacer2" type="Control" parent="MarginContainer/HBoxContainer2"]
+[node name="Spacer2" type="Control" parent="MarginContainer/HBoxContainer2" unique_id=262161730]
 layout_mode = 2
 size_flags_horizontal = 3

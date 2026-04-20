@@ -17,6 +17,9 @@ shader_parameter/pulse_color = Color(1, 0.3, 0.3, 1)
 shader_parameter/pulse_radius_px = 0.0
 shader_parameter/pulse_width_px = 5.0
 shader_parameter/pulse_alpha = 0.0
+shader_parameter/outline_color = Color(1, 1, 1, 1)
+shader_parameter/outline_width_px = 5.0
+shader_parameter/outline_debug_paint_all = true
 
 [sub_resource type="AtlasTexture" id="AtlasTexture_coyote_idle"]
 atlas = ExtResource("2_tex")

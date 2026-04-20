@@ -141,6 +141,14 @@ func _refresh_bars(player: Player) -> void:
 
 
 func _refresh_selection(player: Player) -> void:
+	# While the player is non-interactive (spawn grace or post-win
+	# pose), the intro overlay owns the screen and the selection
+	# box would read as active-but-frozen UI. Hide it. `top_level`
+	# on SelectionBox means it doesn't inherit the parent
+	# GameState's fade-out modulate, so we can't rely on that alone.
+	if player.is_non_interactive:
+		_selection_box.visible = false
+		return
 	var freq := player.current_frequency
 	var slot: PanelContainer = _slots.get(freq, null)
 	if slot == null:

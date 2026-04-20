@@ -186,6 +186,13 @@ var _last_ceiling_bonk_time_sec := -INF
 ## so bugs/enemies can't detect them.
 var _is_in_spawn_grace := false
 
+## True from `enter_win_pose()` onward. Mirrors spawn grace — the
+## player-layer bit is cleared and damage is ignored — but without
+## the attached-idle animation. `has_won` in `_physics_process` and
+## `_unhandled_input` already halts movement/input, so this flag
+## only has to gate damage and enemy perception.
+var _is_in_win_pose := false
+
 ## Tracks whether the 1 px sprite offset is currently applied, so
 ## repeated attach/detach cycles can't compound the offset.
 var _attached_sprite_offset_applied := false
@@ -214,6 +221,25 @@ var current_frequency: int = Frequency.Type.NONE
 ## during spawn grace).
 var is_attached_idle: bool:
 	get: return _is_attached_idle
+
+## Read-only view of the initial-spawn grace flag. True from spawn
+## until the player's first detach; enemies skip proximity
+## perception while this is true so they don't pre-aggro while the
+## player is still pinned to the ceiling.
+var is_in_spawn_grace: bool:
+	get: return _is_in_spawn_grace
+
+## Read-only view of the post-win pose flag. True from `win()` until
+## the level resets; enemies skip proximity perception and damage
+## routing skips the player while this is true.
+var is_in_win_pose: bool:
+	get: return _is_in_win_pose
+
+## True whenever the player is in either the spawn-grace pose or
+## the post-win pose. External AI (enemies) gates proximity
+## perception on this so they don't pursue a non-interactive player.
+var is_non_interactive: bool:
+	get: return _is_in_spawn_grace or _is_in_win_pose
 
 
 func _ready() -> void:
@@ -732,7 +758,7 @@ func get_current_cooldown_duration() -> float:
 
 
 func apply_damage(amount: int) -> void:
-	if _is_in_spawn_grace:
+	if _is_in_spawn_grace or _is_in_win_pose:
 		return
 	if _invincibility_remaining_sec > 0.0:
 		return
@@ -820,19 +846,24 @@ func apply_heal(amount: int) -> void:
 
 
 func _on_died() -> void:
-	# Halt input/physics on this frame so no stray tick fires in the
-	# window between now and queue_free taking effect at end-of-frame.
+	# Halt input/physics + clear the player-layer bit so nothing can
+	# interact with the corpse during the game-over delay. Don't
+	# queue_free here: `Level.reset()` handles cleanup after the
+	# 3-second delay. Keeping the node alive keeps the camera and the
+	# echolocation near-field reveal anchored to the death position
+	# instead of snapping to the spawn point (which would show an
+	# unlit, camera-jumped "other" area of the level for 3 seconds).
 	set_process(false)
 	set_physics_process(false)
 	set_process_unhandled_input(false)
+	set_collision_layer_value(4, false)
 	# Route death + trailing failure cadence through AudioMain so the
-	# cadence outlives queue_free on this node.
+	# cadence outlives the eventual queue_free on this node.
 	if is_instance_valid(G.audio):
 		G.audio.play_player_sound("death", true)
 		G.audio.play_player_sound_delayed("failure", _FAILURE_CADENCE_DELAY_SEC)
 	if is_instance_valid(G.level):
 		G.level.game_over()
-	destroy()
 
 
 func _update_actions() -> void:
@@ -881,6 +912,8 @@ func _exit_attached_idle() -> void:
 		_is_in_spawn_grace = false
 		# Godot's helper is 1-indexed: value 4 flips bit index 3 (= 8).
 		set_collision_layer_value(4, true)
+		if is_instance_valid(G.hud):
+			G.hud.hide_intro_overlay()
 
 
 ## Called after `super._physics_process`. The scaffolder clears
@@ -924,9 +957,24 @@ func _wants_to_detach() -> bool:
 ## Entry point used by the level right after spawn. Nudges the player
 ## down from the spawn marker, marks them as in spawn grace (impervious
 ## + imperceptible) and drops the player-layer bit, then enters
-## attached-idle with the spawn lockout.
+## attached-idle with the spawn lockout. Also fades in the Title +
+## Controls intro overlay so the player sees them while pinned.
 func _enter_attached_idle_at_spawn() -> void:
 	global_position.y += _CEILING_SPAWN_Y_OFFSET_PX
 	_is_in_spawn_grace = true
 	set_collision_layer_value(4, false)
 	_enter_attached_idle(_SPAWN_DETACH_LOCKOUT_SEC)
+	if is_instance_valid(G.hud):
+		G.hud.show_intro_overlay()
+
+
+## Enters the post-win "frozen" pose. Halts velocity, clears the
+## player-layer bit so nothing can touch-interact with the player,
+## and flags the pose so enemy perception + damage routing skip the
+## player. Input + physics already halt via `G.level.has_won` guards
+## in `_unhandled_input` / `_physics_process`. Caller (Level.win())
+## is responsible for showing the intro overlay.
+func enter_win_pose() -> void:
+	_is_in_win_pose = true
+	velocity = Vector2.ZERO
+	set_collision_layer_value(4, false)

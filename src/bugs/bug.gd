@@ -30,13 +30,17 @@ const _DRIFT_JITTER_RADIANS := PI * 0.6
 ## juice granted on eat, and heal amount applied to the player.
 ## Body scales are calibrated for the 16x17 bug.png frame. Glow
 ## scales are calibrated for the 64x64 GradientTexture2D halo.
-const _SMALL_BODY_SCALE := 1.5
-const _SMALL_GLOW_SCALE := 0.6
+## Sprite scales are half of their previous values so bugs read as
+## smaller creatures. BIG's collision radius matches SMALL's so
+## eating a big bug is the same physical reach as a small one — the
+## BIG/SMALL split is purely a visual + yield difference.
+const _SMALL_BODY_SCALE := 0.75
+const _SMALL_GLOW_SCALE := 0.3
 const _SMALL_COLLISION_RADIUS := 15.0
 const _SMALL_HEAL := 15
-const _BIG_BODY_SCALE := 3.0
-const _BIG_GLOW_SCALE := 1.2
-const _BIG_COLLISION_RADIUS := 28.0
+const _BIG_BODY_SCALE := 1.5
+const _BIG_GLOW_SCALE := 0.6
+const _BIG_COLLISION_RADIUS := 15.0
 const _BIG_HEAL := 75
 
 ## Eaten pulse — matches the player's damage-hit aesthetic, tinted

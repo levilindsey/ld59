@@ -64,8 +64,11 @@ func game_over() -> void:
 
 
 func win() -> void:
-	G.state.transition(StateMain.State.CREDITS)
 	has_won = true
+	if is_instance_valid(player):
+		player.enter_win_pose()
+	if is_instance_valid(G.hud):
+		G.hud.show_intro_overlay()
 
 
 func _physics_process(_delta: float) -> void:
