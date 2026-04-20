@@ -72,6 +72,13 @@ const _BUG_TAG_RADIUS_PX := 6.0
 @export_range(0.0, 512.0) var near_radius_px := 72.0
 @export_range(0.0, 128.0) var near_fade_px := 64.0
 
+## Minimum visibility for non-terrain, non-tagged sprite pixels
+## (player, enemies, enemy frequency outlines) outside the near-
+## field halo. 1.0 = sprites never darken; 0.0 = previous behavior
+## where sprites fade to black with distance. Doesn't affect terrain
+## tiles or empty backdrop.
+@export_range(0.0, 1.0) var sprite_ambient_vis := 1.0
+
 @export_range(1.0, 64.0) var edge_width_px := 12.0
 @export_range(0.05, 2.0) var fade_tau_sec := 0.35
 @export_range(0.1, 4.0) var lifetime_sec := 1.2
@@ -217,6 +224,8 @@ func _ready() -> void:
 			"atlas_slot_count", Frequency.ATLAS_SLOT_COUNT)
 	_shader_mat.set_shader_parameter("near_radius_px", near_radius_px)
 	_shader_mat.set_shader_parameter("near_fade_px", near_fade_px)
+	_shader_mat.set_shader_parameter(
+			"sprite_ambient_vis", sprite_ambient_vis)
 	_shader_mat.set_shader_parameter("edge_width_px", edge_width_px)
 	_shader_mat.set_shader_parameter("fade_tau_sec", fade_tau_sec)
 	_shader_mat.set_shader_parameter("lifetime_sec", lifetime_sec)

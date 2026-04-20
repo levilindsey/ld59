@@ -18,27 +18,35 @@ uniform float pulse_alpha : hint_range(0.0, 1.0) = 0.0;
 // frequency. Width 0 disables it so materials that don't opt in
 // (player, bugs) stay visually unchanged.
 uniform vec4 outline_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
-uniform float outline_width_px : hint_range(0.0, 8.0) = 0.0;
+uniform float outline_width_px : hint_range(0.0, 16.0) = 0.0;
+
+// DIAGNOSTIC: when true, paint EVERY outside-sprite pixel within the
+// mesh quad with `outline_color`, bypassing the neighbor-alpha check.
+// Used to verify the material is actually attached and the shader is
+// running on enemies. Leave false for normal play. Remove once the
+// outline is confirmed working.
+uniform bool outline_debug_paint_all = false;
 
 
-// Safely sample sprite alpha; returns 0 when the UV goes outside the
-// drawable region so adjacent atlas frames don't leak into the ring
-// detection. `tex` is passed explicitly because Godot's `TEXTURE`
-// built-in is only accessible from `fragment()`.
+// Sample sprite alpha at `uv`. Uses `TEXTURE_PIXEL_SIZE`-derived
+// offsets at callsites; no UV-bounds guard here because with
+// AtlasTexture, UVs are in atlas-UV space (never 0..1 for a single
+// frame) and a blanket `uv > 1` check would have been wrong anyway.
+// Adjacent atlas frames can still leak into samples near a frame
+// boundary, but at 1-8 pixel offsets the leak is negligible for an
+// outline silhouette check.
 float sample_alpha(sampler2D tex, vec2 uv) {
-	if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-		return 0.0;
-	}
 	return texture(tex, uv).a;
 }
 
 
 // Max sprite alpha among 8 compass directions at `r_px` pixels from
 // `uv`. > 0.5 means "sprite is within r_px of this pixel in some
-// direction". Used to bracket the pulse ring between two radii.
+// direction". Used to bracket the pulse ring between two radii and
+// (via a single radius) to detect the outline band.
 float alpha_within(
-		sampler2D tex, vec2 uv, float r_px, vec2 tex_size) {
-	vec2 off = vec2(r_px, r_px) / tex_size;
+		sampler2D tex, vec2 uv, float r_px, vec2 pixel_size) {
+	vec2 off = pixel_size * r_px;
 	float diag = 0.70710678;
 	float a = 0.0;
 	a = max(a, sample_alpha(tex, uv + vec2(off.x, 0.0)));
@@ -65,6 +73,15 @@ void fragment() {
 	// preserve it here so the body renders in its frequency color.
 	vec4 modulate_rgba = COLOR;
 
+	// DIAGNOSTIC short-circuit: paint every fragment in the mesh quad
+	// with `outline_color`. If enemies don't change to a solid rect of
+	// that color, the material isn't being applied — nothing below
+	// this line is running for them.
+	if (outline_debug_paint_all) {
+		COLOR = vec4(outline_color.rgb, 1.0);
+		return;
+	}
+
 	if (tex_color.a > 0.5) {
 		// Sprite body — tint toward flash_color. Preserve sprite
 		// alpha so the edges stay anti-aliased with the scene.
@@ -80,23 +97,27 @@ void fragment() {
 		// should NOT be multiplied by modulate RGB — doing so would
 		// double-tint a bug's eaten pulse. Apply modulate alpha only
 		// so the outline and ring fade in lockstep with the sprite.
-		vec2 tex_size = vec2(textureSize(TEXTURE, 0));
+		vec2 pixel_size = TEXTURE_PIXEL_SIZE;
 		vec4 base = tex_color;
 		if (outline_width_px > 0.0) {
-			float neighbor = alpha_within(
-					TEXTURE, UV, outline_width_px, tex_size);
-			if (neighbor > 0.5) {
+			if (outline_debug_paint_all) {
 				base = outline_color;
+			} else {
+				float neighbor = alpha_within(
+						TEXTURE, UV, outline_width_px, pixel_size);
+				if (neighbor > 0.5) {
+					base = outline_color;
+				}
 			}
 		}
 		if (pulse_alpha > 0.001 && pulse_radius_px > 0.0) {
 			float half_w = pulse_width_px * 0.5;
 			float outer = alpha_within(
 					TEXTURE, UV,
-					pulse_radius_px + half_w, tex_size);
+					pulse_radius_px + half_w, pixel_size);
 			float inner = alpha_within(
 					TEXTURE, UV,
-					max(pulse_radius_px - half_w, 0.0), tex_size);
+					max(pulse_radius_px - half_w, 0.0), pixel_size);
 			// On-ring = outer ≥ 0.5 AND inner < 0.5. Use the
 			// continuous product so it antialiases nicely.
 			float ring = smoothstep(0.2, 0.8, outer)

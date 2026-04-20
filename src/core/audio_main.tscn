@@ -98,10 +98,12 @@ stream = ExtResource("8_o2pvq")
 [node name="SuccessCadenceStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1543703679]
 unique_name_in_owner = true
 stream = ExtResource("10_0ah1i")
+volume_db = 4.0
 
 [node name="FailureCadenceStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=2058591118]
 unique_name_in_owner = true
 stream = ExtResource("9_q1bt0")
+volume_db = -4.0
 
 [node name="AchievementStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1111936372]
 unique_name_in_owner = true
@@ -134,23 +136,27 @@ bus = &"SFX"
 [node name="PlayerDamage" type="AudioStreamPlayer" parent="." unique_id=2059575584]
 unique_name_in_owner = true
 stream = SubResource("AudioStreamRandomizer_tffn8")
+volume_db = -8.0
 pitch_scale = 1.1
 bus = &"SFX"
 
 [node name="PlayerEatBug" type="AudioStreamPlayer" parent="." unique_id=633384746]
 unique_name_in_owner = true
 stream = SubResource("AudioStreamRandomizer_a42ls")
+volume_db = -4.0
 pitch_scale = 1.1
 bus = &"SFX"
 
 [node name="PlayerEcho" type="AudioStreamPlayer" parent="." unique_id=2058583719]
 unique_name_in_owner = true
 stream = SubResource("AudioStreamRandomizer_1t17q")
+volume_db = -12.0
 pitch_scale = 1.1
 bus = &"SFX"
 
 [node name="PlayerSelect" type="AudioStreamPlayer" parent="." unique_id=2058583720]
 unique_name_in_owner = true
 stream = SubResource("AudioStreamRandomizer_select")
+volume_db = -8.0
 pitch_scale = 1.1
 bus = &"SFX"

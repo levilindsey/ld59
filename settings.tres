@@ -11,3 +11,6 @@ default_gravity_acceleration = 1400.0
 player_scene = ExtResource("2_legvn")
 default_level_scene = ExtResource("1_legvn")
 start_with_full_juice = true
+color_frequency_liquid = Color(0.23210663, 0.1632, 0.68, 1)
+color_frequency_sand = Color(0.65, 0.593125, 0.42249995, 1)
+color_frequency_yellow = Color(0.97, 0.85263, 0.32979998, 1)

@@ -34,9 +34,11 @@ const _INVINCIBILITY_SEC := 0.6
 ## Blink period while invincible.
 const _BLINK_PERIOD_SEC := 0.1
 
-## Width of the frequency-color outline rendered by
-## `player_damage_flash.gdshader` around the enemy silhouette.
-const _FREQUENCY_OUTLINE_WIDTH_PX := 1.0
+## Width (in atlas/game pixels) of the frequency-color outline
+## rendered by `player_damage_flash.gdshader` around the enemy
+## silhouette. Scaled up from 1 so the border reads at the game's
+## pixel-art display scale instead of collapsing to a hairline.
+const _FREQUENCY_OUTLINE_WIDTH_PX := 5.0
 
 ## Matching-frequency pulse damage at the pulse center, as a
 ## fraction of `max_health`. 1.0 means a point-blank pulse is
@@ -126,6 +128,11 @@ func _apply_sprite_shader_parameters() -> void:
 func _process(delta: float) -> void:
 	if _is_dead:
 		return
+	# Once the player has won, freeze every enemy — no more movement,
+	# no more perception. Matches the "enemies won't pursue" post-win
+	# contract since `Level.win()` doesn't pause the scene tree.
+	if is_instance_valid(G.level) and G.level.has_won:
+		return
 
 	_perception = maxf(0.0, _perception - _PERCEPTION_DECAY_PER_SEC * delta)
 
@@ -134,7 +141,8 @@ func _process(delta: float) -> void:
 
 	var player := _get_player()
 	if (is_instance_valid(player)
-			and proximity_perception_radius_px > 0.0):
+			and proximity_perception_radius_px > 0.0
+			and not player.is_non_interactive):
 		var distance_sq: float = (global_position
 				.distance_squared_to(player.global_position))
 		var radius_sq: float = (proximity_perception_radius_px

@@ -8,7 +8,7 @@ extends RefCounted
 ##   TileMapLayer and treats each occupied cell as solid. Per-tile
 ##   `type` and `initial_health` come from TileSet custom data
 ##   layers; tiles without either value fall back to `default_type`
-##   and full health (255). Configure the custom data layers on
+##   and `_DEFAULT_TILE_HEALTH`. Configure the custom data layers on
 ##   `default_tile_set.tres` and set them per-atlas-tile in the
 ##   TileSet editor.
 ## - `bake_rect(terrain, rect_world_px, type)`: fills a world-space
@@ -27,10 +27,18 @@ extends RefCounted
 const _CUSTOM_DATA_TYPE := "type"
 const _CUSTOM_DATA_HEALTH := "initial_health"
 
+## Default per-cell starting health used when a tile has no explicit
+## `initial_health` set in the TileSet's custom data layer. Half of
+## the engine's 0..255 range, so the average tile takes ~half as
+## many matching-frequency pulse hits to destroy as a "full HP"
+## cell. Per-tile overrides via the TileSet data layer still win.
+const _DEFAULT_TILE_HEALTH := 128
+
 
 ## Bake every used cell in `tml` as a solid tile. Per-tile `type` and
 ## `initial_health` are read from the TileSet's custom data layers;
-## tiles without values fall back to `default_type` / 255.
+## tiles without values fall back to `default_type` /
+## `_DEFAULT_TILE_HEALTH`.
 ##
 ## Tiles whose `type` is one of the `Frequency.Type.WEB_*` markers
 ## (WEB_RED / WEB_GREEN / WEB_BLUE / WEB_YELLOW) are special: they
@@ -89,12 +97,12 @@ static func bake_from_tile_map_layer(
 		# Godot returns the default int (0) for tiles whose
 		# `initial_health` custom data was never explicitly set, so
 		# we can't distinguish "unset" from "explicitly 0". Treat 0
-		# as "not set" and fall back to 255; designers who want a
-		# nearly-dead tile can use 1.
+		# as "not set" and fall back to `_DEFAULT_TILE_HEALTH`;
+		# designers who want a nearly-dead tile can use 1.
 		tile_health[tile_pos] = (
 				health_from_data
 				if health_from_data > 0
-				else 255)
+				else _DEFAULT_TILE_HEALTH)
 
 	_bake_from_solid_map(terrain, tile_type, tile_health,
 			cells, cell_size_px, cells_per_tile, settings)
@@ -159,7 +167,7 @@ static func bake_rect(
 		for cx in range(min_cx, max_cx + 1):
 			var key := Vector2i(cx, cy)
 			solid_type[key] = type
-			solid_health[key] = 255
+			solid_health[key] = _DEFAULT_TILE_HEALTH
 
 	# Pass cells_per_tile=1 so "tile" == "cell".
 	_bake_from_solid_map(terrain, solid_type, solid_health,
@@ -205,7 +213,7 @@ static func bake_rect_with_border(
 					or max_cy - cy < border_cells)
 			var key := Vector2i(cx, cy)
 			solid_type[key] = border_type if in_border else inner_type
-			solid_health[key] = 255
+			solid_health[key] = _DEFAULT_TILE_HEALTH
 
 	_bake_from_solid_map(terrain, solid_type, solid_health,
 			cells, cell_size_px, 1, settings)
@@ -229,7 +237,7 @@ static func _bake_from_solid_map(
 	var solid_health: Dictionary = {}
 	for tile_pos in tile_type:
 		var type: int = tile_type[tile_pos]
-		var health: int = tile_health.get(tile_pos, 255)
+		var health: int = tile_health.get(tile_pos, _DEFAULT_TILE_HEALTH)
 		var base_cx: int = tile_pos.x * cells_per_tile
 		var base_cy: int = tile_pos.y * cells_per_tile
 		for dy in range(cells_per_tile):
@@ -300,7 +308,7 @@ static func _bake_chunk(
 			var cell_pos := Vector2i(gcx, gcy)
 			if solid_type.has(cell_pos):
 				type = solid_type[cell_pos]
-				health = solid_health.get(cell_pos, 255)
+				health = solid_health.get(cell_pos, _DEFAULT_TILE_HEALTH)
 			bytes[density_size + cy * cells + cx] = type
 			bytes[density_size + per_cell_size + cy * cells + cx] = health
 

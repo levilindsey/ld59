@@ -65,6 +65,11 @@ const _MAX_REJECTION_TRIES := 8
 	Frequency.Type.YELLOW: 0.0,
 }
 
+## Global multiplier applied to the per-frequency rate after base +
+## region stacking + min-floor. Scales bug spawn frequency
+## uniformly without having to retune every region or floor value.
+@export_range(0.0, 10.0) var spawn_rate_multiplier: float = 2.0
+
 ## Seeded RNG for the big/small roll. Kept separate from global
 ## `randi()` so other per-spawn randomness (spawn position,
 ## lifetime jitter) doesn't shift if we tune this ratio.
@@ -144,7 +149,7 @@ func _aggregate_region_deltas(player_pos: Vector2) -> Dictionary:
 func _compute_rate(freq: int, stacked_delta: float) -> float:
 	var base: float = base_rates.get(freq, 0.0)
 	var floor_rate: float = min_rate_floor.get(freq, 0.0)
-	return maxf(base + stacked_delta, floor_rate)
+	return maxf(base + stacked_delta, floor_rate) * spawn_rate_multiplier
 
 
 func _try_spawn(freq: int) -> void:

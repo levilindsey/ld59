@@ -7,15 +7,43 @@ func _enter_tree() -> void:
 
 
 func _ready() -> void:
-	# Hide the title, so we can fade it in.
+	# All HUD elements start hidden — Level/Player/State drive them
+	# in via explicit show methods once spawn/win moments arrive.
+	# Starting GameState hidden avoids a 1-frame flash of the
+	# health + juice bars between the initial TITLE→GAME transition
+	# (which fades them in) and the deferred spawn-grace entry
+	# (which fades them back out again).
 	%Title.modulate.a = 0.0
+	%Controls.modulate.a = 0.0
 	%Credits.modulate.a = 0.0
+	%GameState.modulate.a = 0.0
 
 	# Wait for G.settings to be assigned.
 	await get_tree().process_frame
 
 	self.visible = G.settings.show_hud
 	_apply_credits_colors()
+
+
+## Fades in the Title + Controls overlay and fades out the gameplay
+## HUD (health + juice bars). Called by the Player when it enters
+## the spawn-grace attached-idle pose, and by the Level after win —
+## both cases park the player in a non-responsive pose with the
+## intro overlay visible instead of the gameplay HUD until the user
+## acts.
+func show_intro_overlay() -> void:
+	fade_in(%Title)
+	fade_in(%Controls)
+	fade_out(%GameState)
+
+
+## Fades the Title + Controls overlay back out and restores the
+## gameplay HUD. Called by the Player when spawn grace ends (first
+## detach input).
+func hide_intro_overlay() -> void:
+	fade_out(%Title)
+	fade_out(%Controls)
+	fade_in(%GameState)
 
 
 ## Pushes `Settings.color_credits_*` into every Label under the
@@ -59,26 +87,21 @@ func fade_out(node: CanvasItem) -> void:
 
 
 func handle_state_transition(to_state: StateMain.State) -> void:
+	# Title + Controls + GameState are managed by the intro-overlay
+	# show/hide pair, not by state — so the intro overlay can live
+	# inside GAME state (spawn grace + post-win) rather than only on
+	# a dedicated TITLE screen, and so the health + juice bars don't
+	# briefly fade in on the initial TITLE→GAME transition only to
+	# be faded back out by the deferred spawn-grace entry.
 	match to_state:
 		StateMain.State.TITLE:
-			fade_in(%Title)
-			fade_out(%GameState)
 			fade_out(%Credits)
-			fade_in(%Controls)
 		StateMain.State.GAME:
-			fade_out(%Title)
-			fade_in(%GameState)
 			fade_out(%Credits)
-			fade_out(%Controls)
 		StateMain.State.PAUSE:
-			fade_out(%Title)
-			fade_in(%GameState)
 			fade_out(%Credits)
-			fade_out(%Controls)
 		StateMain.State.CREDITS:
-			fade_out(%Title)
 			fade_out(%GameState)
 			fade_in(%Credits)
-			fade_out(%Controls)
 		_:
 			G.error()
