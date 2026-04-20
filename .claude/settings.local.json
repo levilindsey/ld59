@@ -4,7 +4,8 @@
       "Bash(powershell -ExecutionPolicy Bypass -File kbterrain/build_web.ps1)",
       "Bash(powershell -ExecutionPolicy Bypass -File kbterrain\\\\build_windows.ps1)",
       "Bash(powershell -ExecutionPolicy Bypass -File kbterrain/build_windows.ps1)",
-      "Bash(powershell -ExecutionPolicy Bypass -File scripts/export_web.ps1)"
+      "Bash(powershell -ExecutionPolicy Bypass -File scripts/export_web.ps1)",
+      "Bash(powershell -Command \"where.exe godot 2>&1; Get-Command godot* -ErrorAction SilentlyContinue | Format-Table Name, Source\")"
     ]
   }
 }
