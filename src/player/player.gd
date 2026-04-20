@@ -274,6 +274,11 @@ func destroy() -> void:
 ## A cyan cell that is NOT wrapped in green = visible-but-not-collidable
 ## (e.g. LIQUID type) — the most likely source of a perceived "sink".
 func _draw() -> void:
+	# Temporarily disabled so Godot's cyan physics collision debug
+	# shapes are visible on the terrain without being covered by the
+	# green grid overlay. Re-enable once the tilemap/mesh/collision
+	# alignment bug is resolved.
+	return
 	if not is_instance_valid(G.terrain) or G.terrain.settings == null:
 		return
 	var cs: float = G.terrain.settings.cell_size_px
