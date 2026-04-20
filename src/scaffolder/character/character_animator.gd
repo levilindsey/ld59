@@ -32,8 +32,12 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		return
 
-	G.check(get_parent() is Player)
-	player = get_parent() as Player
+	# PlayerAnimator is also reused as a static sprite for non-Player
+	# owners (e.g., the Destination "Mama" cat). Only bind `player`
+	# when the parent actually is a Player; other owners just use the
+	# animator for its AnimatedSprite2D + shader setup.
+	if get_parent() is Player:
+		player = get_parent() as Player
 
 	initial_position = position
 

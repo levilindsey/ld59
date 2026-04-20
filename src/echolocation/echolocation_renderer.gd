@@ -114,7 +114,7 @@ const _BUG_TAG_RADIUS_PX := 6.0
 @export_range(1.0, 3.0) var matching_bloom_brightness_bump := 2.4
 
 @export_range(100.0, 2000.0) var default_pulse_speed_px_per_sec := 600.0
-@export_range(100.0, 4000.0) var default_pulse_max_radius_px := 1000.0
+@export_range(100.0, 4000.0) var default_pulse_max_radius_px := 200.0
 
 ## Scale factor applied to the echo's physical round-trip delay
 ## (2 × dist / speed). 1.0 = physical; 0.5 = half (snappier feel).
@@ -416,7 +416,7 @@ func _process(delta: float) -> void:
 	_shader_mat.set_shader_parameter("pulse_freqs", packed_freqs)
 	_shader_mat.set_shader_parameter("pulse_count", active_count)
 
-	# Pack tagged sprites (bugs now, enemies later) into the tag-halo
+	# Pack tagged sprites (bugs + web tiles) into the tag-halo
 	# uniform. Each entry gives the shader a screen-space circle + a
 	# frequency id so pulse stipples can reveal the sprite even when
 	# its rendered pixels are too faint or small for palette-match to
@@ -445,6 +445,23 @@ func _process(delta: float) -> void:
 			# pointillist silhouette grows in / out with the sprite.
 			packed_tag_alphas[tag_count] = bug.modulate.a
 			tag_count += 1
+	for node in get_tree().get_nodes_in_group(WebTile.GROUP):
+		if tag_count >= _MAX_TAGGED_SPRITES:
+			break
+		var web := node as WebTile
+		if web == null:
+			continue
+		var web_screen_px: Vector2 = (web
+				.get_global_transform_with_canvas().origin)
+		var web_radius_px: float = (web.tag_radius_px
+				* absf(canvas_scale.x))
+		packed_tags[tag_count] = Vector4(
+				web_screen_px.x,
+				web_screen_px.y,
+				web_radius_px,
+				float(web.frequency))
+		packed_tag_alphas[tag_count] = web.modulate.a
+		tag_count += 1
 	_shader_mat.set_shader_parameter("tagged_sprites", packed_tags)
 	_shader_mat.set_shader_parameter(
 			"tagged_sprite_alphas", packed_tag_alphas)

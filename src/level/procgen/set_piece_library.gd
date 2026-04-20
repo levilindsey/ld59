@@ -204,7 +204,7 @@ static func stamp_bug_region(
 	hint.kind = "bug_region"
 	hint.tile = anchor
 	hint.frequency = frequency
-	hint.params = {"rate_delta": rate_delta, "size_tiles": Vector2i(10, 8)}
+	hint.params = {"rate_delta": rate_delta, "size_tiles": Vector2i(20, 16)}
 	out.hints.append(hint)
 	return out
 
