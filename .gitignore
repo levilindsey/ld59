@@ -17,6 +17,10 @@ Thumbs.db
 # Logs
 *.log
 
+# Claude Code per-machine state (session lock + permission allowlist)
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+
 *DO_NOT_SUBMIT*
 
 build/*
