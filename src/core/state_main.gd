@@ -47,7 +47,7 @@ func transition(to_state: State) -> void:
 			if not G.session.is_game_ended:
 				G.game_panel.end_game()
 			get_tree().paused = true
-			G.audio.fade_to_menu_theme()
+			G.audio.fade_to_end_theme()
 		_:
 			G.error()
 

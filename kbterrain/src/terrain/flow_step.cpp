@@ -154,7 +154,15 @@ bool FlowStep::step_world(
 		std::fill(pair.second.moved_this_frame.begin(),
 				pair.second.moved_this_frame.end(), 0u);
 	}
-	constexpr int _LATERAL_REACH = 32;
+	// Lateral teleport disabled (set to 0). The teleport bypassed
+	// the visible cell-by-cell drain through holes in pool walls
+	// — top cells jumped straight to the settle position so the
+	// stream through the hole was never rendered. Cell-by-cell
+	// flow via the basic LIQUID rule (down → diagonal-down →
+	// sideways) makes drains visible at the cost of speed
+	// (~`FLOW_STEP_INTERVAL` cells per second per axis). Bump
+	// back up if oscillation on still pools returns.
+	constexpr int _LATERAL_REACH = 0;
 	constexpr int _MAX_DROP = 64;
 	for (const Vector2i &coord : chunk_coords) {
 		Chunk *chunk = manager.get(coord);

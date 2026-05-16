@@ -72,9 +72,9 @@ animations = [{
 collision_layer = 16
 collision_mask = 8
 script = ExtResource("1_spider")
+max_health = 46
+touch_damage = 4
 animated_sprite = NodePath("AnimatedSprite2D")
-max_health = 40
-touch_damage = 8
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1155968633]
 shape = SubResource("CircleShape2D_spider")

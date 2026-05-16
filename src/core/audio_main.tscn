@@ -1,14 +1,17 @@
 [gd_scene format=3 uid="uid://diqnxd2kabxfk"]
 
 [ext_resource type="Script" uid="uid://b5hrwox1n2lt0" path="res://src/core/audio_main.gd" id="1_tdp82"]
-[ext_resource type="AudioStream" uid="uid://buqcjobb2kxpn" path="res://assets/audio/Themes/Main.wav" id="2_q1bt0"]
+[ext_resource type="AudioStream" uid="uid://buqcjobb2kxpn" path="res://assets/audio/Themes/Main.wav" id="2_r4r5m"]
+[ext_resource type="AudioStream" uid="uid://daw1l4p6omw2j" path="res://assets/audio/Themes/NewEnding.wav" id="3_r4r5m"]
 [ext_resource type="AudioStream" uid="uid://505pi6oqhfst" path="res://assets/audio/Click/Click-cm-02.wav" id="3_seawu"]
 [ext_resource type="AudioStream" uid="uid://dmh678v0gek8c" path="res://assets/audio/Click/Click-cm-04.wav" id="4_wywav"]
 [ext_resource type="AudioStream" uid="uid://b3achb3rytv11" path="res://assets/audio/Click/Click-cm-06.wav" id="5_wtepx"]
 [ext_resource type="AudioStream" uid="uid://qk2yfhofcotd" path="res://assets/audio/Click/Click-cm-07.wav" id="6_24bi3"]
+[ext_resource type="AudioStream" uid="uid://ba8rsp5i7gngs" path="res://assets/audio/Themes/NewWinCadence.wav" id="8_lahjg"]
 [ext_resource type="AudioStream" uid="uid://b1dhtp12y2qox" path="res://assets/audio/old/single_cat_snore.wav" id="8_o2pvq"]
-[ext_resource type="AudioStream" uid="uid://dn0ymn1trgwyv" path="res://assets/audio/Themes/DeathCadence.wav" id="9_q1bt0"]
+[ext_resource type="AudioStream" uid="uid://nr1qekpgfsch" path="res://assets/audio/Themes/NewDieCadence.wav" id="9_r4r5m"]
 [ext_resource type="AudioStream" uid="uid://d373neh1o4of3" path="res://assets/audio/Themes/WinCadence.wav" id="10_0ah1i"]
+[ext_resource type="AudioStream" uid="uid://c5spo3yr0xjaj" path="res://assets/audio/Themes/NewAllCoinsCadence.wav" id="10_lahjg"]
 [ext_resource type="AudioStream" uid="uid://cvepvgd4j10cp" path="res://assets/audio/Jump.wav" id="11_a6qcx"]
 [ext_resource type="AudioStream" uid="uid://gqvqs3hx0c6a" path="res://assets/audio/Jump2.wav" id="12_p2hjg"]
 [ext_resource type="AudioStream" uid="uid://durfooeytvpfh" path="res://assets/audio/Jump3.wav" id="13_fqgka"]
@@ -16,14 +19,22 @@
 [ext_resource type="AudioStream" uid="uid://dwbyvsa3tbcqf" path="res://assets/audio/Land.wav" id="15_00bue"]
 [ext_resource type="AudioStream" uid="uid://bwpcu2qwowgb" path="res://assets/audio/PlayerDeath.wav" id="16_a42ls"]
 [ext_resource type="AudioStream" uid="uid://t50kn6p401us" path="res://assets/audio/LittleMeow.wav" id="17_1t17q"]
+[ext_resource type="AudioStream" uid="uid://cayxwgdqtg3qa" path="res://assets/audio/LittleMeow2.wav" id="17_a42ls"]
+[ext_resource type="AudioStream" uid="uid://dn82p1d4ffypb" path="res://assets/audio/LittleMeow3.wav" id="18_1t17q"]
 [ext_resource type="AudioStream" uid="uid://bvap2q5suryqi" path="res://assets/audio/Eek2.wav" id="18_3e2yt"]
 [ext_resource type="AudioStream" uid="uid://bcsxnw3or8qi3" path="res://assets/audio/Eek3.wav" id="19_nigky"]
 [ext_resource type="AudioStream" uid="uid://c28jk3xxpj3l7" path="res://assets/audio/Eek4.wav" id="20_joad8"]
 [ext_resource type="AudioStream" uid="uid://dgnox4se14xhj" path="res://assets/audio/Eek5.wav" id="21_2cdrb"]
-[ext_resource type="AudioStream" uid="uid://sushu0d7u66r" path="res://assets/audio/Chomp.wav" id="21_kmns2"]
 [ext_resource type="AudioStream" uid="uid://cm8lv8ms82jb0" path="res://assets/audio/Echo2.wav" id="22_kmns2"]
 [ext_resource type="AudioStream" uid="uid://bdua0okcwuhet" path="res://assets/audio/Echo3.wav" id="23_00bue"]
+[ext_resource type="AudioStream" uid="uid://d1viyfu1agwtq" path="res://assets/audio/EatBug.wav" id="23_3e2yt"]
 [ext_resource type="AudioStream" uid="uid://cbtn3b364vide" path="res://assets/audio/Select.wav" id="24_select"]
+[ext_resource type="AudioStream" uid="uid://h7nsh4jbqnp7" path="res://assets/audio/Pickup_Coin2.wav" id="27_joad8"]
+[ext_resource type="AudioStream" uid="uid://dhny7nicv3lh0" path="res://assets/audio/Pickup_Coin4.wav" id="28_2cdrb"]
+[ext_resource type="AudioStream" uid="uid://b0tku4rdxbptl" path="res://assets/audio/Pickup_Coin6.wav" id="29_lahjg"]
+[ext_resource type="AudioStream" uid="uid://ekwv37rvh7rk" path="res://assets/audio/Pickup_Coin10.wav" id="30_r4r5m"]
+[ext_resource type="AudioStream" uid="uid://cdctfqb4pc4ip" path="res://assets/audio/Splash.wav" id="34_avorg"]
+[ext_resource type="AudioStream" uid="uid://cj7jk1hesskjr" path="res://assets/audio/Splash2.wav" id="35_uopto"]
 
 [sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_2b2qe"]
 streams_count = 4
@@ -48,8 +59,10 @@ streams_count = 1
 stream_0/stream = ExtResource("16_a42ls")
 
 [sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_avorg"]
-streams_count = 1
+streams_count = 3
 stream_0/stream = ExtResource("17_1t17q")
+stream_1/stream = ExtResource("17_a42ls")
+stream_2/stream = ExtResource("18_1t17q")
 
 [sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_tffn8"]
 random_pitch = 1.1
@@ -61,7 +74,7 @@ stream_3/stream = ExtResource("21_2cdrb")
 
 [sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_a42ls"]
 streams_count = 1
-stream_0/stream = ExtResource("21_kmns2")
+stream_0/stream = ExtResource("23_3e2yt")
 
 [sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_1t17q"]
 streams_count = 2
@@ -72,6 +85,18 @@ stream_1/stream = ExtResource("23_00bue")
 streams_count = 1
 stream_0/stream = ExtResource("24_select")
 
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_uopto"]
+streams_count = 4
+stream_0/stream = ExtResource("27_joad8")
+stream_1/stream = ExtResource("28_2cdrb")
+stream_2/stream = ExtResource("29_lahjg")
+stream_3/stream = ExtResource("30_r4r5m")
+
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_6i2kb"]
+streams_count = 2
+stream_0/stream = ExtResource("34_avorg")
+stream_1/stream = ExtResource("35_uopto")
+
 [node name="AudioMain" type="Node2D" unique_id=1190513098]
 process_mode = 3
 script = ExtResource("1_tdp82")
@@ -81,7 +106,14 @@ menu_theme_volume = 2.247
 [node name="MainTheme" type="AudioStreamPlayer" parent="." unique_id=194850655]
 unique_name_in_owner = true
 process_mode = 3
-stream = ExtResource("2_q1bt0")
+stream = ExtResource("2_r4r5m")
+volume_db = 8.0
+bus = &"Music"
+
+[node name="EndTheme" type="AudioStreamPlayer" parent="." unique_id=787368042]
+unique_name_in_owner = true
+process_mode = 3
+stream = ExtResource("3_r4r5m")
 bus = &"Music"
 
 [node name="ClickStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1593144270]
@@ -97,13 +129,18 @@ stream = ExtResource("8_o2pvq")
 
 [node name="SuccessCadenceStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1543703679]
 unique_name_in_owner = true
-stream = ExtResource("10_0ah1i")
+stream = ExtResource("8_lahjg")
 volume_db = 4.0
 
 [node name="FailureCadenceStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=2058591118]
 unique_name_in_owner = true
-stream = ExtResource("9_q1bt0")
+stream = ExtResource("9_r4r5m")
 volume_db = -4.0
+
+[node name="CoinCadenceStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1695173595]
+unique_name_in_owner = true
+stream = ExtResource("10_lahjg")
+volume_db = 4.0
 
 [node name="AchievementStreamPlayer" type="AudioStreamPlayer" parent="." unique_id=1111936372]
 unique_name_in_owner = true
@@ -157,6 +194,20 @@ bus = &"SFX"
 [node name="PlayerSelect" type="AudioStreamPlayer" parent="." unique_id=2058583720]
 unique_name_in_owner = true
 stream = SubResource("AudioStreamRandomizer_select")
+volume_db = -8.0
+pitch_scale = 1.1
+bus = &"SFX"
+
+[node name="PlayerCoin" type="AudioStreamPlayer" parent="." unique_id=986214712]
+unique_name_in_owner = true
+stream = SubResource("AudioStreamRandomizer_uopto")
+volume_db = -8.0
+pitch_scale = 1.1
+bus = &"SFX"
+
+[node name="PlayerSplash" type="AudioStreamPlayer" parent="." unique_id=2013225629]
+unique_name_in_owner = true
+stream = SubResource("AudioStreamRandomizer_6i2kb")
 volume_db = -8.0
 pitch_scale = 1.1
 bus = &"SFX"

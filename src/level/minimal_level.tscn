@@ -1,0 +1,84 @@
+[gd_scene format=4 uid="uid://cpuhithwtcrx5"]
+
+[ext_resource type="Script" uid="uid://c1i6bqftxsj4" path="res://src/level/terrain_level.gd" id="1_qn6hv"]
+[ext_resource type="Shader" path="res://src/level/terrain_damage_punchthrough.gdshader" id="1_punchthrough"]
+[ext_resource type="Texture2D" uid="uid://df3ddg3t42o7d" path="res://assets/images/placeholders/terrain_damage_tier_atlas.png" id="1_damage_atlas"]
+[ext_resource type="TerrainSettings" uid="uid://dbdcqhdmuhy3a" path="res://src/level/default_terrain_settings.tres" id="2_s74qm"]
+[ext_resource type="PackedScene" uid="uid://b8k2pwamtr0x3" path="res://src/level/web_tile.tscn" id="3_auesd"]
+[ext_resource type="PackedScene" path="res://src/level/falling_cell.tscn" id="4_ghvsx"]
+[ext_resource type="AudioStream" path="res://src/level/fwoof_randomizer.tres" id="5_tsrrt"]
+[ext_resource type="PackedScene" path="res://src/level/parallax_background.tscn" id="6_42oa5"]
+[ext_resource type="TileSet" uid="uid://mtwu14d78k40" path="res://src/level/default_tile_set.tres" id="7_qtakd"]
+[ext_resource type="Texture2D" uid="uid://rihqreb0nh5o" path="res://assets/images/scratch/kittenbaticorn.png" id="8_47kf8"]
+[ext_resource type="Script" uid="uid://cidpun4kcqrme" path="res://src/level/editor_placeholder_sprite.gd" id="9_kqbkt"]
+[ext_resource type="Script" uid="uid://clr0cpiah02eh" path="res://src/bugs/bug_spawner.gd" id="10_0my3n"]
+[ext_resource type="PackedScene" uid="uid://dgk5b2n3lc8kr" path="res://src/bugs/bug.tscn" id="11_6i7hj"]
+[ext_resource type="Script" uid="uid://o2i6tqdak3pe" path="res://src/enemies/enemy_system.gd" id="12_48hhq"]
+[ext_resource type="PackedScene" uid="uid://dp2k8vxn3qr7m" path="res://src/enemies/spider.tscn" id="13_tt0k5"]
+[ext_resource type="PackedScene" uid="uid://ck8v0fmnuap7q" path="res://src/enemies/coyote.tscn" id="14_s5yrf"]
+[ext_resource type="PackedScene" uid="uid://cdvs6w86bbr5m" path="res://src/enemies/owl.tscn" id="15_bs7ty"]
+[ext_resource type="Texture2D" uid="uid://g3ysr8be4but" path="res://assets/images/white_pixel.png" id="17_o1h4v"]
+[ext_resource type="PackedScene" uid="uid://dxm1qaht8n6rq" path="res://src/level/destination.tscn" id="18_nxadp"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_player_spawn"]
+atlas = ExtResource("8_47kf8")
+region = Rect2(1088, 0, 34, 36)
+
+[node name="TerrainLevel" type="Node2D" unique_id=1888346517]
+script = ExtResource("1_qn6hv")
+terrain_world_path = NodePath("TerrainWorld")
+terrain_settings = ExtResource("2_s74qm")
+tile_map_layer_path = NodePath("Tiles")
+damage_punchthrough_shader = ExtResource("1_punchthrough")
+damage_tier_atlas = ExtResource("1_damage_atlas")
+web_tile_scene = ExtResource("3_auesd")
+falling_cell_scene = ExtResource("4_ghvsx")
+fwoof_stream = ExtResource("5_tsrrt")
+
+[node name="ParallaxBackground" parent="." unique_id=482765648 instance=ExtResource("6_42oa5")]
+
+[node name="TerrainWorld" type="TerrainWorld" parent="." unique_id=1885247162]
+settings = ExtResource("2_s74qm")
+unique_name_in_owner = true
+visibility_layer = 3
+
+[node name="Tiles" type="TileMapLayer" parent="." unique_id=2007537257]
+unique_name_in_owner = true
+tile_map_data = PackedByteArray("AAADACIAAgABAAAAAAAEACIAAgABAAAAAAAFACIAAgABAAAAAAACACIAAgABAAAAAAAGACIAAgABAAAAAAAGACEAAgAHAAAAAAAFACEAAgAHAAAAAAAEACEAAgAHAAAAAAADACEAAgAHAAAAAAACACEAAgAHAAAAAAA=")
+tile_set = ExtResource("7_qtakd")
+
+[node name="PlayerSpawnPoint" type="Node2D" parent="." unique_id=2146902381]
+unique_name_in_owner = true
+position = Vector2(72, 520)
+
+[node name="PlaceholderSprite" type="Sprite2D" parent="PlayerSpawnPoint" unique_id=1426380445]
+position = Vector2(-5, -5)
+texture = SubResource("AtlasTexture_player_spawn")
+script = ExtResource("9_kqbkt")
+
+[node name="Camera2D" type="Camera2D" parent="PlayerSpawnPoint" unique_id=937342632]
+unique_name_in_owner = true
+position = Vector2(0, -8)
+zoom = Vector2(2, 2)
+
+[node name="Players" type="Node2D" parent="." unique_id=1687508849]
+unique_name_in_owner = true
+
+[node name="BugSpawner" type="Node2D" parent="." unique_id=1420602395]
+script = ExtResource("10_0my3n")
+bug_scene = ExtResource("11_6i7hj")
+
+[node name="EnemySystem" type="Node" parent="." unique_id=259719197]
+script = ExtResource("12_48hhq")
+spider_scene = ExtResource("13_tt0k5")
+coyote_scene = ExtResource("14_s5yrf")
+owl_scene = ExtResource("15_bs7ty")
+
+[node name="Destination" parent="." unique_id=1585058356 instance=ExtResource("18_nxadp")]
+position = Vector2(1080, 520)
+
+[node name="WhitePixel" type="Sprite2D" parent="." unique_id=194838619]
+modulate = Color(1, 0, 0.8833332, 1)
+position = Vector2(40, 536)
+scale = Vector2(2, 2)
+texture = ExtResource("17_o1h4v")

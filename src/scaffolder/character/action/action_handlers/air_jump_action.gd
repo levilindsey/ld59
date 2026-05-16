@@ -43,9 +43,15 @@ func process(character) -> bool:
 			character.jump_count += 1
 		character.just_triggered_jump = true
 		character.is_rising_from_jump = true
-		var double_jump_multiplier := pow(
-				character.movement_settings.double_jump_boost_multiplier,
-				character.jump_count - 1)
+		# FIXME: Undo
+		#var double_jump_multiplier := pow(
+				#character.movement_settings.double_jump_boost_multiplier,
+				#character.jump_count - 1)
+		var double_jump_multiplier: float = (
+				character.movement_settings.double_jump_boost_multiplier
+				if character.jump_count > 1
+				else 1.0
+			)
 		character.velocity.y = character.movement_settings.jump_boost * double_jump_multiplier
 		last_jump_time_sec = current_time
 

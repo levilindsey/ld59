@@ -37,11 +37,13 @@ const _DRIFT_JITTER_RADIANS := PI * 0.6
 const _SMALL_BODY_SCALE := 0.75
 const _SMALL_GLOW_SCALE := 0.3
 const _SMALL_COLLISION_RADIUS := 15.0
-const _SMALL_HEAL := 15
+const _SMALL_HEAL := 2
 const _BIG_BODY_SCALE := 1.5
 const _BIG_GLOW_SCALE := 0.6
 const _BIG_COLLISION_RADIUS := 15.0
-const _BIG_HEAL := 75
+## Big bugs heal the same as small bugs intentionally — the BIG
+## variant's payoff is the larger juice grant, not extra HP.
+const _BIG_HEAL := 2
 
 ## Eaten pulse — matches the player's damage-hit aesthetic, tinted
 ## with this bug's frequency color. Played on consumption; the bug
@@ -157,17 +159,48 @@ func _on_body_entered(body: Node2D) -> void:
 		_consume(body as Player)
 
 
+## Number of frequency-colored particles emitted when the player
+## eats this bug. A little smaller than the enemy-death burst
+## because bugs are smaller visual targets.
+const _EATEN_PARTICLE_COUNT := 10
+## Gravity multiplier for the eaten-bug sparkle. Bugs float, so
+## their sparkle should too — halves the pull relative to cell
+## debris and enemy-death bursts.
+const _EATEN_PARTICLE_GRAVITY_MULTIPLIER := 0.5
+## Burst speed and lifetime. Half the renderer's default speed so
+## the sparkle drifts gently outward rather than launching;
+## lifetime matches the renderer default.
+const _EATEN_PARTICLE_SPEED_PX_PER_SEC := 20.0
+const _EATEN_PARTICLE_LIFETIME_SEC := 0.55
+
+
 func _consume(player: Player) -> void:
 	_consumed = true
 	# Stop detecting further overlaps while the eaten pulse plays so
 	# the bug doesn't re-trigger consumption during its death tween.
-	monitoring = false
-	monitorable = false
+	# Deferred because `_consume` runs inside `_on_body_entered`, and
+	# Godot blocks direct `monitoring`/`monitorable` mutation during
+	# an Area2D's in/out signal dispatch.
+	set_deferred("monitoring", false)
+	set_deferred("monitorable", false)
 	player.add_juice(frequency, juice_grant)
 	player.apply_heal(heal_amount)
 	eaten.emit(self)
 	player.play_sound("eat_bug", true)
 	_play_eaten_pulse()
+	# Frequency-colored particle burst — bug frequency indexes into
+	# the palette via `spawn_burst_particles` for the dot color.
+	if is_instance_valid(G.echo):
+		# Positional call: speed and lifetime passed through at their
+		# renderer defaults so only the gravity multiplier is
+		# customized for bugs.
+		G.echo.spawn_burst_particles(
+				global_position,
+				_EATEN_PARTICLE_COUNT,
+				frequency,
+				_EATEN_PARTICLE_SPEED_PX_PER_SEC,
+				_EATEN_PARTICLE_LIFETIME_SEC,
+				_EATEN_PARTICLE_GRAVITY_MULTIPLIER)
 
 
 ## Bug's frequency-tinted analog of the player's damage-hit pulse.

@@ -85,7 +85,14 @@ func spawn_one() -> Enemy:
 	if frequency_override != Frequency.Type.NONE:
 		enemy.frequency = frequency_override
 	add_child(enemy)
-	enemy.global_position = global_position
+	# Jitter the spawn position so multiple enemies at the same
+	# spawn point don't stack directly on top of each other — their
+	# outlines would otherwise overlap into a spiky mess until they
+	# wandered apart.
+	var jitter := Vector2(
+			randf_range(-16.0, 16.0),
+			randf_range(-16.0, 16.0))
+	enemy.global_position = global_position + jitter
 	return enemy
 
 

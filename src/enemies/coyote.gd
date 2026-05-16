@@ -14,28 +14,46 @@ extends Enemy
 enum CoyoteState { WANDER, APPROACH, POUNCE, RECOVER }
 
 
-## Distance from the coyote's origin down to the bottom of its
-## sprite. Used by `_snap_to_floor` so the sprite's feet rest on the
-## floor instead of its center. The coyote's sprite is 51 px tall
-## and offset (0, -15.5) from origin, putting its bottom edge 10 px
-## below origin.
-const _FOOT_OFFSET_PX := 10.0
-## Ray length must exceed `_FOOT_OFFSET_PX` plus one frame's worth
-## of fall so the downward probe still finds the floor from a
-## resting pose.
-const _GROUND_RAY_LENGTH_PX := 40.0
+## Distance from the coyote's origin down to the bottom of the
+## collision rectangle (which visually matches the sprite's feet).
+## The rect is 19 tall, centered at local (0, -9.5), so its bottom
+## sits exactly at the origin — origin = floor when grounded.
+const _FOOT_OFFSET_PX := 0.0
+## Amount above the origin that the ground ray starts from. Must
+## be > 0 so the ray can never begin inside a solid terrain cell
+## when the coyote is resting (origin at floor) — Godot's
+## `intersect_ray` won't hit colliders it starts inside by default,
+## and the miss would flip `_is_grounded` false each frame, causing
+## the coyote to fall through the world.
+const _GROUND_RAY_START_OFFSET_PX := 4.0
+## Ray length must exceed `_GROUND_RAY_START_OFFSET_PX` plus one
+## frame's worth of fall so the downward probe still finds the
+## floor from a resting pose.
+const _GROUND_RAY_LENGTH_PX := 44.0
+## Maximum distance below the coyote's feet for the floor probe
+## to count as "grounded" and snap. Any hit beyond this means the
+## coyote is airborne mid-descent above a floor the ray still
+## reaches; the old logic teleported it down onto that floor on
+## the frame it crossed the apex. Should stay bigger than one
+## frame of max-fall travel at the lowest expected FPS, but much
+## smaller than `_GROUND_RAY_LENGTH_PX` so far-below floors are
+## ignored.
+const _GROUND_SNAP_MAX_DISTANCE_PX := 10.0
 const _WALL_RAY_LENGTH_PX := 14.0
-const _GRAVITY_PX_PER_SEC_SQ := 1200.0
-const _MAX_FALL_SPEED_PX_PER_SEC := 800.0
+const _GRAVITY_PX_PER_SEC_SQ := 400.0
+## Gravity applied while descending. Lower than ascent gravity so the
+## fall arc feels floaty-er relative to the snappy rise.
+const _FALL_GRAVITY_PX_PER_SEC_SQ := 220.0
+const _MAX_FALL_SPEED_PX_PER_SEC := 200.0
 
-const _APPROACH_SPEED_PX_PER_SEC := 140.0
-const _WANDER_SPEED_PX_PER_SEC := 28.0
+const _APPROACH_SPEED_PX_PER_SEC := 62.0
+const _WANDER_SPEED_PX_PER_SEC := 13.0
 const _WANDER_RADIUS_PX := 96.0
 const _WANDER_IDLE_MIN_SEC := 0.6
 const _WANDER_IDLE_MAX_SEC := 1.8
 
 ## Wall-jump (while approaching) and vertical-jump tuning.
-const _JUMP_IMPULSE_PX_PER_SEC := 420.0
+const _JUMP_IMPULSE_PX_PER_SEC := 185.0
 const _JUMP_COOLDOWN_SEC := 0.5
 const _VERTICAL_JUMP_THRESHOLD_PX := 24.0
 const _VERTICAL_JUMP_HORIZONTAL_RANGE_PX := 80.0
@@ -46,8 +64,8 @@ const _VERTICAL_JUMP_HORIZONTAL_RANGE_PX := 80.0
 ## only forces — so the coyote carries past the player and lands
 ## past them.
 const _POUNCE_TRIGGER_DIST_PX := 72.0
-const _POUNCE_HORIZONTAL_SPEED_PX_PER_SEC := 320.0
-const _POUNCE_VERTICAL_IMPULSE_PX_PER_SEC := 360.0
+const _POUNCE_HORIZONTAL_SPEED_PX_PER_SEC := 142.0
+const _POUNCE_VERTICAL_IMPULSE_PX_PER_SEC := 160.0
 const _POUNCE_COOLDOWN_SEC := 0.35
 
 ## Post-pounce pause before the coyote starts approaching again.
@@ -128,8 +146,11 @@ func _update_behavior(delta: float, player: Player) -> void:
 	if _is_grounded and vertical >= 0.0:
 		vertical = 0.0
 	else:
+		var gravity: float = (
+				_FALL_GRAVITY_PX_PER_SEC_SQ if vertical >= 0.0
+				else _GRAVITY_PX_PER_SEC_SQ)
 		vertical = minf(
-				vertical + _GRAVITY_PX_PER_SEC_SQ * delta,
+				vertical + gravity * delta,
 				_MAX_FALL_SPEED_PX_PER_SEC)
 
 	_velocity = Vector2(horizontal, vertical)
@@ -233,8 +254,12 @@ func _is_wall_in_front() -> bool:
 func _snap_to_floor() -> void:
 	var space := get_world_2d().direct_space_state
 	var query := PhysicsRayQueryParameters2D.new()
-	query.from = global_position
-	query.to = global_position + Vector2(0.0, _GROUND_RAY_LENGTH_PX)
+	# Start the ray slightly above the origin so a grounded coyote
+	# (origin at floor level) doesn't cast from inside a solid tile.
+	var ray_start := global_position + Vector2(
+			0.0, -_GROUND_RAY_START_OFFSET_PX)
+	query.from = ray_start
+	query.to = ray_start + Vector2(0.0, _GROUND_RAY_LENGTH_PX)
 	query.collision_mask = _SURFACE_MASK
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
@@ -247,9 +272,19 @@ func _snap_to_floor() -> void:
 	if _velocity.y < 0.0:
 		_is_grounded = false
 		return
+	# Reject far-below hits. `_GROUND_RAY_LENGTH_PX` is long so a
+	# resting or slightly-penetrated coyote still finds the floor,
+	# but at the apex of a jump the ray can still reach the floor
+	# many pixels below. Without this guard, the moment velocity.y
+	# crosses zero (start of fall) the coyote snaps instantly down
+	# to that far floor.
+	var hit_pos: Vector2 = hit["position"]
+	if hit_pos.y - global_position.y > _GROUND_SNAP_MAX_DISTANCE_PX:
+		_is_grounded = false
+		return
 	_is_grounded = true
 	# Align the sprite's feet (offset by `_FOOT_OFFSET_PX` from the
 	# node origin) with the floor surface. The ray starts at the
 	# origin and is long enough to still hit the floor next frame
 	# from this rest pose.
-	global_position.y = hit["position"].y - _FOOT_OFFSET_PX
+	global_position.y = hit_pos.y - _FOOT_OFFSET_PX

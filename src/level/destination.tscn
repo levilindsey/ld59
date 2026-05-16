@@ -1,25 +1,69 @@
-[gd_scene load_steps=5 format=3 uid="uid://dxm1qaht8n6rq"]
+[gd_scene format=3 uid="uid://dxm1qaht8n6rq"]
 
-[ext_resource type="Script" path="res://src/level/destination.gd" id="1_dest"]
+[ext_resource type="Script" uid="uid://csjo12qxmt4sk" path="res://src/level/destination.gd" id="1_dest"]
 [ext_resource type="PackedScene" uid="uid://br1b7cse0hxmt" path="res://src/player/player_animator.tscn" id="2_animator"]
 [ext_resource type="AudioStream" uid="uid://bioq4mwf012dt" path="res://assets/audio/BigMeow.wav" id="3_bigmeow"]
+[ext_resource type="AudioStream" uid="uid://vbxadionj11" path="res://assets/audio/BigMeow3.wav" id="4_va08e"]
+[ext_resource type="AudioStream" uid="uid://dnhmmxvqr5tjo" path="res://assets/audio/BigMeow2.wav" id="5_u5s45"]
+[ext_resource type="AudioStream" uid="uid://io2v3own0gge" path="res://assets/audio/BigMeowFinal.wav" id="6_03n02"]
+[ext_resource type="AudioStream" uid="uid://bgpbpl6onf3lq" path="res://assets/audio/BigMeowFinal2.wav" id="7_51jaj"]
+[ext_resource type="AudioStream" uid="uid://cnctcr3nu1r34" path="res://assets/audio/BigMeowFinal3.wav" id="8_7hpwt"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_dest"]
-radius = 16.0
+radius = 32.0
 
-[node name="Destination" type="Area2D"]
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_c8c1i"]
+streams_count = 3
+stream_0/stream = ExtResource("3_bigmeow")
+stream_1/stream = ExtResource("4_va08e")
+stream_2/stream = ExtResource("5_u5s45")
+
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_8c5wa"]
+streams_count = 1
+stream_0/stream = ExtResource("6_03n02")
+
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_eildw"]
+streams_count = 1
+stream_0/stream = ExtResource("7_51jaj")
+
+[sub_resource type="AudioStreamRandomizer" id="AudioStreamRandomizer_48aof"]
+streams_count = 1
+stream_0/stream = ExtResource("8_7hpwt")
+
+[node name="Destination" type="Area2D" unique_id=860482500]
 script = ExtResource("1_dest")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=387834595]
 shape = SubResource("CircleShape2D_dest")
 
-[node name="Mama" parent="." instance=ExtResource("2_animator")]
-scale = Vector2(2, 2)
-
-[node name="AnimatedSprite2D" parent="Mama" index="0"]
-flip_h = true
+[node name="Mama" parent="." unique_id=2044505825 instance=ExtResource("2_animator")]
+scale = Vector2(-2, 2)
 
 [node name="BigMeowPlayer" type="AudioStreamPlayer2D" parent="." unique_id=1923764501]
 unique_name_in_owner = true
-stream = ExtResource("3_bigmeow")
+stream = SubResource("AudioStreamRandomizer_c8c1i")
+attenuation = 0.0
+max_distance = 100000.0
 bus = &"SFX"
+
+[node name="BigMeowFinalPlayer" type="AudioStreamPlayer2D" parent="." unique_id=345686588]
+unique_name_in_owner = true
+stream = SubResource("AudioStreamRandomizer_8c5wa")
+volume_db = 8.0
+bus = &"SFX"
+
+[node name="BigMeowFinalPlayer2" type="AudioStreamPlayer2D" parent="." unique_id=606051841]
+unique_name_in_owner = true
+stream = SubResource("AudioStreamRandomizer_eildw")
+volume_db = 8.0
+bus = &"SFX"
+
+[node name="BigMeowFinalPlayer3" type="AudioStreamPlayer2D" parent="." unique_id=830025398]
+unique_name_in_owner = true
+stream = SubResource("AudioStreamRandomizer_48aof")
+volume_db = 8.0
+bus = &"SFX"
+
+[node name="HornTip" type="Node2D" parent="." unique_id=1511187944]
+unique_name_in_owner = true
+position = Vector2(-17, -39)

@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://cbnkttr6pkr1a"]
+
+[ext_resource type="Script" path="res://src/vfx/sparkle_overlay.gd" id="1_sp"]
+
+[node name="SparkleOverlay" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_sp")

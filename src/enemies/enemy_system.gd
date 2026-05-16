@@ -52,7 +52,7 @@ func scene_for(kind: Enemy.Kind) -> PackedScene:
 ## in the tree. Matching-frequency enemies take damage + knockback;
 ## all in-range enemies get perception raised.
 func apply_pulse_damage(pulse: EchoPulse) -> void:
-	for enemy: Enemy in get_tree().get_nodes_in_group("enemies"):
+	for enemy: Enemy in get_tree().get_nodes_in_group(Enemy.GROUP):
 		enemy.receive_pulse(
 				pulse.frequency,
 				pulse.center,

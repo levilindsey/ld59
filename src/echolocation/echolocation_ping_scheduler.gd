@@ -36,23 +36,44 @@ var _type_image_width: int = 0
 var _type_image_height: int = 0
 var _type_image_origin_cells := Vector2i.ZERO
 var _cell_size_px: float = 8.0
+## Holds the latest type Image for lazy `get_data()` extraction.
+## See `sync_terrain_state` for why we defer the byte copy.
+var _pending_type_image: Image = null
+var _pending_origin_cells: Vector2i = Vector2i.ZERO
+var _pending_cell_size_px: float = 8.0
 
 
-## Called by `EcholocationRenderer._rebuild_terrain_textures` to push
-## the newest type image into this scheduler's cache. Cheap: the
-## PackedByteArray assignment is copy-on-write.
+## Called by `EcholocationRenderer._rebuild_terrain_textures` whenever
+## the terrain rebuilds. We hold the Image reference (cheap, no
+## allocation) and DEFER the `get_data()` byte copy until the next
+## ping schedule actually needs to read cells. On web (WASM), the
+## `get_data()` marshal is non-trivial (~250 KB copy across the
+## GDExtension boundary), and a heavy carving sequence can fire
+## several rebuilds between pulses — the lazy copy collapses N
+## copies into 1 per pulse-firing burst.
 func sync_terrain_state(
-		bytes: PackedByteArray,
-		width: int,
-		height: int,
+		type_image: Image,
 		origin_cells: Vector2i,
 		cell_size_px: float,
 ) -> void:
-	_type_image_bytes = bytes
-	_type_image_width = width
-	_type_image_height = height
-	_type_image_origin_cells = origin_cells
-	_cell_size_px = cell_size_px
+	_pending_type_image = type_image
+	_pending_origin_cells = origin_cells
+	_pending_cell_size_px = cell_size_px
+
+
+## Extracts the deferred bytes into the active cache. Called at the
+## top of `schedule_pings_for_pulse` so the cost is paid once per
+## pulse rather than once per rebuild.
+func _ensure_type_bytes_synced() -> void:
+	if _pending_type_image == null:
+		return
+	_type_image_bytes = _pending_type_image.get_data()
+	var size := _pending_type_image.get_size()
+	_type_image_width = size.x
+	_type_image_height = size.y
+	_type_image_origin_cells = _pending_origin_cells
+	_cell_size_px = _pending_cell_size_px
+	_pending_type_image = null
 
 
 ## Enumerate every outward-facing surface segment near `pulse.center`
@@ -71,6 +92,7 @@ func schedule_pings_for_pulse(
 		elapsed_sec: float,
 		ping_delay_scale: float,
 ) -> void:
+	_ensure_type_bytes_synced()
 	var cell_size := _cell_size_px
 	var type_w := _type_image_width
 	var type_h := _type_image_height

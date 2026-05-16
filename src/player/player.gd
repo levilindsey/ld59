@@ -48,6 +48,20 @@ const _ECHO_COOLDOWN_SEC := 1.0 / 3.0
 ## Half-rate cooldown for the blank (NONE) reveal-only pulse.
 const _NONE_ECHO_COOLDOWN_SEC := _ECHO_COOLDOWN_SEC * 2.0
 
+## Scale factors applied to the coin-pickup PulseRing wash when it's
+## piggybacked on an echo emit. 2/3 opacity + 2/3 radius keeps the
+## feedback readable without overpowering the echolocation pulse
+## that fires in the same frame.
+const _ECHO_PULSE_RING_OPACITY_SCALE := 2.0 / 3.0
+const _ECHO_PULSE_RING_SIZE_SCALE := 2.0 / 3.0
+
+## Trailing inner ring spawned after the primary pulse ring on each
+## echo. Smaller, more transparent, and slightly delayed so it reads
+## as a second pulse "behind" the first.
+const _ECHO_PULSE_RING_TRAIL_OPACITY_SCALE := 1.0 / 3.0
+const _ECHO_PULSE_RING_TRAIL_SIZE_SCALE := 1.0 / 3.0
+const _ECHO_PULSE_RING_TRAIL_DELAY_SEC := 0.04
+
 ## Maximum juice per frequency. Fills from eating bugs (+1 small,
 ## +5 big); consumed at 1/echo.
 const MAX_JUICE := 10
@@ -79,22 +93,14 @@ const _BLINK_PERIOD_SEC := 0.12
 const _DAMAGE_FLASH_PEAK := 0.85
 
 ## Damage-hit pulse — short, farther, thicker, translucent outline
-## that snaps outward on every non-fatal hit.
-const _DAMAGE_FLASH_DURATION_SEC := 0.25
+## that snaps outward on every non-fatal hit. Flash duration is held
+## roughly through the full invincibility grace so the red-tint read
+## is louder while the player is still vulnerable-adjacent.
+const _DAMAGE_FLASH_DURATION_SEC := 0.75
 const _DAMAGE_PULSE_DURATION_SEC := 0.3
 const _DAMAGE_PULSE_MAX_RADIUS_PX := 10.0
-const _DAMAGE_PULSE_WIDTH_PX := 3.5
+const _DAMAGE_PULSE_WIDTH_PX := 5.0
 const _DAMAGE_PULSE_ALPHA := 0.7
-
-## Death pulse — same shape, bigger and slower, plays once on the
-## fatal hit. Final radius is bounded by how much transparent border
-## the sprite's frame quad has; the kittenbaticorn frames clip past
-## ~20 px, which still leaves a dramatic halo.
-const _DEATH_FLASH_DURATION_SEC := 0.55
-const _DEATH_PULSE_DURATION_SEC := 0.8
-const _DEATH_PULSE_MAX_RADIUS_PX := 18.0
-const _DEATH_PULSE_WIDTH_PX := 5.0
-const _DEATH_PULSE_ALPHA := 0.9
 
 const _DAMAGE_FLASH_COLOR := Color(1.0, 0.2, 0.2)
 const _DAMAGE_PULSE_COLOR := Color(1.0, 0.35, 0.35)
@@ -118,9 +124,11 @@ const _UNSTICK_MAX_RING_RADIUS := 8
 ## flush against the cell) doesn't count as overlap.
 const _AABB_OVERLAP_EPSILON_PX := 0.5
 
-## Two airborne ceiling touches within this window trigger the
-## idle-ceiling-attached state.
-const _CEILING_BONK_DOUBLE_THRESHOLD_SEC := 0.4
+## After detaching from the ceiling, the next re-attach is blocked
+## for this long. The first bonk after that cooldown clears will
+## attach immediately — no double-bonk gate — so the input model is
+## "jump, bonk, hang" rather than "jump, bonk, bonk, hang".
+const _REATTACH_COOLDOWN_SEC := 0.8
 
 ## After entering idle-ceiling-attached, detach inputs are ignored for
 ## this long so held inputs or coincident events don't immediately slip
@@ -142,6 +150,20 @@ const _ATTACHED_IDLE_SPRITE_Y_OFFSET_PX := 1.0
 ## right at the ceiling line the player hangs from.
 const _CEILING_SPAWN_Y_OFFSET_PX := 15.0
 
+## Player's frequency-outline width (in atlas/game px). 1 = hugging
+## 1-px halo around the sprite body. Only active when a colored
+## frequency is selected; NONE zeroes this out.
+const _FREQUENCY_OUTLINE_WIDTH_PX := 1.0
+## Lightening applied to the pure palette color before pushing it
+## as the outline color — needed so the outline sits outside the
+## composite's 0.08 palette-diff threshold (same rationale as on
+## enemies; see `Enemy._OUTLINE_COLOR_LIGHTEN_AMOUNT`).
+const _FREQUENCY_OUTLINE_LIGHTEN_AMOUNT := 0.25
+## Alpha applied to the lightened color before it's pushed. Keeps
+## the player's outline intentionally faint (partially transparent)
+## so it reads as a frequency tint, not a hard silhouette ring.
+const _FREQUENCY_OUTLINE_ALPHA := 0.5
+
 
 signal juice_changed(frequency: int, new_value: int)
 signal frequency_selection_changed(frequency: int)
@@ -149,6 +171,10 @@ signal frequency_selection_changed(frequency: int)
 
 var _is_in_web := false
 var _is_in_water := false
+## Last frame's `_is_in_water` value, used to detect the rising
+## edge so a splash spawns only on the frame the player crosses
+## into water (not every frame they're submerged).
+var _was_in_water := false
 var _fluid_damage_accum_sec := 0.0
 var _echo_cooldown_sec := 0.0
 ## Cooldown duration that's currently in effect — either
@@ -176,15 +202,24 @@ var _is_attached_idle := false
 ## physics step.
 var _detach_lockout_remaining_sec := 0.0
 
-## Scaled play time of the most recent airborne ceiling touch.
-## `-INF` when no recent bonk is being tracked. Reset when the player
-## lands on a non-air surface so bonks don't chain across long gaps.
-var _last_ceiling_bonk_time_sec := -INF
+## Seconds remaining on the post-detach cooldown. While > 0, a
+## ceiling bonk will NOT re-trigger the attached-idle pose. Ticked
+## each physics step. Bumped to `_REATTACH_COOLDOWN_SEC` in
+## `_exit_attached_idle` so the input sequence is
+## detach → fly → bonk → hang, with a breathing window between
+## detach and the next hang.
+var _reattach_cooldown_remaining_sec := 0.0
 
 ## True from spawn until the FIRST detach of the run. While true the
 ## player is impervious to damage and the player-layer bit is cleared
 ## so bugs/enemies can't detect them.
 var _is_in_spawn_grace := false
+## Set the first time the player fires a GREEN echo. The intro
+## overlay (Title + Controls) is held visible until then, so the
+## controls hint stays on screen across the spawn detach + first
+## few frames of free movement until the player actually uses the
+## core mechanic.
+var _has_fired_green_echo: bool = false
 
 ## True from `enter_win_pose()` onward. Mirrors spawn grace — the
 ## player-layer bit is cleared and damage is ignored — but without
@@ -251,9 +286,14 @@ func _ready() -> void:
 			MAX_JUICE
 			if G.settings.start_with_full_juice
 			else 0)
+	# Green starts with a 1/4-bar floor so the player has at least
+	# one usable colored echo from spawn (and can therefore default
+	# to GREEN as the selected frequency below). `start_with_full_juice`
+	# still wins via the maxi.
+	var green_floor: int = int(ceil(MAX_JUICE / 4.0))
 	_juice = {
 		Frequency.Type.RED: starting_juice,
-		Frequency.Type.GREEN: starting_juice,
+		Frequency.Type.GREEN: maxi(starting_juice, green_floor),
 		Frequency.Type.BLUE: starting_juice,
 		Frequency.Type.YELLOW: starting_juice,
 	}
@@ -261,6 +301,60 @@ func _ready() -> void:
 		juice_changed.emit(freq, _juice[freq])
 	current_frequency = Frequency.Type.NONE
 	%PlayerHealth.died.connect(_on_died)
+	frequency_selection_changed.connect(
+			_on_frequency_selection_changed_for_outline)
+	_apply_frequency_outline()
+
+
+func _on_frequency_selection_changed_for_outline(_freq: int) -> void:
+	_apply_frequency_outline()
+
+
+## Pushes the current frequency color into the sprite shader's
+## `outline_*` uniforms. With NONE selected, the outline is
+## disabled (width 0). Otherwise the outline renders in a
+## partially transparent lightened-freq tint so the player reads
+## as "carrying" the selected frequency without looking like a
+## hard silhouette.
+func _apply_frequency_outline() -> void:
+	if animator == null:
+		return
+	var sprite: AnimatedSprite2D = animator.animated_sprite
+	if sprite == null or sprite.material == null:
+		return
+	var mat: ShaderMaterial = sprite.material as ShaderMaterial
+	if mat == null:
+		return
+	# Dead players render no outline. `%PlayerHealth.is_dead()` goes
+	# true the moment fatal damage lands and stays true for the
+	# game-over delay, so gating here keeps the outline off for the
+	# whole corpse window.
+	if (has_node("%PlayerHealth")
+			and (%PlayerHealth as Node).has_method("is_dead")
+			and %PlayerHealth.is_dead()):
+		mat.set_shader_parameter("outline_width_px", 0.0)
+		return
+	if current_frequency == Frequency.Type.NONE:
+		mat.set_shader_parameter("outline_width_px", 0.0)
+		return
+	var tint: Color = (Frequency.color_of(current_frequency)
+			.lightened(_FREQUENCY_OUTLINE_LIGHTEN_AMOUNT))
+	tint.a = _FREQUENCY_OUTLINE_ALPHA
+	mat.set_shader_parameter("outline_color", tint)
+	mat.set_shader_parameter(
+			"outline_width_px", _FREQUENCY_OUTLINE_WIDTH_PX)
+
+
+func _clear_frequency_outline() -> void:
+	if animator == null:
+		return
+	var sprite: AnimatedSprite2D = animator.animated_sprite
+	if sprite == null or sprite.material == null:
+		return
+	var mat: ShaderMaterial = sprite.material as ShaderMaterial
+	if mat == null:
+		return
+	mat.set_shader_parameter("outline_width_px", 0.0)
 
 
 func destroy() -> void:
@@ -274,11 +368,8 @@ func destroy() -> void:
 ## A cyan cell that is NOT wrapped in green = visible-but-not-collidable
 ## (e.g. LIQUID type) — the most likely source of a perceived "sink".
 func _draw() -> void:
-	# Temporarily disabled so Godot's cyan physics collision debug
-	# shapes are visible on the terrain without being covered by the
-	# green grid overlay. Re-enable once the tilemap/mesh/collision
-	# alignment bug is resolved.
-	return
+	if not G.settings.draw_annotations:
+		return
 	if not is_instance_valid(G.terrain) or G.terrain.settings == null:
 		return
 	var cs: float = G.terrain.settings.cell_size_px
@@ -326,10 +417,42 @@ func _draw() -> void:
 
 func _process(delta: float) -> void:
 	super._process(delta)
-	queue_redraw()
+	if G.settings.draw_annotations:
+		queue_redraw()
 	if _echo_cooldown_sec > 0.0:
 		_echo_cooldown_sec = maxf(0.0, _echo_cooldown_sec - delta)
 	_tick_invincibility(delta)
+	_ensure_tile_destroyed_connected()
+
+
+## Lazy-connect `G.terrain.tile_destroyed` so the player can detach
+## when the ceiling cell they're hanging from gets carved out. Retries
+## each frame until `G.terrain` exists (level load order: the player
+## spawns before the terrain world is fully wired in some cases).
+func _ensure_tile_destroyed_connected() -> void:
+	if not is_instance_valid(G.terrain):
+		return
+	if not G.terrain.tile_destroyed.is_connected(
+			_on_tile_destroyed_while_attached):
+		G.terrain.tile_destroyed.connect(
+				_on_tile_destroyed_while_attached)
+
+
+## Detaches the player when a cell near their head — i.e. the ceiling
+## cell they were clinging to — is destroyed. Uses a radius slightly
+## larger than one cell so straddle cases (player body spanning the
+## edge between two ceiling cells) still trigger.
+func _on_tile_destroyed_while_attached(
+		world_pos: Vector2, _type: int) -> void:
+	if not _is_attached_idle:
+		return
+	var cs: float = 8.0
+	if is_instance_valid(G.terrain) and G.terrain.settings != null:
+		cs = G.terrain.settings.cell_size_px
+	var head_pos := global_position - Vector2(0.0, half_size.y)
+	var threshold := cs * 1.5
+	if head_pos.distance_squared_to(world_pos) <= threshold * threshold:
+		_exit_attached_idle()
 
 
 func _tick_invincibility(delta: float) -> void:
@@ -351,18 +474,28 @@ func _physics_process(delta: float) -> void:
 	if G.level.has_won:
 		return
 
+	if (not is_player_control_active
+			and is_instance_valid(G.hud)
+			and G.hud.is_blackout_hidden):
+		is_player_control_active = true
+
 	_detach_lockout_remaining_sec = maxf(
 			0.0, _detach_lockout_remaining_sec - delta)
+	_reattach_cooldown_remaining_sec = maxf(
+			0.0, _reattach_cooldown_remaining_sec - delta)
 
 	if _is_attached_idle:
 		velocity = Vector2.ZERO
-		animator.play("idle_ceiling")
+		animator.play(_ceiling_idle_animation_name())
 		if _wants_to_detach():
 			_exit_attached_idle()
 		return
 
 	_sample_web_overlap()
 	_sample_water_overlap()
+	if _is_in_water and not _was_in_water:
+		_spawn_water_splash()
+	_was_in_water = _is_in_water
 	if _is_in_water:
 		_current_max_horizontal_speed_multiplier = _WATER_SPEED_MULTIPLIER
 	elif _is_in_web:
@@ -430,10 +563,6 @@ func _snap_to_terrain_surface() -> void:
 		var probe_y := start_y + step * cs
 		if G.terrain.is_cell_collidable(Vector2(x, probe_y)):
 			var cell_top := floorf(probe_y / cs) * cs
-			print("snap-check: y=", global_position.y,
-					" step=", step, " probe=", probe_y,
-					" cell_top=", cell_top,
-					" will_snap=", global_position.y > cell_top)
 			# Only snap upward: don't pull the player down onto terrain
 			# they weren't previously touching.
 			if global_position.y > cell_top:
@@ -441,9 +570,6 @@ func _snap_to_terrain_surface() -> void:
 				if velocity.y > 0.0:
 					velocity.y = 0.0
 			return
-	print("snap-check: y=", start_y,
-			" no collidable cell below within ",
-			_MAX_STEPS * cs, " px")
 
 
 ## Continuous stuck check. Conservative: only triggers when a
@@ -534,6 +660,25 @@ func _sample_water_overlap() -> void:
 		_is_in_water = true
 
 
+## Spawns a one-shot WaterSplash above the player at the surface of
+## the water cell they just entered. Parented to the level so the
+## splash stays world-fixed (doesn't drift with the player).
+func _spawn_water_splash() -> void:
+	if not is_instance_valid(G.level):
+		return
+	var splash := WaterSplash.new()
+	# Top edge of the cell currently containing the player (reads as
+	# the water surface) so droplets visibly fly above the waterline.
+	var cs: float = 8.0
+	if is_instance_valid(G.terrain) and G.terrain.settings != null:
+		cs = G.terrain.settings.cell_size_px
+	var cell_top_y: float = floorf(global_position.y / cs) * cs
+	splash.global_position = Vector2(global_position.x, cell_top_y)
+	G.level.add_child(splash)
+	if is_instance_valid(G.audio):
+		G.audio.play_player_sound("splash")
+
+
 func _apply_fluid_damage(delta: float) -> void:
 	if not _is_in_water or not is_instance_valid(G.terrain):
 		_fluid_damage_accum_sec = 0.0
@@ -567,6 +712,8 @@ func _sample_web_overlap() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if G.level.has_won or G.level.has_finished:
+		return
+	if not is_player_control_active:
 		return
 	if event.is_action_pressed("select_prev_frequency"):
 		select_prev_frequency()
@@ -658,8 +805,46 @@ func _emit_echo_pulse() -> void:
 	_current_cooldown_duration = (
 			_NONE_ECHO_COOLDOWN_SEC if is_none else _ECHO_COOLDOWN_SEC)
 	_echo_cooldown_sec = _current_cooldown_duration
+	# Only the first echo (the spawn-grace "press to start" input)
+	# detaches from the ceiling. Subsequent echoes fire without
+	# disturbing an attached-idle hang so the player can call out
+	# while kissing a ceiling without losing their perch.
+	if _is_attached_idle and _is_in_spawn_grace:
+		_exit_attached_idle()
 	G.echo.emit_pulse(global_position, current_frequency)
-	play_sound("echo", true)
+	# Hide the intro overlay only after the player has actually
+	# blasted a GREEN echo — that's the first deliberate use of the
+	# core mechanic, so the controls hint remains until then.
+	if (current_frequency == Frequency.Type.GREEN
+			and not _has_fired_green_echo):
+		_has_fired_green_echo = true
+		if is_instance_valid(G.hud):
+			G.hud.hide_controls_overlay()
+	var coin_vfx := (get_tree()
+			.get_first_node_in_group(CoinVfx.GROUP) as CoinVfx)
+	if coin_vfx != null:
+		var ring_origin: Vector2 = get_horn_tip_world_position()
+		coin_vfx.spawn_world_pulse_ring(
+				ring_origin,
+				_ECHO_PULSE_RING_OPACITY_SCALE,
+				_ECHO_PULSE_RING_SIZE_SCALE)
+		# Trailing inner ring: same origin, smaller + dimmer, fired
+		# `_ECHO_PULSE_RING_TRAIL_DELAY_SEC` later so it reads as a
+		# second pulse following the first.
+		var trail_timer := get_tree().create_timer(
+				_ECHO_PULSE_RING_TRAIL_DELAY_SEC)
+		trail_timer.timeout.connect(func() -> void:
+			if not is_instance_valid(coin_vfx):
+				return
+			coin_vfx.spawn_world_pulse_ring(
+					ring_origin,
+					_ECHO_PULSE_RING_TRAIL_OPACITY_SCALE,
+					_ECHO_PULSE_RING_TRAIL_SIZE_SCALE))
+	# "Detach" fires immediately with the ability input; the "echo"
+	# proper lags 0.2s so the meow reads as the wind-up and the
+	# pulse ping reads as the emitted wave.
+	play_sound("detach", true)
+	G.audio.play_player_sound_delayed("echo", 0.2, true)
 	if not is_none:
 		_auto_advance_if_empty()
 
@@ -770,10 +955,13 @@ func apply_damage(amount: int) -> void:
 	if %PlayerHealth.is_dead():
 		return
 	%PlayerHealth.apply_damage(amount)
-	if %PlayerHealth.is_dead():
-		_play_damage_pulse_death()
-	else:
-		_play_damage_pulse_hit()
+	# Same pulse shape for both hit and death — the death effect just
+	# runs alongside `_on_died`, which hides the sprite body via
+	# `body_alpha`. The pulse then reads as an expanding silhouette
+	# echo rather than an oversized halo around a still-visible
+	# corpse.
+	_play_damage_pulse_hit()
+	if not %PlayerHealth.is_dead():
 		play_sound("damage", true)
 		_invincibility_remaining_sec = _INVINCIBILITY_SEC
 		_blink_accum_sec = 0.0
@@ -788,17 +976,6 @@ func _play_damage_pulse_hit() -> void:
 			_DAMAGE_PULSE_MAX_RADIUS_PX,
 			_DAMAGE_PULSE_WIDTH_PX,
 			_DAMAGE_PULSE_ALPHA)
-
-
-func _play_damage_pulse_death() -> void:
-	_play_damage_pulse(
-			_DAMAGE_FLASH_COLOR,
-			_DAMAGE_PULSE_COLOR,
-			_DEATH_FLASH_DURATION_SEC,
-			_DEATH_PULSE_DURATION_SEC,
-			_DEATH_PULSE_MAX_RADIUS_PX,
-			_DEATH_PULSE_WIDTH_PX,
-			_DEATH_PULSE_ALPHA)
 
 
 ## Kick off the body flash + outward outline pulse on the sprite's
@@ -850,18 +1027,41 @@ func apply_heal(amount: int) -> void:
 	%PlayerHealth.apply_heal(amount)
 
 
+## World-space position of the unicorn horn tip, mirrored across x
+## when the player is facing left so VFX can attach to the visible
+## horn regardless of which way the sprite is flipped. Falls back to
+## the player's origin if the authored `%HornTip` marker is missing.
+func get_horn_tip_world_position() -> Vector2:
+	var horn_tip := get_node_or_null(^"%HornTip") as Node2D
+	if not is_instance_valid(horn_tip):
+		return global_position
+	var local: Vector2 = horn_tip.position
+	local.x *= surface_state.horizontal_facing_sign
+	return to_global(local)
+
+
 func _on_died() -> void:
 	# Halt input/physics + clear the player-layer bit so nothing can
-	# interact with the corpse during the game-over delay. Don't
-	# queue_free here: `Level.reset()` handles cleanup after the
-	# 3-second delay. Keeping the node alive keeps the camera and the
-	# echolocation near-field reveal anchored to the death position
-	# instead of snapping to the spawn point (which would show an
-	# unlit, camera-jumped "other" area of the level for 3 seconds).
+	# interact with the corpse during the game-over delay. Do NOT
+	# queue_free here — `Level.game_over()` handles cleanup after
+	# the delay (via `GamePanel.restart_level()`). Keeping the node
+	# alive anchors the camera and the echolocation near-field
+	# reveal at the death position instead of snapping back to the
+	# spawn marker, and keeps the composite shader's `world_origin`
+	# / `player_uv` uniforms meaningful for those remaining frames.
+	# Otherwise we'd see the camera jump + a band of untextured
+	# palette-colored cells for the whole game-over delay.
 	set_process(false)
 	set_physics_process(false)
 	set_process_unhandled_input(false)
 	set_collision_layer_value(4, false)
+	_hide_sprite_body()
+	# Clear the frequency-selection outline so the corpse doesn't
+	# sit under a colored silhouette while the game-over delay
+	# plays out. The body itself is already faded by
+	# `_hide_sprite_body` but the outline shader uniform persists
+	# independently.
+	_clear_frequency_outline()
 	# Route death + trailing failure cadence through AudioMain so the
 	# cadence outlives the eventual queue_free on this node.
 	if is_instance_valid(G.audio):
@@ -869,6 +1069,22 @@ func _on_died() -> void:
 		G.audio.play_player_sound_delayed("failure", _FAILURE_CADENCE_DELAY_SEC)
 	if is_instance_valid(G.level):
 		G.level.game_over()
+
+
+## Fades the sprite body to transparent via the damage-flash
+## shader's `body_alpha` uniform. The pulse overlay still animates
+## because the pulse uses the atlas texture's alpha (not the
+## rendered body alpha) to locate the silhouette boundary.
+func _hide_sprite_body() -> void:
+	if animator == null:
+		return
+	var sprite: AnimatedSprite2D = animator.animated_sprite
+	if sprite == null or sprite.material == null:
+		return
+	var mat: ShaderMaterial = sprite.material as ShaderMaterial
+	if mat == null:
+		return
+	mat.set_shader_parameter("body_alpha", 0.0)
 
 
 func _update_actions() -> void:
@@ -891,7 +1107,6 @@ func play_sound(sound_name: String, force_restart := false) -> void:
 func _enter_attached_idle(lockout_sec: float) -> void:
 	_is_attached_idle = true
 	_detach_lockout_remaining_sec = lockout_sec
-	_last_ceiling_bonk_time_sec = -INF
 	velocity = Vector2.ZERO
 	jump_count = 0
 	is_rising_from_jump = false
@@ -900,7 +1115,18 @@ func _enter_attached_idle(lockout_sec: float) -> void:
 		animator.animated_sprite.position.y += (
 				_ATTACHED_IDLE_SPRITE_Y_OFFSET_PX)
 		_attached_sprite_offset_applied = true
-	animator.play("idle_ceiling")
+	animator.play(_ceiling_idle_animation_name())
+
+
+## Returns which of the two ceiling-idle animations to play right
+## now. The original `idle_ceiling` shows the kitten asleep — used
+## ONLY on the very first attach of the run while `_is_in_spawn_grace`
+## is still true. Every other re-attach uses `idle_ceiling_awake`
+## (same animation, awake sprite) so a player who intentionally hangs
+## after the game has started doesn't get the sleepy pose.
+func _ceiling_idle_animation_name() -> String:
+	return ("idle_ceiling" if _is_in_spawn_grace
+			else "idle_ceiling_awake")
 
 
 ## Exits the idle-ceiling-attached state. Reverts the sprite offset and,
@@ -908,6 +1134,7 @@ func _enter_attached_idle(lockout_sec: float) -> void:
 ## the player-layer bit so bugs/enemies can detect the player again.
 func _exit_attached_idle() -> void:
 	_is_attached_idle = false
+	_reattach_cooldown_remaining_sec = _REATTACH_COOLDOWN_SEC
 	play_sound("detach", true)
 	if _attached_sprite_offset_applied:
 		animator.animated_sprite.position.y -= (
@@ -917,16 +1144,21 @@ func _exit_attached_idle() -> void:
 		_is_in_spawn_grace = false
 		# Godot's helper is 1-indexed: value 4 flips bit index 3 (= 8).
 		set_collision_layer_value(4, true)
+		# Intro dismissal is two-stage. Stage 1 here: drop Title +
+		# Dedication and fade the gameplay HUD in so the bars are
+		# fully visible the moment the player has agency. Stage 2
+		# (Controls hide) fires from the first GREEN echo.
 		if is_instance_valid(G.hud):
-			G.hud.hide_intro_overlay()
+			G.hud.hide_title_and_dedication()
 
 
 ## Called after `super._physics_process`. The scaffolder clears
 ## `just_touched_ceiling` mid-super before we get here, so we
 ## reconstruct the rising-edge transition ourselves from
-## `_was_touching_ceiling`. Two airborne ceiling touches within the
-## double-bonk window trigger attachment. Outside of AIR, clears the
-## stamp so stale bonks don't chain.
+## `_was_touching_ceiling`. An airborne ceiling touch triggers
+## attachment directly, gated only by the post-detach reattach
+## cooldown (so the player can't instantly re-hang the moment they
+## detach). Outside of AIR, we just track the rising-edge state.
 func _check_ceiling_bonk_attach() -> void:
 	if _is_attached_idle:
 		return
@@ -934,22 +1166,20 @@ func _check_ceiling_bonk_attach() -> void:
 	var just_touched := is_touching_ceiling and not _was_touching_ceiling
 	_was_touching_ceiling = is_touching_ceiling
 	if surface_state.surface_type != SurfaceType.AIR:
-		_last_ceiling_bonk_time_sec = -INF
 		return
 	if not just_touched:
 		return
-	var now := G.time.get_scaled_play_time()
-	if now - _last_ceiling_bonk_time_sec \
-			<= _CEILING_BONK_DOUBLE_THRESHOLD_SEC:
-		_enter_attached_idle(_POST_ATTACH_DETACH_LOCKOUT_SEC)
-	else:
-		_last_ceiling_bonk_time_sec = now
+	if _reattach_cooldown_remaining_sec > 0.0:
+		return
+	_enter_attached_idle(_POST_ATTACH_DETACH_LOCKOUT_SEC)
 
 
 ## Polls raw input for any direction-press or a jump just-press. Used
 ## only while attached-idle. `ability` (echo) is deliberately excluded.
 func _wants_to_detach() -> bool:
 	if _detach_lockout_remaining_sec > 0.0:
+		return false
+	if not is_player_control_active:
 		return false
 	return (
 			Input.is_action_pressed("move_up")
@@ -968,6 +1198,11 @@ func _enter_attached_idle_at_spawn() -> void:
 	global_position.y += _CEILING_SPAWN_Y_OFFSET_PX
 	_is_in_spawn_grace = true
 	set_collision_layer_value(4, false)
+	# Disable all control until the HUD's loading blackout has fully
+	# faded. `_physics_process` re-enables it once
+	# `G.hud.is_blackout_hidden` flips true, so the first detach
+	# can't fire under the black cover.
+	is_player_control_active = false
 	_enter_attached_idle(_SPAWN_DETACH_LOCKOUT_SEC)
 	if is_instance_valid(G.hud):
 		G.hud.show_intro_overlay()
@@ -983,3 +1218,5 @@ func enter_win_pose() -> void:
 	_is_in_win_pose = true
 	velocity = Vector2.ZERO
 	set_collision_layer_value(4, false)
+	if animator != null:
+		animator.play("idle_floor")

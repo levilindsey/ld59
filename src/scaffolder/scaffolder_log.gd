@@ -38,6 +38,11 @@ var _force_include_log_warnings := true
 
 var is_verbose: bool:
 	get:
+		# G.settings is assigned by Main._enter_tree, which runs AFTER
+		# the autoload (this node) has already emitted its front-matter
+		# log lines. Treat "not yet assigned" as non-verbose.
+		if G.settings == null:
+			return false
 		return G.settings.verbosity >= Verbosity.VERBOSE
 
 
@@ -55,8 +60,11 @@ func _format_message(message: String, category: StringName) -> String:
 		G.time.get_play_time() if is_instance_valid(G) and is_instance_valid(G.time) else -1.0
 	)
 
+	var include_category: bool = (
+		G.settings.include_category_in_logs if G.settings != null else true
+	)
 	var category_token := (
-		"[%s]" % get_category_prefix(category) if G.settings.include_category_in_logs else ""
+		"[%s]" % get_category_prefix(category) if include_category else ""
 	)
 
 	return (
@@ -77,7 +85,14 @@ func print(
 	if not force_enable:
 		if not _is_category_enabled(category):
 			return
-		if verbosity > G.settings.verbosity:
+		# G.settings is null during front-matter prints that fire from
+		# this node's own `_ready` (autoload init runs before
+		# `Main._enter_tree` assigns settings). Default to NORMAL
+		# verbosity so those early lines still print.
+		var max_verbosity: int = (
+			G.settings.verbosity if G.settings != null else Verbosity.NORMAL
+		)
+		if verbosity > max_verbosity:
 			return
 
 	if !(message is String):

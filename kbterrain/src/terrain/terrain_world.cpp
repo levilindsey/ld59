@@ -6,9 +6,11 @@
 #include "marching_squares.h"
 
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/material.hpp>
 #include <godot_cpp/classes/physics_server2d.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/classes/world2d.hpp>
@@ -16,6 +18,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 
@@ -157,6 +160,20 @@ void free_shape_rids(PhysicsServer2D *ps, terrain::Chunk *chunk) {
 // inside) has any interior area. Partial cases (1..14) collapse to
 // degenerate zero-area interiors, so skipping them loses no collision
 // surface.
+// Greedy axis-aligned merging of contiguous solid cells into the
+// fewest possible rectangle shapes. The naive per-cell approach
+// emits one ConvexPolygonShape2D per solid cell (so a 16x16 wall is
+// 256 PhysicsServer round-trips); greedy merging collapses a flat
+// floor to a single shape and a fully-solid chunk to one shape.
+// Each emitted shape still costs three PhysicsServer calls
+// (create, set_data, add_shape), so the win is roughly proportional
+// to (cells_solid / shapes_emitted), often >10x.
+//
+// Algorithm: walk top-left to bottom-right; on each unconsumed
+// solid cell, extend right as far as the row stays solid +
+// unconsumed (the rectangle's width), then extend down as long as
+// every cell in the strip stays solid + unconsumed (the height).
+// Mark the rectangle's cells as consumed and emit one shape.
 void rebuild_collision_cells(
 		PhysicsServer2D *ps,
 		terrain::Chunk *chunk,
@@ -170,27 +187,68 @@ void rebuild_collision_cells(
 	}
 	free_shape_rids(ps, chunk);
 
+	if (cells <= 0) {
+		return;
+	}
+
 	const int stride = cells + 1;
-	chunk->shape_rids.reserve(cells * cells);
-
-	PackedVector2Array quad;
-	quad.resize(4);
-
-	int count = 0;
+	const int total = cells * cells;
+	// 0 = empty (skip), 1 = solid + unconsumed, 2 = consumed.
+	std::vector<uint8_t> state(total, 0);
 	for (int y = 0; y < cells; y++) {
 		for (int x = 0; x < cells; x++) {
 			const uint8_t d_bl = density[(y + 1) * stride + x];
 			const uint8_t d_br = density[(y + 1) * stride + (x + 1)];
 			const uint8_t d_tr = density[y * stride + (x + 1)];
 			const uint8_t d_tl = density[y * stride + x];
-			if (d_bl < iso || d_br < iso || d_tr < iso || d_tl < iso) {
+			if (d_bl >= iso && d_br >= iso
+					&& d_tr >= iso && d_tl >= iso) {
+				state[y * cells + x] = 1;
+			}
+		}
+	}
+
+	PackedVector2Array quad;
+	quad.resize(4);
+
+	for (int y = 0; y < cells; y++) {
+		for (int x = 0; x < cells; x++) {
+			if (state[y * cells + x] != 1) {
 				continue;
+			}
+			// Extend right while solid + unconsumed.
+			int w = 1;
+			while (x + w < cells
+					&& state[y * cells + (x + w)] == 1) {
+				w++;
+			}
+			// Extend down while every cell in the strip is still
+			// solid + unconsumed.
+			int h = 1;
+			bool can_extend = true;
+			while (y + h < cells && can_extend) {
+				for (int dx = 0; dx < w; dx++) {
+					if (state[(y + h) * cells + (x + dx)] != 1) {
+						can_extend = false;
+						break;
+					}
+				}
+				if (can_extend) {
+					h++;
+				}
+			}
+			// Mark the rectangle as consumed so subsequent
+			// iterations skip it.
+			for (int dy = 0; dy < h; dy++) {
+				for (int dx = 0; dx < w; dx++) {
+					state[(y + dy) * cells + (x + dx)] = 2;
+				}
 			}
 
 			const float x0 = origin_px.x + x * cell_size_px;
 			const float y0 = origin_px.y + y * cell_size_px;
-			const float x1 = x0 + cell_size_px;
-			const float y1 = y0 + cell_size_px;
+			const float x1 = x0 + w * cell_size_px;
+			const float y1 = y0 + h * cell_size_px;
 
 			// CW in Godot's Y-down coord system: TL → TR → BR → BL.
 			quad[0] = Vector2(x0, y0);
@@ -202,15 +260,8 @@ void rebuild_collision_cells(
 			ps->shape_set_data(shape, quad);
 			ps->body_add_shape(chunk->static_body_rid, shape);
 			chunk->shape_rids.push_back(shape);
-			count++;
 		}
 	}
-	UtilityFunctions::print(
-			String("kbterrain rebuild_collision_cells: chunk=")
-			+ String::num(chunk->coords.x) + String(",")
-			+ String::num(chunk->coords.y) + String(" cells=")
-			+ String::num(count) + String(" iso=")
-			+ String::num(iso));
 }
 
 } // namespace
@@ -308,6 +359,12 @@ void TerrainWorld::_bind_methods() {
 
 	ADD_SIGNAL(MethodInfo("chunk_modified",
 			PropertyInfo(Variant::VECTOR2I, "coords")));
+	// Emitted in place of `chunk_modified` when the only thing that
+	// changed in the chunk is per-cell health (partial damage with
+	// no destruction). Lets listeners skip rebuilding density / type
+	// images and only re-upload the health texture.
+	ADD_SIGNAL(MethodInfo("health_only_changed",
+			PropertyInfo(Variant::VECTOR2I, "coords")));
 	ADD_SIGNAL(MethodInfo("tile_destroyed",
 			PropertyInfo(Variant::VECTOR2, "world_pos"),
 			PropertyInfo(Variant::INT, "type")));
@@ -327,6 +384,12 @@ void TerrainWorld::_bind_methods() {
 	ClassDB::bind_method(
 			D_METHOD("paint_cell_at_world", "world_pos", "type", "health"),
 			&TerrainWorld::paint_cell_at_world);
+	ClassDB::bind_method(
+			D_METHOD("set_chunk_material", "material"),
+			&TerrainWorld::set_chunk_material);
+	ClassDB::bind_method(
+			D_METHOD("get_chunk_material"),
+			&TerrainWorld::get_chunk_material);
 }
 
 void TerrainWorld::_notification(int what) {
@@ -444,7 +507,7 @@ void TerrainWorld::set_cells(Vector2i coords, const PackedByteArray &bytes) {
 	_queue_remesh_and_neighbors(chunk);
 }
 
-void TerrainWorld::_queue_remesh(Chunk *chunk) {
+void TerrainWorld::_queue_remesh(Chunk *chunk, bool force_sync) {
 	_dirty_chunks.insert(chunk->coords);
 
 	RemeshJob job;
@@ -471,16 +534,38 @@ void TerrainWorld::_queue_remesh(Chunk *chunk) {
 	// a 32x32 density grid is ~microseconds.
 	if (!_editor_mode
 			&& !job.collision_density_snapshot.empty()) {
+		const auto collision_start =
+				std::chrono::steady_clock::now();
 		_update_collision_sync(chunk, job.collision_density_snapshot,
 				job.cells, job.cell_size_px, job.origin_px, job.iso);
+		const auto collision_end =
+				std::chrono::steady_clock::now();
+		_collision_sync_count += 1;
+		_collision_sync_usec += static_cast<uint64_t>(
+				std::chrono::duration_cast<std::chrono::microseconds>(
+						collision_end - collision_start).count());
 	}
 
-	if (_editor_mode) {
+	if (_editor_mode || force_sync) {
 		// Synchronous: the @tool preview wants to see the result
-		// immediately, no worker available.
+		// immediately (no worker available); flow-step remeshes
+		// force this path so flowing water's visual mesh keeps up
+		// with its cell-state mutation (the worker drains only 8
+		// results per frame, which lags dozens of per-tick flow
+		// dirties by multiple frames).
+		const auto remesh_start =
+				std::chrono::steady_clock::now();
 		RemeshResult result;
 		terrain::process_remesh_job(job, result);
 		_integrate_one(result);
+		const auto remesh_end =
+				std::chrono::steady_clock::now();
+		if (!_editor_mode) {
+			_sync_remesh_count += 1;
+			_sync_remesh_usec += static_cast<uint64_t>(
+					std::chrono::duration_cast<std::chrono::microseconds>(
+							remesh_end - remesh_start).count());
+		}
 	} else {
 		_worker->submit(std::move(job));
 	}
@@ -596,6 +681,14 @@ void TerrainWorld::_integrate_one(const RemeshResult &r) {
 		// a per-pixel type buffer for the echolocation shader.
 		rs->canvas_item_set_visibility_layer(
 				chunk->canvas_item_rid, 3);
+		// Adopt the current chunk material (if any). Chunks created
+		// later than the GDScript-side `set_chunk_material` call
+		// would otherwise render without the punch-through shader.
+		if (_chunk_material.is_valid()) {
+			rs->canvas_item_set_material(
+					chunk->canvas_item_rid,
+					_chunk_material->get_rid());
+		}
 	}
 	rs->canvas_item_clear(chunk->canvas_item_rid);
 
@@ -689,6 +782,60 @@ void TerrainWorld::_on_process() {
 		_flow_tick_counter = 0;
 		_step_flow();
 	}
+	_maybe_log_threading_stats();
+}
+
+
+// Emits a one-line summary every THREADING_LOG_INTERVAL_USEC showing
+// main-thread terrain work vs. worker-thread progress. Used to verify
+// that the worker is actually running off-thread in a web build and
+// to identify which workloads are still blocking the main thread.
+void TerrainWorld::_maybe_log_threading_stats() {
+	if (_editor_mode) {
+		return;
+	}
+	const uint64_t now_usec = static_cast<uint64_t>(
+			Time::get_singleton()->get_ticks_usec());
+	if (_threading_log_last_usec == 0) {
+		_threading_log_last_usec = now_usec;
+		_threading_log_last_jobs_processed =
+				_worker ? _worker->jobs_processed() : 0;
+		return;
+	}
+	const uint64_t elapsed = now_usec - _threading_log_last_usec;
+	if (elapsed < THREADING_LOG_INTERVAL_USEC) {
+		return;
+	}
+
+	const uint64_t jobs_now =
+			_worker ? _worker->jobs_processed() : 0;
+	const uint64_t jobs_delta =
+			jobs_now - _threading_log_last_jobs_processed;
+	const size_t pending_jobs =
+			_worker ? _worker->pending_jobs() : 0;
+	const size_t pending_results =
+			_worker ? _worker->pending_results() : 0;
+
+	UtilityFunctions::print(
+			"[kbterrain] threading ",
+			static_cast<double>(elapsed) / 1'000'000.0, "s: worker ",
+			static_cast<int64_t>(jobs_delta),
+			" jobs (pending=", static_cast<int64_t>(pending_jobs),
+			", results=", static_cast<int64_t>(pending_results),
+			") | main sync_remesh ",
+			static_cast<int64_t>(_sync_remesh_count), " calls ",
+			static_cast<double>(_sync_remesh_usec) / 1000.0,
+			"ms | main collision_sync ",
+			static_cast<int64_t>(_collision_sync_count), " calls ",
+			static_cast<double>(_collision_sync_usec) / 1000.0,
+			"ms");
+
+	_sync_remesh_count = 0;
+	_sync_remesh_usec = 0;
+	_collision_sync_count = 0;
+	_collision_sync_usec = 0;
+	_threading_log_last_usec = now_usec;
+	_threading_log_last_jobs_processed = jobs_now;
 }
 
 // ---- Gameplay API -----------------------------------------------------------
@@ -930,9 +1077,9 @@ void TerrainWorld::damage(Vector2 world_pos, float radius_px, int dmg,
 			_queue_remesh_and_neighbors(chunk);
 		} else if (any_damage) {
 			// Partial damage (no destruction) — skip the expensive
-			// remesh but still notify listeners so health_tex etc.
-			// re-upload with the new per-cell health values.
-			emit_signal("chunk_modified", chunk->coords);
+			// remesh and emit the health-only signal so listeners can
+			// re-upload only the health texture.
+			emit_signal("health_only_changed", chunk->coords);
 		}
 	}
 
@@ -1089,7 +1236,14 @@ void TerrainWorld::_step_flow() {
 		if (chunk == nullptr) {
 			continue;
 		}
-		_queue_remesh(chunk);
+		// Force-sync: mesh the flow-dirtied chunks on the main
+		// thread so the water's visible mesh and vertex colors
+		// (plus the chunk_modified signal that rebuilds type_tex /
+		// health_tex) all land this frame. The async worker drains
+		// at most 8 results per frame, so a single flow tick that
+		// dirties dozens of chunks would otherwise lag the visuals
+		// behind gameplay (damage / collision) by many frames.
+		_queue_remesh(chunk, true);
 	}
 }
 
@@ -1294,9 +1448,10 @@ void TerrainWorld::damage_with_falloff(
 			chunk->generation.fetch_add(1);
 			_queue_remesh_and_neighbors(chunk);
 		} else if (any_damage) {
-			// Partial damage only — skip remesh but notify so
-			// listeners re-upload health_tex etc.
-			emit_signal("chunk_modified", chunk->coords);
+			// Partial damage only — skip remesh and emit the
+			// health-only signal so listeners can re-upload only the
+			// health texture.
+			emit_signal("health_only_changed", chunk->coords);
 		}
 	}
 
@@ -1432,6 +1587,23 @@ void TerrainWorld::clear_all() {
 	_dirty_chunks.clear();
 	if (_flow_step) {
 		_flow_step->reset_velocity_cache();
+	}
+}
+
+
+void TerrainWorld::set_chunk_material(Ref<Material> p_material) {
+	_chunk_material = p_material;
+	if (!_manager) {
+		return;
+	}
+	RenderingServer *rs = RenderingServer::get_singleton();
+	RID mat_rid = p_material.is_valid() ? p_material->get_rid() : RID();
+	for (auto &pair : _manager->all_mut()) {
+		terrain::Chunk *chunk = pair.second.get();
+		if (chunk == nullptr || !chunk->canvas_item_rid.is_valid()) {
+			continue;
+		}
+		rs->canvas_item_set_material(chunk->canvas_item_rid, mat_rid);
 	}
 }
 

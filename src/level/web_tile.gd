@@ -28,18 +28,33 @@ const _CLOSE_RANGE_DAMAGE_FRACTION := 1.0
 const _FAR_RANGE_DAMAGE_FRACTION := 0.2
 
 
-## Frequency this web tile belongs to. Drives both its tint and which
-## pulse frequency can damage it.
-@export var frequency: Frequency.Type = Frequency.Type.GREEN
-## 1/5 the 255 baseline of a normal terrain cell — webs are meant
+## Edge length (in atlas pixels) of a single slot in
+## `interior_atlas`. The atlas is a horizontal strip of
+## `Frequency.ATLAS_SLOT_COUNT` square slots; slot N sits at
+## `(N * _ATLAS_SLOT_PX, 0)` and corresponds to `Frequency.Type(N)`,
+## so `WEB_RED = 8` → column 8, `WEB_YELLOW = 11` → column 11.
+const _ATLAS_SLOT_PX := 32
+
+
+## WEB_* marker type this tile represents. Drives the atlas-slot
+## lookup (slots 8-11 hold the hex-web art) and its tint. Damage
+## matching derives the base frequency via `Frequency.is_damageable_by`.
+@export var frequency: Frequency.Type = Frequency.Type.WEB_GREEN
+## 1/25 the 255 baseline of a normal terrain cell — webs are meant
 ## to feel flimsy so the player can burn through them quickly.
-@export_range(1, 500) var max_health: int = 51
+@export_range(1, 500) var max_health: int = 5
 
 ## World-space radius of the echolocation tag halo. Read by
 ## `EcholocationRenderer` to synthesize a pointillist silhouette so
 ## pulses reveal the web the same way they reveal bugs. ~8 matches
 ## the 16×16 tile's visual half-extent.
 @export_range(2.0, 48.0) var tag_radius_px: float = 8.0
+
+## Shared interior-terrain atlas texture. Assigned in the scene.
+## WebTile picks its per-frequency region out of this atlas instead
+## of authoring a dedicated web sprite — slots 8..11 of the atlas
+## already carry hexagonal web art in each frequency's palette.
+@export var interior_atlas: Texture2D
 
 var _health: int
 
@@ -51,10 +66,36 @@ func _ready() -> void:
 	collision_mask = 0
 	_health = max_health
 	add_to_group(GROUP)
+	_apply_web_art()
 	_apply_frequency_tint()
 	_apply_settings_modulates()
 	if is_instance_valid(G.echo):
 		G.echo.pulse_emitted.connect(_on_pulse_emitted)
+
+
+func _exit_tree() -> void:
+	if (
+		is_instance_valid(G.echo)
+		and G.echo.pulse_emitted.is_connected(_on_pulse_emitted)
+	):
+		G.echo.pulse_emitted.disconnect(_on_pulse_emitted)
+
+
+## Points the Body sprite at the atlas slot matching `frequency`. The
+## atlas is a 12×1 strip at 32 px per slot, so column index equals
+## the Frequency.Type integer value.
+func _apply_web_art() -> void:
+	var body := get_node_or_null("Body") as Sprite2D
+	if body == null or interior_atlas == null:
+		return
+	var atlas_tex := AtlasTexture.new()
+	atlas_tex.atlas = interior_atlas
+	atlas_tex.region = Rect2(
+			int(frequency) * _ATLAS_SLOT_PX,
+			0,
+			_ATLAS_SLOT_PX,
+			_ATLAS_SLOT_PX)
+	body.texture = atlas_tex
 
 
 func _apply_settings_modulates() -> void:
@@ -63,16 +104,10 @@ func _apply_settings_modulates() -> void:
 	var body := get_node_or_null("Body") as CanvasItem
 	if body != null:
 		body.modulate = G.settings.color_web_body_modulate
-	var strand_a := get_node_or_null("StrandA") as CanvasItem
-	if strand_a != null:
-		strand_a.modulate = G.settings.color_web_strand_modulate
-	var strand_b := get_node_or_null("StrandB") as CanvasItem
-	if strand_b != null:
-		strand_b.modulate = G.settings.color_web_strand_modulate
 
 
 func _on_pulse_emitted(pulse: EchoPulse) -> void:
-	if pulse.frequency != frequency:
+	if not Frequency.is_damageable_by(frequency, pulse.frequency):
 		return
 	var offset := global_position - pulse.center
 	var max_radius_sq := pulse.max_radius_px * pulse.max_radius_px

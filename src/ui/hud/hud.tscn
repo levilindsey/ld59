@@ -8,6 +8,18 @@
 [ext_resource type="Texture2D" uid="uid://3iakxs6hl0gt" path="res://assets/images/scratch/controls.png" id="9_qtkbr"]
 [ext_resource type="PackedScene" uid="uid://cmay3k4m7vq8x" path="res://src/ui/hud/health_bar.tscn" id="10_hb"]
 [ext_resource type="PackedScene" uid="uid://d2cvs8tm1kn0j" path="res://src/ui/hud/juice_bar_row.tscn" id="11_juice"]
+[ext_resource type="PackedScene" uid="uid://cbnkttr80clpb" path="res://src/ui/hud/coin_indicator.tscn" id="12_coin_ind"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_qtkbr"]
+bg_color = Color(0, 0, 0, 0.6745098)
+corner_radius_top_left = 32
+corner_radius_top_right = 32
+corner_radius_bottom_right = 32
+corner_radius_bottom_left = 32
+expand_margin_left = 20.0
+expand_margin_top = 20.0
+expand_margin_right = 20.0
+expand_margin_bottom = 20.0
 
 [node name="Hud" type="PanelContainer" unique_id=1041782707]
 anchors_preset = 15
@@ -18,6 +30,12 @@ grow_vertical = 2
 mouse_filter = 2
 theme = ExtResource("1_4rn03")
 script = ExtResource("1_eqvli")
+
+[node name="BlackoutRect" type="ColorRect" parent="." unique_id=1041782708]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+color = Color(0, 0, 0, 1)
 
 [node name="MarginContainer" type="MarginContainer" parent="." unique_id=1923377252]
 layout_mode = 2
@@ -42,7 +60,7 @@ theme_override_constants/separation = 4
 [node name="HBoxContainer" type="HBoxContainer" parent="MarginContainer/GameState/LeftContent" unique_id=66660191]
 layout_mode = 2
 
-[node name="TextureRect" type="TextureRect" parent="MarginContainer/GameState/LeftContent/HBoxContainer" unique_id=1524431336]
+[node name="Q" type="TextureRect" parent="MarginContainer/GameState/LeftContent/HBoxContainer" unique_id=1524431336]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 size_flags_vertical = 8
@@ -61,7 +79,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 0
 
-[node name="TextureRect2" type="TextureRect" parent="MarginContainer/GameState/LeftContent/HBoxContainer" unique_id=430433343]
+[node name="E" type="TextureRect" parent="MarginContainer/GameState/LeftContent/HBoxContainer" unique_id=430433343]
 custom_minimum_size = Vector2(0, 60)
 layout_mode = 2
 size_flags_vertical = 8
@@ -87,6 +105,11 @@ mouse_filter = 2
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
+
+[node name="CoinIndicator" parent="MarginContainer/GameState/RightContent" unique_id=2091282344 instance=ExtResource("12_coin_ind")]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 8
 
 [node name="HBoxContainer2" type="HBoxContainer" parent="MarginContainer" unique_id=1435323949]
 layout_mode = 2
@@ -128,39 +151,71 @@ layout_mode = 2
 [node name="Control5" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer" unique_id=825857789]
 layout_mode = 2
 
-[node name="Controls" type="TextureRect" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Control5" unique_id=456170150]
-unique_name_in_owner = true
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Control5" unique_id=357260641]
 layout_mode = 0
-offset_left = 19.0
-offset_right = 89.0
-offset_bottom = 74.0
+offset_top = 8.0
+offset_right = 109.0
+offset_bottom = 42.0
+
+[node name="Controls" type="TextureRect" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Control5/VBoxContainer" unique_id=456170150]
+unique_name_in_owner = true
+layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 texture = ExtResource("9_qtkbr")
 
-[node name="Credits" type="VBoxContainer" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer" unique_id=210429971]
+[node name="Control4" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Control5/VBoxContainer" unique_id=377945607]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+
+[node name="Dedication" type="VBoxContainer" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Control5/VBoxContainer" unique_id=550430776]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_constants/separation = 8
 
-[node name="Label" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits" unique_id=999096751]
+[node name="Label" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Control5/VBoxContainer/Dedication" unique_id=1707567775]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9843137, 0.9764706, 0.9372549, 1)
 theme_override_colors/font_outline_color = Color(0.11764706, 0.09803922, 0.18039216, 1)
 theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 16
+text = "For Amira"
+horizontal_alignment = 1
+
+[node name="Label2" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Control5/VBoxContainer/Dedication" unique_id=333931128]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9843137, 0.9764706, 0.9372549, 1)
+theme_override_colors/font_outline_color = Color(0.11764706, 0.09803922, 0.18039216, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 9
+text = "(And Ludum Dare!)"
+horizontal_alignment = 1
+
+[node name="Credits" type="PanelContainer" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer" unique_id=481141179]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_qtkbr")
+
+[node name="Credits" type="VBoxContainer" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits" unique_id=210429971]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits/Credits" unique_id=999096751]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9843137, 0.9764706, 0.9372549, 1)
+theme_override_colors/font_outline_color = Color(0.11764706, 0.09803922, 0.18039216, 1)
+theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 12
 text = "Made by"
 horizontal_alignment = 1
 
-[node name="Control2" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits" unique_id=1061488586]
-custom_minimum_size = Vector2(0, 8)
+[node name="Control2" type="Control" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits/Credits" unique_id=1061488586]
+custom_minimum_size = Vector2(0, 2)
 layout_mode = 2
 
-[node name="Label4" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits" unique_id=392399913]
+[node name="Label4" type="Label" parent="MarginContainer/HBoxContainer2/VBoxContainer/VBoxContainer/Credits/Credits" unique_id=392399913]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9843137, 0.9764706, 0.9372549, 1)
 theme_override_colors/font_outline_color = Color(0.11764706, 0.09803922, 0.18039216, 1)
-theme_override_constants/outline_size = 2
+theme_override_constants/outline_size = 5
 theme_override_font_sizes/font_size = 18
 text = "Levi Lindsey"
 horizontal_alignment = 1

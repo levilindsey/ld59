@@ -15,14 +15,14 @@ extends Enemy
 
 
 ## Max speed while closing in (approaching, not yet swooping).
-const _APPROACH_SPEED_PX_PER_SEC := 85.0
+const _APPROACH_SPEED_PX_PER_SEC := 30.0
 
 ## Distance at which APPROACH flips to SWOOP.
 const _SWOOP_TRIGGER_DIST_PX := 80.0
 
 ## Speed during the swoop — fast enough to feel predatory and to
 ## meaningfully overshoot.
-const _SWOOP_SPEED_PX_PER_SEC := 260.0
+const _SWOOP_SPEED_PX_PER_SEC := 115.0
 
 ## How long the swoop runs before the owl slows to a stop. Speed ×
 ## duration = overshoot distance past the player.
@@ -38,7 +38,7 @@ const _APPROACH_STEER_PER_SEC := 3.5
 const _SWOOP_STEER_PER_SEC := 8.0
 const _RECOVER_STEER_PER_SEC := 6.0
 
-const _WANDER_SPEED_PX_PER_SEC := 28.0
+const _WANDER_SPEED_PX_PER_SEC := 13.0
 const _WANDER_RADIUS_PX := 80.0
 const _WANDER_IDLE_MIN_SEC := 0.4
 const _WANDER_IDLE_MAX_SEC := 1.4

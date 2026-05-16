@@ -16,28 +16,22 @@ Do NOT use the local memory system (`~/.claude/projects/*/memory/`).
 This project is worked on across multiple machines. All persistent
 context belongs in this file so it stays in sync via git.
 
-## Implementation plan
+## Status
 
-`PLAN.md` at the repo root is the **authoritative, living checklist**
-for the project. It breaks the work into phases and parallelizable
-tracks with checkbox tasks. Read it at the start of any non-trivial
-session and mark items complete as they land on `main`.
+The Ludum Dare 59 jam shipped 2026-04-20 (public mirror at
+`levilindsey/ld59`; build playable at `levi.dev/kittenbaticorn`).
+This private repo has been quiet since 2026-04-23. Treat it as
+maintenance mode: only post-jam polish, bug fixes, and cleanup
+land here unless the user explicitly resumes development.
 
-**Parallel sessions**: multiple Claude sessions (or human + Claude)
-may run concurrently on different tracks. All work lands directly
-on `main` — no feature branches. Conventions:
+If a jam-style cadence resumes (parallel sessions, multi-track
+checklist), reintroduce a `PLAN.md` and the "implementation
+plan" conventions used during the jam. The shape that worked:
+`pull --rebase` before starting, push small/focused commits,
+serialize edits on shared files, mark checklist items complete
+in the same commit that satisfies them.
 
-- `git pull --rebase origin main` before starting and before
-  pushing. Push small, focused commits often so concurrent sessions
-  see your changes.
-- Before editing any file in the "Shared files" table of `PLAN.md`,
-  pull first. Serialize edits on those files: pull, edit, commit,
-  push in a tight loop.
-- Commit `PLAN.md` checkbox updates alongside the work that
-  satisfies them — the checklist is the system of record.
-
-If you start a session without clear instructions, consult `PLAN.md`
-and pick an unclaimed track whose dependencies are satisfied.
+All work lands directly on `main` — no feature branches.
 
 ## Project Structure
 
@@ -592,3 +586,112 @@ Godot 4.5 may lack this. If web export fails on `dlink_load`,
 either build a custom web template with
 `scons platform=web dlink_enabled=yes` or use a dlink-enabled
 template from a later Godot release.
+
+## Local web preview
+
+```powershell
+# Activate emsdk only if you've changed C++ code; otherwise skip.
+& "C:\Users\lsl\emsdk\emsdk_env.ps1"
+powershell -ExecutionPolicy Bypass -File kbterrain\build_web.ps1
+
+# Re-export web (uses the "Web" preset in export_presets.cfg).
+godot --headless --export-release "Web" build/web/index.html
+
+# Serve locally with COOP/COEP headers (required for SharedArrayBuffer
+# + threads). Default port 8060.
+python scripts/serve_web.py
+```
+
+## Deploying to levi.dev/kittenbaticorn (Heroku)
+
+The game is hosted at `https://levi.dev/kittenbaticorn` from the
+sibling repo `../levi.dev` (Heroku app `levi-dev`,
+`Procfile`-based).
+
+### Repo layout in `../levi.dev`
+
+- `apps/kittenbaticorn/index.html` — Jade-templated entry page.
+  References `cacheBuster` (`.vX.Y.Z`) and an inline
+  `GODOT_CONFIG.fileSizes` block. Both must be hand-updated each
+  deploy.
+- `apps/kittenbaticorn/public/` — All non-HTML build files (.pck,
+  .wasm, .side.wasm, .js, audio worklets, icons, etc.). Filenames
+  are unversioned; the cache-buster middleware
+  (`server/middleware/middleware.js`) only strips `.vX.Y.Z` from
+  `.css/.js/.json/.jpg/.png/.gif/.svg/.ico/.m4a/.ogg`. `.wasm` and
+  `.pck` are NOT cache-busted; rely on the JS reload to cascade.
+- COOP/COEP headers for `/kittenbaticorn` are set by middleware
+  (already in place); no change needed.
+
+### Deploy steps
+
+1. Re-export web (see "Local web preview" above) so
+   `build/web/index.html` reflects the latest sizes.
+2. Copy build artefacts into the deploy dir, **excluding
+   `index.html`** (the Jade template at the apps/ root is the
+   shipped entry):
+
+   ```powershell
+   Get-ChildItem build\web -File |
+       Where-Object { $_.Name -ne "index.html" } |
+       ForEach-Object {
+           Copy-Item $_.FullName ..\levi.dev\apps\kittenbaticorn\public -Force
+       }
+   ```
+
+3. In `../levi.dev/apps/kittenbaticorn/index.html`:
+   - Bump `cacheBuster` (e.g. `.v1.0.1` → `.v1.0.2`).
+   - Update `GODOT_CONFIG.fileSizes` to match the values from the
+     freshly-exported `build/web/index.html`. Grep:
+     `grep -o '"fileSizes":[^}]*}' build/web/index.html`.
+   - **Leave `GODOT_CONFIG.gdextensionLibs` as just the bare
+     basename** (e.g. `["libkbterrain.web.template_release.wasm32.wasm"]`).
+     Do NOT prepend `<%= baseDir %>/`. The string is used as the
+     Emscripten in-FS storage key; Godot's runtime dlopen
+     resolves the GDExtension manifest path
+     (`addons/kbterrain/bin/...`) by basename via `findLibraryFS`.
+     Adding `/kittenbaticorn/` makes the key path-prefixed and
+     `findLibraryFS` no longer matches → Emscripten falls into
+     the sync-fetch path which throws "file not found, and
+     synchronous loading of external files is not available" and
+     `TerrainWorld` becomes a placeholder (no terrain renders).
+     The fetch URL still works because the page URL ends in `/`,
+     so a relative bare basename resolves to
+     `/kittenbaticorn/libkbterrain...`.
+
+4. **CRITICAL — re-render the template** from `../levi.dev`:
+
+   ```bash
+   npx gulp templates
+   ```
+
+   The Express server serves `apps/kittenbaticorn/public/index.html`
+   directly (static), NOT the lodash-templated
+   `apps/kittenbaticorn/index.html` at the app root. The gulp task
+   compiles the source template into `public/index.html`. **Skipping
+   this leaves the deploy referencing the previous cacheBuster /
+   fileSizes — the live page tries to load the OLD pck/wasm,
+   GDExtension fails, no terrain renders.**
+
+5. **Deploy without asking for confirmation.** During iteration
+   the user expects rapid `re-export → render → commit → push`
+   loops. Don't pause to ask "should I deploy?" — just do it.
+
+6. From `../levi.dev`:
+
+   ```bash
+   git add apps/kittenbaticorn
+   git commit -m "Deploy kittenbaticorn vX.Y.Z"
+   # First time on a fresh machine after `heroku login`:
+   #   heroku git:remote -a levi-dev
+   git push heroku master
+   ```
+
+5. Heroku build logs stream to stdout; visit
+   `https://levi.dev/kittenbaticorn` once the build finishes.
+
+### Setting up a new machine
+
+`heroku login` then `heroku git:remote -a levi-dev` from inside
+`../levi.dev`. The error "heroku does not appear to be a git
+repository" means the remote isn't configured yet.

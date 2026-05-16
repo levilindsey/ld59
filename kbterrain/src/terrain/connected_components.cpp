@@ -146,6 +146,7 @@ std::vector<DetachedIsland> ConnectedComponents::detach_islands(
 			}
 
 			if (anchored || over_budget || found.empty()) {
+#ifdef KBTERRAIN_CC_DEBUG
 				if (!found.empty()) {
 					UtilityFunctions::print(
 							"[CC] skipping detach at seed (",
@@ -153,11 +154,14 @@ std::vector<DetachedIsland> ConnectedComponents::detach_islands(
 							" anchored=", anchored,
 							" over_budget=", over_budget);
 				}
+#endif
 				continue;
 			}
+#ifdef KBTERRAIN_CC_DEBUG
 			UtilityFunctions::print(
 					"[CC] detaching island at seed (",
 					nx, ",", ny, ") — cells=", (int)found.size());
+#endif
 
 			// Build the detached island. Compute bbox, fill local
 			// type + density buffers, and remove the cells from

@@ -40,3 +40,18 @@ func start_level() -> void:
 		return
 	level = G.settings.default_level_scene.instantiate()
 	add_child(level)
+
+
+## Tears down the current Level node and spawns a fresh instance.
+## Used by `Level.game_over()` after the death delay so terrain
+## damage, dropped items, and transient state all reset together
+## (the terrain is only baked once in `Level._ready`, so an in-place
+## `Level.reset()` can't restore carved cells on its own).
+func restart_level() -> void:
+	if is_instance_valid(level):
+		level.queue_free()
+		level = null
+	# Deferred so the old Level is fully out of the tree (and its
+	# signal connections with G.terrain / G.echo teared down) before
+	# the new one enters.
+	call_deferred("start_level")

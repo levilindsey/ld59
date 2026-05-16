@@ -19,6 +19,11 @@ extends Level
 @export var terrain_world_path: NodePath
 @export var terrain_settings: Resource
 @export var tile_map_layer_path: NodePath
+## Optional second TileMapLayer, aligned to the same grid as the
+## main tile layer. Any tile painted in it marks the corresponding
+## marching-squares cells to start at 10% of their normal health,
+## so those regions read as pre-damaged at level load.
+@export var damage_paint_layer_path: NodePath
 
 @export_group("Test fallback (used when TileMapLayer is empty)")
 @export var test_rect_world_px: Rect2 = Rect2(-320, 32, 640, 256)
@@ -39,6 +44,18 @@ extends Level
 ## tile's world center. Its `frequency` export is populated from the
 ## tile's `web_frequency` custom data (default GREEN).
 @export var web_tile_scene: PackedScene
+
+@export_group("Damage rendering")
+## Applied to every terrain chunk's canvas_item so damaged cells
+## can drop their alpha toward zero where cracks are authored,
+## letting the parallax show through actual punched-out regions.
+## If null, terrain renders opaque (old behavior). Intended
+## shader: `src/level/terrain_damage_punchthrough.gdshader`.
+@export var damage_punchthrough_shader: Shader
+## Same atlas the echolocation composite uses for crack tiers.
+## Assigned in the scene so both shaders share one authored asset.
+@export var damage_tier_atlas: Texture2D
+
 
 @export_group("Fragments")
 ## Scene spawned per-cell when a connected-components pass detaches
@@ -65,6 +82,13 @@ extends Level
 
 var _tilemap_signal_connected: bool = false
 var _fwoof_last_time_sec: float = -INF
+var _punchthrough_material: ShaderMaterial
+## Queue of falling-cell spawn requests that couldn't fit in the
+## frame's spawn budget. Each entry is a 4-tuple
+## [world_pos: Vector2, type: int, health: int, delay_sec: float].
+## Drained in `_process` at `_MAX_FALLING_CELL_SPAWNS_PER_FRAME`
+## entries per frame.
+var _pending_falling_cells: Array = []
 
 
 func _enter_tree() -> void:
@@ -72,6 +96,18 @@ func _enter_tree() -> void:
 	if Engine.is_editor_hint():
 		return
 	super._enter_tree()
+	# Hide the authoring TileMapLayer the instant this level enters
+	# the tree. Otherwise the raw tile grid briefly renders for ~1
+	# frame (visibly as a "duplicate of the marching-squares terrain"
+	# the moment a new level spawns after a death) before
+	# `_setup_runtime` gets a chance to toggle it off in `_ready`.
+	# The bake still reads its data — visibility doesn't affect it.
+	var tml := _get_tile_map_layer()
+	if is_instance_valid(tml):
+		tml.visible = false
+	var damage_tml := _get_damage_paint_layer()
+	if is_instance_valid(damage_tml):
+		damage_tml.visible = false
 
 
 ## Pushes `Settings` frequency colors into the level's shared
@@ -124,6 +160,25 @@ func _physics_process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
 	super._physics_process(delta)
+	_drain_pending_falling_cells()
+
+
+## Spawns up to `_MAX_FALLING_CELL_SPAWNS_PER_FRAME` queued
+## FallingCell scenes this tick. Called from `_physics_process`
+## so the spawn budget runs at a fixed rate regardless of render
+## framerate.
+func _drain_pending_falling_cells() -> void:
+	if falling_cell_scene == null:
+		_pending_falling_cells.clear()
+		return
+	var budget: int = mini(
+			_MAX_FALLING_CELL_SPAWNS_PER_FRAME,
+			_pending_falling_cells.size())
+	for i in range(budget):
+		var entry: Array = _pending_falling_cells.pop_front()
+		var cell: FallingCell = falling_cell_scene.instantiate()
+		add_child(cell)
+		cell.configure(entry[0], entry[1], entry[2], entry[3])
 
 
 # ---- Runtime path -----------------------------------------------------------
@@ -150,43 +205,117 @@ func _setup_runtime() -> void:
 		# cells we end up baking into the TerrainWorld. Only prints
 		# once per level load and bounded to ~5 entries so it stays
 		# cheap.
-		var used := tml.get_used_cells()
-		var sample_count: int = min(5, used.size())
-		print("[bake] tile_size=%s cells_per_tile=%s"
-				% [tml.tile_set.tile_size,
-					int(tml.tile_set.tile_size.x)
-							/ int(terrain_settings.cell_size_px)
-							if terrain_settings != null else -1])
-		for i in range(sample_count):
-			var tp: Vector2i = used[i]
-			print("[bake] tile_pos=%s world=%s map_to_local=%s"
-					% [
-						tp,
-						Vector2(tp.x * tml.tile_set.tile_size.x,
-								tp.y * tml.tile_set.tile_size.y),
-						tml.map_to_local(tp),
-					])
+		var damage_tml := _get_damage_paint_layer()
 		TerrainLevelLoader.bake_from_tile_map_layer(
 				tw, tml, default_terrain_type,
-				self, web_tile_scene)
+				self, web_tile_scene, damage_tml)
 		# The tilemap was authoring-only; remove it now that the MS
 		# version is what drives gameplay. Hide immediately for the
 		# current frame (queue_free doesn't take effect until the
 		# frame ends), then queue_free so the node is actually gone
-		# on the next frame. Also null out the tile_set so even if
-		# something keeps a reference, there's nothing to render.
+		# on the next frame.
 		tml.visible = false
 		tml.enabled = false
-		tml.modulate = Color(1, 1, 1, 0)
-		print("[bake] tml.visible=%s tml.enabled=%s tml in tree=%s"
-				% [tml.visible, tml.enabled, tml.is_inside_tree()])
 		tml.queue_free()
+		if is_instance_valid(damage_tml):
+			damage_tml.visible = false
+			damage_tml.enabled = false
+			damage_tml.queue_free()
 	else:
 		_bake_fallback_arena(tw)
 
 	_connect_pulse_damage()
 	_connect_fragment_detached(tw)
 	super._ready()
+	# Wait for the marching-squares worker to finish meshing every
+	# chunk the bake queued. The bake itself queues jobs, then
+	# `_on_process` integrates results over the next several frames.
+	# `get_stats()` surfaces the three counters that together tell us
+	# the queue is idle: no more dirty chunks, no jobs in flight, no
+	# unintegrated results.
+	await _await_terrain_meshed(tw)
+	is_terrain_ready = true
+	_setup_damage_punchthrough(tw)
+
+
+## Build and install a ShaderMaterial that multiplies terrain
+## alpha toward zero where damage cracks are authored, so the
+## parallax background shows through damaged cells instead of the
+## solid palette fill the terrain otherwise renders. The same
+## health texture the echolocation composite builds is forwarded
+## here so both shaders see matching damage state.
+func _setup_damage_punchthrough(tw: Object) -> void:
+	if damage_punchthrough_shader == null:
+		push_warning(
+				"TerrainLevel: damage_punchthrough_shader is null;"
+				+ " damaged cells will render opaque.")
+		return
+	if tw == null or not tw.has_method("set_chunk_material"):
+		push_warning(
+				"TerrainLevel: TerrainWorld is missing "
+				+ "set_chunk_material — the kbterrain GDExtension "
+				+ "needs to be rebuilt and Godot fully restarted so "
+				+ "the new binary is loaded.")
+		return
+	_punchthrough_material = ShaderMaterial.new()
+	_punchthrough_material.shader = damage_punchthrough_shader
+	if damage_tier_atlas != null:
+		_punchthrough_material.set_shader_parameter(
+				"damage_tier_atlas", damage_tier_atlas)
+	var cell_size: float = 8.0
+	if tw.get("settings") != null:
+		cell_size = tw.settings.cell_size_px
+	var origin_cells: Vector2i = tw.get_world_cell_origin()
+	var size_cells: Vector2i = tw.get_world_cell_size()
+	_punchthrough_material.set_shader_parameter(
+			"density_world_origin_px",
+			Vector2(
+					origin_cells.x * cell_size,
+					origin_cells.y * cell_size))
+	_punchthrough_material.set_shader_parameter(
+			"density_cell_size_px", cell_size)
+	_punchthrough_material.set_shader_parameter(
+			"density_world_cell_size",
+			Vector2(size_cells.x, size_cells.y))
+	# Push a health texture RIGHT NOW. Without this the shader's
+	# `health_tex` uniform resolves to Godot's default sampler
+	# (white), damage_frac clamps to 0, and the shader reports
+	# every cell as pristine — which leaves the terrain opaque
+	# through cracks and reproduces the "palette color shows
+	# through" symptom. Echo renderer keeps it in sync thereafter.
+	if tw.has_method("build_health_image"):
+		var health_image: Image = tw.build_health_image()
+		if health_image != null:
+			var health_tex := ImageTexture.create_from_image(
+					health_image)
+			_punchthrough_material.set_shader_parameter(
+					"health_tex", health_tex)
+	tw.set_chunk_material(_punchthrough_material)
+	if is_instance_valid(G.echo):
+		G.echo.register_secondary_health_material(
+				_punchthrough_material)
+
+
+## Polls `TerrainWorld.get_stats()` once per frame until the remesh
+## queues drain, then returns. Capped at a generous ceiling so a
+## hypothetically-stuck worker can't freeze the HUD blackout
+## forever — at worst the blackout lifts on a half-meshed terrain,
+## which is strictly better than hanging.
+func _await_terrain_meshed(tw: Object) -> void:
+	const _MAX_WAIT_FRAMES := 180
+	for _i in range(_MAX_WAIT_FRAMES):
+		if not is_instance_valid(tw):
+			return
+		var stats: Dictionary = tw.get_stats()
+		var dirty := int(stats.get("dirty_chunks", 0))
+		var pending_jobs := int(stats.get("pending_jobs", 0))
+		var pending_results := int(stats.get("pending_results", 0))
+		if dirty == 0 and pending_jobs == 0 and pending_results == 0:
+			# Still wait one extra frame so the integrated mesh has a
+			# chance to make it to the GPU before we lift the cover.
+			await get_tree().process_frame
+			return
+		await get_tree().process_frame
 
 
 func _connect_fragment_detached(tw: Node) -> void:
@@ -196,6 +325,21 @@ func _connect_fragment_detached(tw: Node) -> void:
 
 
 const _STAGGER_SEC_PER_ROW := 0.04
+## Max number of FallingCell nodes spawned in a single frame,
+## across all fragment detachments that fire that frame. On web
+## (single-threaded WASM) spawning 100+ scenes in one frame
+## during a big echo pulse stalls the main thread for a couple
+## of seconds and causes the player to get wedged into surfaces
+## as the physics tick catches up. Cells beyond this budget are
+## deferred to later frames via `_pending_falling_cells`.
+const _MAX_FALLING_CELL_SPAWNS_PER_FRAME := 8
+## Hard ceiling on the number of pending falling cells kept
+## around. A runaway destruction pulse could otherwise queue
+## thousands of cells; beyond this, new cells are silently
+## dropped (the underlying terrain cell is still destroyed in
+## C++, so there's no gameplay impact — just the visual
+## fwoomph of cells falling is skipped).
+const _MAX_PENDING_FALLING_CELLS := 64
 
 
 func _on_fragment_detached(
@@ -222,16 +366,27 @@ func _on_fragment_detached(
 			var type := int(cell_types[idx])
 			if type == Frequency.Type.NONE:
 				continue
+			if (_pending_falling_cells.size()
+					>= _MAX_PENDING_FALLING_CELLS):
+				# Queue full — skip the remaining cells' visual
+				# spawn. The C++ terrain has already marked them
+				# destroyed, so gameplay state is fine; only the
+				# fwoomph animation is dropped.
+				return
 			var world_pos := origin_world + Vector2(
 					(lx + 0.5) * cell_size,
 					(ly + 0.5) * cell_size)
 			# Bottom row falls immediately; each row above waits
 			# one stagger tick so the stack slides cohesively.
 			var delay := float(h - 1 - ly) * _STAGGER_SEC_PER_ROW
-			var cell: FallingCell = falling_cell_scene.instantiate()
-			add_child(cell)
-			cell.configure(
-					world_pos, type, int(cell_healths[idx]), delay)
+			# Queue rather than spawn synchronously. Spawning 100+
+			# scenes in one frame stalls the main thread (especially
+			# on single-threaded WASM).
+			_pending_falling_cells.append([
+					world_pos,
+					type,
+					int(cell_healths[idx]),
+					delay])
 
 
 ## Spawns a one-shot spatial AudioStreamPlayer2D at `world_pos`
@@ -270,14 +425,22 @@ func _connect_pulse_damage() -> void:
 ##   far cells get nearly none. Lets pulses dig a bit into chunky
 ##   terrain near the player without long-range spray.
 const _DAMAGE_FULL_RADIUS_PX := 40.0
-## Capped at ~1500 px: comfortably past the viewport diagonal at zoom
-## 2 (~660 px diagonal), so players still get "hit the far wall"
-## feel, but the bbox area in `damage_with_falloff` is ~11× smaller
-## than the old 5040 and the per-pulse C++ iteration drops from
-## ~1.25 M cells to ~110 k.
-const _DAMAGE_MAX_RADIUS_PX := 1500.0
+## Surface-damage cutoff. Previously 1500 — which meant any
+## matching-frequency cell within 1500 px took the full
+## `_DAMAGE_MIN_AMOUNT` per pulse. For a 26-HP web tile (well
+## below `_DAMAGE_MIN_AMOUNT`), that destroyed every matching web
+## on the level in one blast. Tightened to match the visible
+## pulse radius so damage can't reach well past what the player
+## can see, but left a bit bigger than `default_pulse_max_radius_px
+## = 120` so players still feel the erosion "hit the far wall."
+const _DAMAGE_MAX_RADIUS_PX := 200.0
 const _DAMAGE_FULL_AMOUNT := 256
-const _DAMAGE_MIN_AMOUNT := 96
+## Lowered so far-range surface damage can't one-shot low-HP
+## web tiles. At the new 200-px cap, cells at the edge now take
+## ~40 damage — 1/3 of a 128-HP terrain cell and still
+## destructive to a 26-HP web up close, but not instant-kill at
+## max range.
+const _DAMAGE_MIN_AMOUNT := 40
 const _PROXIMITY_DAMAGE_FULL_RADIUS_PX := 40.0
 const _PROXIMITY_DAMAGE_MAX_RADIUS_PX := 280.0
 const _PROXIMITY_DAMAGE_FULL_AMOUNT := 96
@@ -329,6 +492,10 @@ func _setup_editor_preview() -> void:
 		if not tml.changed.is_connected(_on_tilemap_changed):
 			tml.changed.connect(_on_tilemap_changed)
 		_tilemap_signal_connected = true
+	var damage_tml := _get_damage_paint_layer()
+	if is_instance_valid(damage_tml):
+		if not damage_tml.changed.is_connected(_on_tilemap_changed):
+			damage_tml.changed.connect(_on_tilemap_changed)
 
 	_rebake_editor_preview()
 
@@ -349,7 +516,8 @@ func _rebake_editor_preview() -> void:
 		# doesn't need runtime Area2D instances and spawning under
 		# the edited scene pollutes the tree.
 		TerrainLevelLoader.bake_from_tile_map_layer(
-				tw, tml, default_terrain_type)
+				tw, tml, default_terrain_type,
+				null, null, _get_damage_paint_layer())
 	else:
 		_bake_fallback_arena(tw)
 
@@ -388,4 +556,12 @@ func _get_tile_map_layer() -> TileMapLayer:
 	for child in get_children():
 		if child is TileMapLayer:
 			return child as TileMapLayer
+	return null
+
+
+func _get_damage_paint_layer() -> TileMapLayer:
+	if damage_paint_layer_path != NodePath():
+		var node := get_node_or_null(damage_paint_layer_path)
+		if node is TileMapLayer:
+			return node as TileMapLayer
 	return null

@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://b756vc27kk346" path="res://src/enemies/owl.gd" id="1_owl"]
 [ext_resource type="Texture2D" uid="uid://bm00xmdl2g0up" path="res://assets/images/scratch/owl.png" id="2_tex"]
 [ext_resource type="Shader" uid="uid://cgd14djt4xvu0" path="res://src/player/player_damage_flash.gdshader" id="3_damage_shader"]
+[ext_resource type="AudioStream" path="res://assets/audio/Hoot.wav" id="4_hoot"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_owl"]
 radius = 7.0
@@ -74,9 +75,10 @@ collision_layer = 16
 collision_mask = 8
 script = ExtResource("1_owl")
 animated_sprite = NodePath("AnimatedSprite2D")
-max_health = 25
-touch_damage = 12
+max_health = 29
+touch_damage = 6
 knockback_impulse_px_per_sec = 240.0
+tag_radius_px = 23.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=2098727405]
 shape = SubResource("CircleShape2D_owl")
@@ -89,4 +91,5 @@ autoplay = "fly"
 
 [node name="VoicePlayer" type="AudioStreamPlayer2D" parent="." unique_id=1607014845]
 unique_name_in_owner = true
+stream = ExtResource("4_hoot")
 bus = &"SFX"

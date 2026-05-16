@@ -97,12 +97,59 @@ extends Resource
 @export var color_damage_pulse := Color(1.0, 0.35, 0.35, 1.0)
 
 
+@export_group("Colors / Destination")
+## Ring color of the destination's periodic wayfinding echolocation
+## pulse. Purple reads clearly as "this is the goal" against the
+## player's frequency-tinted pulses (red / green / blue / yellow)
+## without overlapping any of them.
+@export var color_destination_pulse := Color(0.72, 0.42, 1.0, 1.0)
+
+
+@export_group("Colors / Rainbow")
+## Seven slots painting the coin-collect and finale rainbow arcs.
+## The burst shader samples these linearly along the arc so the
+## order below is the order read down the rainbow. Tweak here to
+## shift the whole palette (pastel, saturated, monochrome, etc.)
+## without touching shader code.
+@export var color_rainbow_red := Color(1.00, 0.20, 0.20, 1.0)
+@export var color_rainbow_orange := Color(1.00, 0.55, 0.15, 1.0)
+@export var color_rainbow_yellow := Color(1.00, 0.92, 0.25, 1.0)
+@export var color_rainbow_green := Color(0.25, 0.88, 0.35, 1.0)
+@export var color_rainbow_cyan := Color(0.25, 0.80, 1.00, 1.0)
+@export var color_rainbow_blue := Color(0.30, 0.45, 1.00, 1.0)
+@export var color_rainbow_violet := Color(0.75, 0.35, 1.00, 1.0)
+
+
 @export_group("Colors / Scene Modulates")
 ## Modulates on white sprites where the value controls opacity;
 ## RGB=(1,1,1) keeps the sprite unchanged, alpha controls blend.
 @export var color_web_body_modulate := Color(1, 1, 1, 0.55)
 @export var color_web_strand_modulate := Color(1, 1, 1, 0.4)
 @export var color_bug_glow_modulate := Color(1, 1, 1, 0.35)
+
+
+@export_group("Colors / Coins")
+## Base stipple color for collectible coins during an active
+## echolocation pulse/ping. Coins don't participate in the normal
+## frequency palette; the echo composite shader overrides the stipple
+## color with this gold whenever the tag is flagged as a coin.
+@export var color_coin_stipple := Color(1.0, 0.84, 0.0, 1.0)
+## Multiplier applied on top of `matching_bloom_brightness_bump` for
+## coin stipples so they pop louder than bugs / tiles.
+@export_range(0.0, 8.0) var coin_stipple_strength := 2.0
+## Fraction of sparkle stars that render in a ROYGBV sprinkle color
+## instead of white. Used by `sparkle_overlay.gdshader` and
+## `coin_sparkles.gd`.
+@export_range(0.0, 1.0) var sparkle_rainbow_chance := 0.18
+## Six pastel ROYGBV slots used by the sparkle VFX shaders for
+## occasional colored stars. Kept soft (high-luma pastels) so
+## sparkles read as "tinted light" rather than saturated primaries.
+@export var color_coin_sprinkle_red := Color(1.00, 0.72, 0.72, 1.0)
+@export var color_coin_sprinkle_orange := Color(1.00, 0.82, 0.64, 1.0)
+@export var color_coin_sprinkle_yellow := Color(1.00, 0.95, 0.66, 1.0)
+@export var color_coin_sprinkle_green := Color(0.74, 0.98, 0.78, 1.0)
+@export var color_coin_sprinkle_blue := Color(0.74, 0.88, 1.00, 1.0)
+@export var color_coin_sprinkle_violet := Color(0.88, 0.78, 1.00, 1.0)
 
 
 @export_group("Logs")

@@ -134,6 +134,12 @@ func _ready() -> void:
 	# For move_and_slide.
 	up_direction = Vector2.UP
 	floor_stop_on_slope = false
+	# Godot's default slides the body tangentially along a ceiling
+	# on any upward contact. With the marching-squares collision
+	# mesh, that consistently nudged the player LEFT on every
+	# ceiling kiss; disabling the slide keeps horizontal velocity
+	# untouched when vertical velocity is clamped by a ceiling.
+	slide_on_ceiling = false
 	max_slides = MovementSettings._MAX_SLIDES_DEFAULT
 	floor_max_angle = G.geometry.FLOOR_MAX_ANGLE + G.geometry.WALL_ANGLE_EPSILON
 

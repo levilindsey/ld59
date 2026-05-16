@@ -1,6 +1,8 @@
 [gd_scene format=4 uid="uid://becmpct5loq1e"]
 
 [ext_resource type="Script" uid="uid://c1i6bqftxsj4" path="res://src/level/terrain_level.gd" id="1_cbyss"]
+[ext_resource type="Shader" path="res://src/level/terrain_damage_punchthrough.gdshader" id="1_punchthrough"]
+[ext_resource type="Texture2D" uid="uid://df3ddg3t42o7d" path="res://assets/images/placeholders/terrain_damage_tier_atlas.png" id="1_damage_atlas"]
 [ext_resource type="TerrainSettings" uid="uid://dbdcqhdmuhy3a" path="res://src/level/default_terrain_settings.tres" id="2_7pv0r"]
 [ext_resource type="PackedScene" uid="uid://b8k2pwamtr0x3" path="res://src/level/web_tile.tscn" id="3_lxaoe"]
 [ext_resource type="PackedScene" path="res://src/level/falling_cell.tscn" id="4_p8g4j"]
@@ -29,6 +31,8 @@ script = ExtResource("1_cbyss")
 terrain_world_path = NodePath("TerrainWorld")
 terrain_settings = ExtResource("2_7pv0r")
 tile_map_layer_path = NodePath("Tiles")
+damage_punchthrough_shader = ExtResource("1_punchthrough")
+damage_tier_atlas = ExtResource("1_damage_atlas")
 web_tile_scene = ExtResource("3_lxaoe")
 falling_cell_scene = ExtResource("4_p8g4j")
 fwoof_stream = ExtResource("5_xg062")
@@ -56,7 +60,7 @@ script = ExtResource("9_1fnhx")
 
 [node name="Camera2D" type="Camera2D" parent="PlayerSpawnPoint" unique_id=937342632]
 unique_name_in_owner = true
-zoom = Vector2(2, 2)
+zoom = Vector2(3, 3)
 
 [node name="Players" type="Node2D" parent="." unique_id=1687508849]
 unique_name_in_owner = true

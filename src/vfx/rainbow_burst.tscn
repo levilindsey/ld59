@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://cbnkttr5bv100"]
+
+[ext_resource type="Script" path="res://src/vfx/rainbow_burst.gd" id="1_rb"]
+[ext_resource type="Shader" path="res://src/vfx/rainbow_burst.gdshader" id="2_rb_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_rb"]
+resource_local_to_scene = true
+shader = ExtResource("2_rb_shader")
+shader_parameter/progress = 0.0
+shader_parameter/head_width = 0.28
+shader_parameter/hue_offset = 0.0
+shader_parameter/alpha_scale = 1.0
+shader_parameter/thickness_softness = 0.25
+
+[node name="RainbowBurst" type="Node2D"]
+script = ExtResource("1_rb")
+
+[node name="MeshInstance2D" type="MeshInstance2D" parent="."]
+material = SubResource("ShaderMaterial_rb")

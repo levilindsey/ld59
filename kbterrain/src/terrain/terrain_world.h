@@ -7,6 +7,7 @@
 #include "worker_pool.h"
 
 #include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/material.hpp>
 #include <godot_cpp/classes/node2d.hpp>
 #include <godot_cpp/templates/hash_set.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
@@ -136,12 +137,27 @@ public:
 	// preview to wipe state before re-baking from a TileMap.
 	void clear_all();
 
+	// Apply a Material (typically a ShaderMaterial) to every
+	// terrain chunk's canvas_item so the terrain itself can run a
+	// fragment shader. Stored on the instance so chunks created
+	// after this call (on chunk remesh) inherit the same material.
+	// Pass a null Ref to clear. Used by
+	// `src/level/terrain_damage_punchthrough.gdshader` to drop
+	// alpha where cracks are authored, letting the parallax show
+	// through actual damaged cells.
+	void set_chunk_material(Ref<Material> p_material);
+	Ref<Material> get_chunk_material() const { return _chunk_material; }
+
 protected:
 	static void _bind_methods();
 	void _notification(int what);
 
 private:
 	Ref<TerrainSettings> _settings;
+	// Material applied to every chunk's canvas_item (see
+	// `set_chunk_material`). Stored so new chunks can adopt it
+	// during `_integrate_one` without re-calling from GDScript.
+	Ref<Material> _chunk_material;
 	std::unique_ptr<terrain::ChunkManager> _manager;
 	std::unique_ptr<terrain::WorkerPool> _worker;
 	std::unique_ptr<terrain::FlowStep> _flow_step;
@@ -171,9 +187,23 @@ private:
 	// jittery). Stepped once per _on_process call.
 	uint32_t _flow_tick_counter = 0;
 
-	// How often to step the flow CA. 2 means every other frame
-	// (~30Hz at 60fps).
-	static constexpr uint32_t FLOW_STEP_INTERVAL = 2;
+	// How often to step the flow CA. Higher = slower visible spread:
+	// 2 = ~30Hz (one cell per ~33ms — near-instant for big spills),
+	// 8 = ~7.5Hz (one cell per ~133ms — flows visibly cell-by-cell).
+	static constexpr uint32_t FLOW_STEP_INTERVAL = 8;
+
+	// Diagnostic counters used to verify which terrain workloads are
+	// running on the main thread vs. the worker thread on a web
+	// build. Reset each time the `_threading_log_` summary prints.
+	uint32_t _sync_remesh_count = 0;
+	uint64_t _sync_remesh_usec = 0;
+	uint32_t _collision_sync_count = 0;
+	uint64_t _collision_sync_usec = 0;
+	uint64_t _threading_log_last_usec = 0;
+	uint64_t _threading_log_last_jobs_processed = 0;
+	// How often to print the threading summary (~every 2 seconds).
+	static constexpr uint64_t THREADING_LOG_INTERVAL_USEC =
+			static_cast<uint64_t>(2'000'000);
 
 	// Max island size the CC pass will detach. Larger stays as part
 	// of the main world. Prevents "half the level detaches" cascade.
@@ -188,8 +218,9 @@ private:
 
 	void _ensure_initialized();
 	void _rebuild_type_lut();
+	void _maybe_log_threading_stats();
 	int _frequency_to_bit(int freq) const;
-	void _queue_remesh(terrain::Chunk *chunk);
+	void _queue_remesh(terrain::Chunk *chunk, bool force_sync = false);
 	void _queue_remesh_and_neighbors(terrain::Chunk *chunk);
 	void _update_collision_sync(
 			terrain::Chunk *chunk,

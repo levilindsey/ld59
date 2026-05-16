@@ -22,19 +22,37 @@ content_margin_bottom = 3.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_chip_bg")
 script = ExtResource("1_chip")
 
-[node name="HBox" type="HBoxContainer" parent="."]
+[node name="VBox" type="VBoxContainer" parent="."]
+layout_mode = 2
+theme_override_constants/separation = 3
+
+[node name="HBox" type="HBoxContainer" parent="VBox"]
 layout_mode = 2
 theme_override_constants/separation = 6
 
-[node name="Swatch" type="ColorRect" parent="HBox"]
+[node name="Swatch" type="ColorRect" parent="VBox/HBox"]
 custom_minimum_size = Vector2(12, 12)
 layout_mode = 2
 color = Color(0.35, 0.95, 0.45, 1)
 
-[node name="Label" type="Label" parent="HBox"]
+[node name="Label" type="Label" parent="VBox/HBox"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.98, 0.98, 0.94, 1)
 theme_override_colors/font_outline_color = Color(0.12, 0.1, 0.18, 1)
 theme_override_constants/outline_size = 2
 theme_override_font_sizes/font_size = 12
 text = "GREEN"
+
+[node name="CooldownTrack" type="ColorRect" parent="VBox"]
+custom_minimum_size = Vector2(60, 2)
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(0.12, 0.1, 0.18, 0.6)
+
+[node name="CooldownFill" type="ColorRect" parent="VBox/CooldownTrack"]
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_right = 60.0
+grow_vertical = 2
+color = Color(0.98, 0.98, 0.94, 1)

@@ -28,3 +28,9 @@ var age_sec: float = 0.0
 
 ## Total visible lifetime in seconds.
 var lifetime_sec: float = 0.6
+
+## Per-particle multiplier on the renderer's base gravity constant.
+## 1.0 = normal fall, 0.0 = weightless, 0.5 = floaty, etc. Used
+## for bursts that should hang in the air a little longer (e.g.
+## eaten-bug sparkle) without touching the shared constant.
+var gravity_multiplier: float = 1.0

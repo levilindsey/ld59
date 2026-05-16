@@ -43,6 +43,20 @@ var arc_radians: float = TAU
 ## meaningful when arc_radians < TAU.
 var arc_direction_radians: float = 0.0
 
+## Optional per-pulse ring-color override. Alpha > 0 = use this
+## color in the shader `pulse_colors` slot instead of the palette
+## lookup for `frequency`. Lets cosmetic emitters (wayfinding cues,
+## scripted flashes) paint a custom hue without needing a whole new
+## Frequency.Type.
+var color_override: Color = Color(0, 0, 0, 0)
+
+## When true, this pulse contributes only its ring glow — no
+## terrain stippling / reveal. Wayfinding cues (e.g. the
+## destination's periodic purple ring) use this so they read purely
+## as a colored wave without altering the player's echolocation
+## picture of the level.
+var ring_only: bool = false
+
 
 func is_active() -> bool:
 	return age_sec <= lifetime_sec

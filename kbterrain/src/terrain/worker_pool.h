@@ -87,10 +87,16 @@ public:
 	size_t pending_jobs();
 	size_t pending_results();
 
+	// Total jobs processed by the worker since the last `start()`.
+	// Used by threading-diagnostic logging in TerrainWorld to confirm
+	// the worker is making progress off the main thread.
+	uint64_t jobs_processed() const { return _jobs_processed.load(); }
+
 private:
 	void _worker_main();
 
 	std::atomic<bool> _stop_flag;
+	std::atomic<uint64_t> _jobs_processed;
 	std::thread _worker;
 
 	std::mutex _jobs_mutex;

@@ -11,6 +11,7 @@ extends Node2D
 
 @onready var STREAM_PLAYERS_BY_NAME := {
 	"main_theme" = %MainTheme,
+	"end_theme" = %EndTheme,
 	"menu_theme" = %MainTheme,
 	"player_jump" = %PlayerJump,
 	"player_land" = %PlayerLand,
@@ -20,10 +21,13 @@ extends Node2D
 	"player_echo" = %PlayerEcho,
 	"player_eat_bug" = %PlayerEatBug,
 	"player_select" = %PlayerSelect,
+	"player_coin" = %PlayerCoin,
+	"player_splash" = %PlayerSplash,
 	"click" = %ClickStreamPlayer,
 	"godot_splash" = %ClickStreamPlayer,
 	"scg_splash" = %SnoringCatStreamPlayer,
 	"success" = %SuccessCadenceStreamPlayer,
+	"all_coins" = %CoinCadenceStreamPlayer,
 	"failure" = %FailureCadenceStreamPlayer,
 	"achievement" = %AchievementStreamPlayer,
 }
@@ -41,6 +45,19 @@ func _ready() -> void:
 	for player_name in STREAM_PLAYERS_BY_NAME:
 		var player: AudioStreamPlayer = STREAM_PLAYERS_BY_NAME[player_name]
 		initial_volumes[player_name] = player.volume_db
+	# Looping fallback: Godot 4's web AudioStreamWAV loop_mode is
+	# unreliable on the AudioWorklet backend (loops fine on desktop,
+	# doesn't loop on Chrome/Firefox web). Manually re-trigger play
+	# on `finished`. Gated by `current_theme` so a stream that was
+	# faded-out + paused doesn't auto-restart.
+	%MainTheme.finished.connect(_on_theme_finished.bind(%MainTheme))
+	%EndTheme.finished.connect(_on_theme_finished.bind(%EndTheme))
+
+
+func _on_theme_finished(stream_player: AudioStreamPlayer) -> void:
+	if current_theme != stream_player:
+		return
+	stream_player.play()
 
 
 func play_sound(sound_name: StringName, force_restart := false) -> void:
@@ -74,6 +91,24 @@ func fade_to_menu_theme() -> void:
 
 func fade_to_main_theme() -> void:
 	fade_to_theme("main_theme")
+
+
+func fade_to_end_theme() -> void:
+	fade_to_theme("end_theme")
+
+
+## Immediately fades out the current theme, waits `delay_sec`
+## seconds, then fades in the end theme. Used on game-win so
+## there's a beat of silence between the main theme stopping
+## and the end theme starting.
+func fade_to_end_theme_after(delay_sec: float) -> void:
+	if is_instance_valid(current_theme):
+		fade_out(current_theme)
+		current_theme = null
+	if delay_sec > 0.0:
+		await get_tree().create_timer(delay_sec, true).timeout
+	current_theme = STREAM_PLAYERS_BY_NAME["end_theme"]
+	fade_in(current_theme, initial_volumes["end_theme"])
 
 
 func fade_in(stream_player: AudioStreamPlayer, volume: float) -> void:
@@ -159,6 +194,15 @@ func play_player_sound(
 			pass
 		"select":
 			play.call("player_select")
+			pass
+		"coin":
+			play.call("player_coin")
+			pass
+		"splash":
+			play.call("player_splash")
+			pass
+		"all_coins":
+			play.call("all_coins")
 			pass
 		"walk":
 			pass

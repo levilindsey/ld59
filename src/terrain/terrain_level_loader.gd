@@ -33,6 +33,15 @@ const _CUSTOM_DATA_HEALTH := "initial_health"
 ## many matching-frequency pulse hits to destroy as a "full HP"
 ## cell. Per-tile overrides via the TileSet data layer still win.
 const _DEFAULT_TILE_HEALTH := 128
+## Public alias of `_DEFAULT_TILE_HEALTH` — used by the echolocation
+## shader (via `health_max_norm`) so "undamaged" renders as zero
+## cracks despite the raw R8 storage being below its 255 max.
+const DEFAULT_TILE_HEALTH := _DEFAULT_TILE_HEALTH
+## Fraction of a tile's normal health that pre-damage-painted tiles
+## start at. Applied to the per-tile resolved health (custom-data or
+## default) when the tile's position is also present in the damage-
+## paint TileMapLayer passed to `bake_from_tile_map_layer`.
+const _DAMAGE_PAINT_HEALTH_RATIO := 0.1
 
 
 ## Bake every used cell in `tml` as a solid tile. Per-tile `type` and
@@ -46,12 +55,19 @@ const _DEFAULT_TILE_HEALTH := 128
 ## spawns a `web_tile_scene` instance under `spawn_parent`, centered
 ## on the tile's world position, with its `frequency` set to the
 ## base color encoded in the WEB_* suffix (e.g. WEB_RED → RED).
+##
+## `damage_paint_tml` is an optional second TileMapLayer aligned to
+## the same grid as `tml`. Any tile position painted in it starts
+## pre-damaged at `_DAMAGE_PAINT_HEALTH_RATIO` of its resolved
+## normal health. The paint layer's tile contents don't matter —
+## only which cells are used.
 static func bake_from_tile_map_layer(
 		terrain: Node,
 		tml: TileMapLayer,
 		default_type: int,
 		spawn_parent: Node = null,
-		web_tile_scene: PackedScene = null) -> void:
+		web_tile_scene: PackedScene = null,
+		damage_paint_tml: TileMapLayer = null) -> void:
 	if not is_instance_valid(terrain) or not is_instance_valid(tml):
 		return
 	var settings: TerrainSettings = terrain.settings
@@ -71,6 +87,11 @@ static func bake_from_tile_map_layer(
 				"TerrainLevelLoader: cell_size_px=%s exceeds tile_size=%s"
 				% [cell_size_px, tile_size_px])
 		return
+
+	var damage_painted: Dictionary = {}
+	if is_instance_valid(damage_paint_tml):
+		for painted_pos in damage_paint_tml.get_used_cells():
+			damage_painted[painted_pos] = true
 
 	# Collect solid tiles + per-tile type/health into two dictionaries
 	# keyed by Vector2i tile-coord. WEB-typed tiles are instead
@@ -99,10 +120,17 @@ static func bake_from_tile_map_layer(
 		# we can't distinguish "unset" from "explicitly 0". Treat 0
 		# as "not set" and fall back to `_DEFAULT_TILE_HEALTH`;
 		# designers who want a nearly-dead tile can use 1.
-		tile_health[tile_pos] = (
+		var resolved_health: int = (
 				health_from_data
 				if health_from_data > 0
 				else _DEFAULT_TILE_HEALTH)
+		if damage_painted.has(tile_pos):
+			resolved_health = maxi(
+					1,
+					int(round(
+							resolved_health
+							* _DAMAGE_PAINT_HEALTH_RATIO)))
+		tile_health[tile_pos] = resolved_health
 
 	_bake_from_solid_map(terrain, tile_type, tile_health,
 			cells, cell_size_px, cells_per_tile, settings)
@@ -126,14 +154,22 @@ static func _spawn_web_tile(
 				% str(tile_pos))
 		return
 	var web: Node = web_tile_scene.instantiate()
+	# Set `frequency` BEFORE `add_child` so `_ready` sees the
+	# correct WEB_* marker when `_apply_web_art` picks its atlas
+	# slot. Setting it after add_child would leave every tile
+	# rendered from the `@export` default. Pass the WEB_* marker
+	# itself (not the base frequency) so the atlas-slot lookup
+	# lands on the hex-web art at columns 8-11 of the interior
+	# atlas. Damage-matching still uses the base frequency via
+	# `Frequency.is_damageable_by`.
+	if "frequency" in web:
+		web.set("frequency", web_type)
 	spawn_parent.add_child(web)
 	# `map_to_local` returns the tile center in Godot 4, which is
 	# exactly where we want the WebTile positioned.
 	var local: Vector2 = tml.map_to_local(tile_pos)
 	if web is Node2D:
 		(web as Node2D).global_position = tml.to_global(local)
-	if "frequency" in web:
-		web.set("frequency", Frequency.web_type_to_frequency(web_type))
 
 
 ## Fill a world-space rectangle with a single type. Rectangle is in

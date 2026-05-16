@@ -19,8 +19,8 @@ func _enter_tree() -> void:
 
 	Scaffolder.set_up()
 
-	G.fatal()
-	get_tree().quit()
+	#G.fatal()
+	#get_tree().quit()
 
 
 func _ready() -> void:

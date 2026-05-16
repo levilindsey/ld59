@@ -15,7 +15,7 @@ render_mode blend_mix, unshaded;
 
 const int MAX_PULSES = 8;
 const int MAX_PALETTE = 16;
-const int MAX_TAGGED_SPRITES = 32;
+const int MAX_TAGGED_SPRITES = 48;
 const int MAX_PINGS = 128;
 const int MAX_PARTICLES = 256;
 // Must match `Frequency.Type.LIQUID` in src/core/frequency.gd.
@@ -64,15 +64,18 @@ uniform float density_grad_tap_px : hint_range(0.5, 16.0) = 4.0;
 
 // Near-field: always-on circular reveal around the player.
 uniform float near_radius_px : hint_range(0.0, 512.0) = 80.0;
-uniform float near_fade_px : hint_range(0.0, 128.0) = 32.0;
+uniform float near_fade_px : hint_range(0.0, 256.0) = 128.0;
 
-// Minimum visibility for "sprite-like" pixels (non-terrain, non-
-// tagged, non-empty luma) outside the near-field halo. Keeps the
-// player sprite, enemies, and their frequency outlines readable in
-// the dark — their visibility clamps to this value when `near_vis`
-// would drop below it. Terrain tiles and background stay on the
-// full near_vis fade. 1.0 = sprites never darken; 0.0 = previous
-// behavior (sprites fade to black with distance).
+// Brightness floor for "sprite-like" pixels (non-terrain, non-
+// tagged, non-empty luma, not inside a painted cell) while they
+// are INSIDE the close-by visibility area. 1.0 = sprites stay at
+// full brightness across the whole near zone and cut cleanly to
+// black outside it. 0.0 = sprites ride the smooth `near_vis` fade
+// and darken linearly with distance even inside the near zone.
+// The boost is multiplied by the binary `in_near_zone` mask
+// computed per-fragment so pixels outside the reveal radius still
+// go to 0 — non-sprite content (terrain, backdrop whose luma
+// exceeds `background_luma_threshold`) always rides `near_vis`.
 uniform float sprite_ambient_vis : hint_range(0.0, 1.0) = 1.0;
 
 // Distance attenuation for pulse stippling (separate from the
@@ -84,6 +87,14 @@ uniform float stipple_fade_start_px : hint_range(0.0, 2000.0)
 		= 180.0;
 uniform float stipple_fade_end_px : hint_range(0.0, 2000.0)
 		= 420.0;
+
+// Global stipple kill-switch. When true, every stipple
+// contribution (pulse-dithered cells, sprite-tag halos, dying-
+// enemy flash) is forced to zero regardless of pulse / tag /
+// ping state. Used on game-win to freeze the visual into its
+// pure textured near-field reveal without the noisy stipple
+// overlay lingering from the last frame's echo activity.
+uniform bool disable_stipple = false;
 
 // Pulses. xy=center_uv, z=age_sec, w=speed_px_per_sec.
 uniform vec4 pulses[MAX_PULSES];
@@ -129,7 +140,7 @@ uniform float ping_lifetime_sec : hint_range(0.1, 2.0) = 0.5;
 // of the ping's lifetime. Suggests the echo's wavefront returning
 // home — not just a flash on the wall.
 uniform float ping_translate_distance_px : hint_range(0.0, 256.0)
-		= 96.0;
+		= 87.36;
 
 // Damage-region flash. `damage_age_tex` is an R8 world-cell texture
 // where 1.0 = just damaged, 0.0 = never or long-ago. The renderer
@@ -220,11 +231,26 @@ uniform int palette_count = 0;
 // Packing: xy = screen-pixel center, z = halo radius in pixels,
 // w = Frequency enum id.
 uniform vec4 tagged_sprites[MAX_TAGGED_SPRITES];
-// Per-sprite opacity (0..1) — lets the stipple fade with the bug's
-// `modulate.a` fade-in / fade-out so the pointillist silhouette
-// doesn't pop in/out. One float per `tagged_sprites` entry.
+// Per-sprite persistent stipple intensity. Applied unconditionally
+// so the sprite always shows a faint pointillist silhouette. Can
+// be fed by sprite alpha (modulate-fade) + type-specific factors
+// (e.g. enemy movement speed) from the renderer.
 uniform float tagged_sprite_alphas[MAX_TAGGED_SPRITES];
+// Per-sprite echo-bonus stipple intensity. Added to the persistent
+// alpha and scaled by `global_echo_intensity` (a temporal envelope
+// that fades in at pulse start and fades out at pulse end) so the
+// boost smoothly ramps in and out with echo lifetime instead of
+// popping on/off with a binary flag.
+uniform float tagged_sprite_echo_alphas[MAX_TAGGED_SPRITES];
 uniform int tagged_sprite_count = 0;
+// 0..1 temporal envelope of the currently loudest live echo. The
+// renderer takes the max across all active pulses / pings and
+// fades in at pulse start, holds, then fades out. Used by the
+// sprite stipple path to smoothly ramp the echo bonus in and out
+// so the visual transition matches the audio "echo" lifetime
+// (rather than switching at the exact instant a pulse/ping is
+// created or expires).
+uniform float global_echo_intensity : hint_range(0.0, 1.0) = 0.0;
 // Peak stipple strength for sprite-tagged pixels. Caps the synthetic
 // pulse-vis used for bugs so their always-on stipple reads as a
 // faint pointillist silhouette instead of a near-solid disk. 0 hides
@@ -235,6 +261,21 @@ uniform float sprite_tag_stipple_max : hint_range(0.0, 1.0) = 0.25;
 // transparent). In Phase 1 we use this to keep the shader from
 // sparkling the backdrop clear color.
 uniform float background_luma_threshold : hint_range(0.0, 1.0) = 0.02;
+
+// Minimum luma a pixel must have to qualify as sprite content when
+// inside a sprite-tag halo. Set higher than `background_luma_threshold`
+// so dim parallax stars don't qualify (they'd otherwise stipple
+// and the stipple would resolve to a circular halo shape instead
+// of the sprite's silhouette).
+uniform float sprite_content_luma_min : hint_range(0.0, 1.0) = 0.1;
+
+// Minimum saturation (max − min)/max a pixel needs to qualify as
+// sprite content inside a sprite-tag halo. Parallax stars are
+// white-ish (low saturation) while sprite art is usually tinted
+// (bug glows by frequency, enemy outline ring, coin gold), so
+// requiring a minimum saturation keeps stipple on sprite art
+// without leaking onto star pixels caught inside the halo.
+uniform float sprite_content_sat_min : hint_range(0.0, 1.0) = 0.38;
 
 // Current frequency of the player (Frequency.Type enum value).
 uniform int current_frequency = 0;
@@ -268,6 +309,49 @@ uniform float matching_bloom_soft_width : hint_range(0.0, 0.5)
 		= 0.32;
 uniform float matching_bloom_brightness_bump : hint_range(1.0, 3.0)
 		= 2.4;
+
+// How long after a pulse fires its per-pulse "matching" emphasis
+// remains active for cells whose type matches the pulse frequency.
+// MUST be shorter than `lifetime_sec` — otherwise old in-flight
+// pulses keep emphasizing their matching cells across a frequency
+// switch, and the visual lingers for the full pulse lifetime.
+// Stipples themselves still fade on the longer `lifetime_sec`
+// envelope; only the matching bloom / size / brightness bump
+// turn off after this window.
+uniform float matching_emphasis_lifetime_sec
+		: hint_range(0.1, 4.0) = 1.5;
+
+// Width of the smooth fade between matching and non-matching
+// emphasis as pulse_reveal drops to zero. At pulse_reveal >= this
+// value the matching look is at full strength; below it, the
+// dither pattern, color boost, and brightness bump linearly fade
+// toward the non-matching look. Smaller = matching stays vivid
+// for longer and only swaps in the final tail of the fade.
+uniform float matching_emphasis_fade_band
+		: hint_range(0.01, 0.5) = 0.15;
+
+// Coin-stipple override. Tagged sprites whose packed-w component is
+// negative are treated as collectible coins: their stipple color is
+// forced to `coin_stipple_color` (gold) and multiplied by
+// `coin_stipple_strength` to make them pop brighter than bugs.
+uniform vec4 coin_stipple_color : source_color
+		= vec4(1.0, 0.84, 0.0, 1.0);
+uniform float coin_stipple_strength : hint_range(0.0, 8.0) = 2.0;
+
+// Dying-enemy stipple override. Tagged sprites whose packed-w
+// component is the dying-enemy sentinel (≤ -1.5) paint their
+// stipple in this color so a dying enemy's stipple halo matches
+// the expanding red damage pulse rendered on the sprite itself.
+uniform vec4 dying_enemy_stipple_color : source_color
+		= vec4(1.0, 0.2, 0.2, 1.0);
+
+// Particle color override. Debris particles store a frequency
+// type id in their `w` component; if the stored value is negative,
+// the particle paints this color instead of a palette lookup. Used
+// for enemy-death bursts (damage-flash red) which don't map to a
+// frequency palette entry.
+uniform vec4 damage_particle_color : source_color
+		= vec4(1.0, 0.2, 0.2, 1.0);
 
 // Stipple color override. When alpha > 0, pulse-revealed pixels are
 // painted this color instead of the tile / scene pixel underneath.
@@ -311,21 +395,28 @@ uniform sampler2D surface_atlas : source_color, repeat_disable,
 // Damage-tier crack overlay atlas — horizontal strip of per-tier
 // crack patterns (L8). Sampled .r as crack intensity (0 = clean, 1 =
 // full crack); darkens the tile's interior art accordingly.
-// `health_tex` is R8 per-cell with 1.0 = full HP, 0 = destroyed.
+// `health_tex` is R8 per-cell, normalized to 0..1. Undamaged tiles
+// sit at `health_max_norm` (matches `_DEFAULT_TILE_HEALTH` / 255 —
+// 128 / 255 ≈ 0.502 by default) rather than 1.0, so the crack pass
+// reads health relative to that maximum. An undamaged tile at
+// starting HP reads 0 damage; a destroyed tile reads 1.
 uniform sampler2D damage_tier_atlas : repeat_disable, filter_nearest;
 uniform sampler2D health_tex : filter_nearest, repeat_disable;
 uniform int damage_tier_count = 5;
-uniform float damage_overlay_strength : hint_range(0.0, 1.5) = 0.9;
+uniform float health_max_norm : hint_range(0.01, 1.0) = 0.502;
+uniform float damage_overlay_strength : hint_range(0.0, 1.5) = 1.0;
 uniform int atlas_slot_count = 8;
 uniform float interior_scale_px : hint_range(4.0, 128.0) = 32.0;
 uniform float surface_scale_along_px : hint_range(4.0, 128.0) = 32.0;
 // Depth (world px) the surface accent band extends from the cell
-// surface INTO the solid. Set to 0 to disable the accent entirely
-// (`outward_probe` collapses to the fragment's own position, which
-// reads density 1 for every interior fragment; v saturates at 1.0
-// where the surface atlas is transparent, so band_mix = 0 and only
-// the interior texture is drawn).
-uniform float surface_depth_px : hint_range(0.0, 32.0) = 0.0;
+// surface INTO the solid. Default matches roughly one tile-cell so
+// the accent stays within the surface cell's own bounds. Set to 0
+// to disable the accent entirely (`outward_probe` collapses to the
+// fragment's own position, which reads density 1 for every interior
+// fragment; v saturates at 1.0 where the surface atlas is
+// transparent, so band_mix = 0 and only the interior texture is
+// drawn).
+uniform float surface_depth_px : hint_range(0.0, 32.0) = 8.0;
 // RGB distance from the expected terrain palette color above which
 // the near-field atlas override is skipped and the scene pixel (c0)
 // is kept instead. The composite classifies terrain by world-space
@@ -505,6 +596,78 @@ void fragment() {
 		vec2 world_pos = world_origin
 				+ UV * screen_size_px * world_per_screen_px;
 
+		// --- Early-exit pre-pass for pure-black fragments ---------
+		// Fragments that will output (0, 0, 0, 1) skip the 12
+		// density-gradient taps below, the tagged-sprite loop, and
+		// the atlas / damage / surface sampling further down. The
+		// duplicated pulse + tag-halo iterations are still ~an order
+		// of magnitude cheaper than even one avoided texture tap, so
+		// the pre-pass is a net win even on fragments that DON'T
+		// early-exit. `any_matching_pulse_active` (which needs
+		// `type_id`) stays below — this pass only computes what is
+		// required for the early-exit test.
+		vec2 to_player = player_px - px;
+		float to_player_len = length(to_player);
+		float near_vis = 1.0 - smoothstep(
+				near_radius_px,
+				near_radius_px + near_fade_px,
+				to_player_len);
+		float raw_pulse_vis = 0.0;
+		vec3 ring_rgb = vec3(0.0);
+		float ring_alpha = 0.0;
+		for (int pi = 0; pi < MAX_PULSES; pi++) {
+			if (pi >= pulse_count) {
+				break;
+			}
+			bool pulse_is_ring_only = pulse_cones[pi].z > 0.5;
+			float r = pulse_ring_glow(
+					px, pulses[pi], pulse_cones[pi])
+					* ring_glow_strength;
+			ring_rgb += pulse_colors[pi].rgb * r;
+			ring_alpha = max(ring_alpha, r);
+			if (pulse_is_ring_only) {
+				continue;
+			}
+			float v = pulse_vis(px, pulses[pi], pulse_cones[pi]);
+			raw_pulse_vis = max(raw_pulse_vis, v);
+		}
+		// Cheap squared-distance pre-check so a tag sitting in the
+		// dark (far from player, no pulse) still keeps the fragment
+		// in the full pipeline for stippling.
+		bool any_tag_hit = false;
+		for (int ti = 0; ti < MAX_TAGGED_SPRITES; ti++) {
+			if (ti >= tagged_sprite_count) {
+				break;
+			}
+			vec2 td = px - tagged_sprites[ti].xy;
+			if (dot(td, td)
+					< tagged_sprites[ti].z * tagged_sprites[ti].z) {
+				any_tag_hit = true;
+				break;
+			}
+		}
+		// Pings + particles render additively on top of the reveal
+		// via their own loops below. They don't expose per-fragment
+		// reject info without evaluating their geometry, so skip the
+		// early-exit whenever any are active — the common case
+		// outside active echoes has both counts at zero.
+		// Godot's GLSL forbids `return` from fragment(); the
+		// early-exit is implemented as an `else` that wraps the
+		// remainder of the fragment body. The matching `}` is at the
+		// bottom of fragment() just before the outer-else's `}`.
+		const float kBlackEpsilon = 1.0 / 255.0;
+		bool should_early_exit = (
+				near_vis < kBlackEpsilon
+				&& raw_pulse_vis < kBlackEpsilon
+				&& max(max(ring_rgb.r, ring_rgb.g), ring_rgb.b)
+						< kBlackEpsilon
+				&& !any_tag_hit
+				&& ping_count == 0
+				&& particle_count == 0);
+		if (should_early_exit) {
+			COLOR = vec4(0.0, 0.0, 0.0, 1.0);
+		} else {
+
 		// --- Multi-scale density-field gradient --------------------
 		// Single-scale taps give a binary response (surface cell has
 		// a gradient, deep interior has zero) which reads as a flat
@@ -614,8 +777,9 @@ void fragment() {
 		vec2 grad = density_grad;
 
 		// "To player" direction for the facing dot product.
-		vec2 to_player = player_px - px;
-		float to_player_len = length(to_player);
+		// `to_player` and `to_player_len` are hoisted into the
+		// early-exit pre-pass at the top of fragment(); only the
+		// direction is unique to this block.
 		vec2 to_player_dir = (to_player_len > 0.001)
 				? (to_player / to_player_len) : vec2(0.0, 1.0);
 
@@ -688,16 +852,43 @@ void fragment() {
 					bbox_cell_f, vec2(0.0)))
 				&& all(lessThan(
 					bbox_cell_f, density_world_cell_size));
+		// Primary cell classification: the type of the cell that
+		// STRICTLY contains this fragment (floor-based). Used for
+		// stipple gating, frequency matching, LIQUID override, and
+		// the interior / surface-texture block — every place that
+		// needs "which authored cell does this pixel belong to".
+		// Using the floor-based sample aligns stipples with the
+		// rendered mesh; the half-cell Voronoi halo (below) only
+		// matches the mesh's top-left quadrant, which shifts the
+		// stipple pattern up-and-left relative to the cells.
 		int bg_type_id = 0;
 		if (in_world_bbox) {
 			bg_type_id = int(
 					texture(type_tex,
-							world_to_type_uv(world_pos)).r
+							world_to_type_uv_floored(world_pos)).r
 							* 255.0 + 0.5);
 		}
 		bool is_bg_tile = bg_type_id != 0;
 		vec3 bg_type_color = is_bg_tile
 				? palette_color_for_type(bg_type_id) : vec3(0.0);
+		// Secondary Voronoi classification: the cell whose CORNER
+		// is nearest this fragment. Covers the strip just outside
+		// the authored mesh (half-cell halo) so the bleed-
+		// mitigation path can detect the 1-px mesh-rasterization
+		// bleed and re-sample the backbuffer a few pixels further
+		// out. Only the bleed path should use this — every other
+		// path wants the strict, mesh-aligned `bg_type_id` above.
+		int bg_type_id_voronoi = 0;
+		if (in_world_bbox) {
+			bg_type_id_voronoi = int(
+					texture(type_tex,
+							world_to_type_uv(world_pos)).r
+							* 255.0 + 0.5);
+		}
+		bool is_bg_tile_voronoi = bg_type_id_voronoi != 0;
+		vec3 bg_type_color_voronoi = is_bg_tile_voronoi
+				? palette_color_for_type(bg_type_id_voronoi)
+				: vec3(0.0);
 
 		// LIQUID cells always read — bypass the gradient-derived
 		// prominence so water in a fully-submerged region (where the
@@ -709,7 +900,10 @@ void fragment() {
 
 		int tag_type_id = 0;
 		float tag_alpha = 1.0;
+		float tag_echo_alpha = 0.0;
 		bool is_sprite_tag = false;
+		bool is_coin_tag = false;
+		bool is_dying_enemy_tag = false;
 		for (int i = 0; i < MAX_TAGGED_SPRITES; i++) {
 			if (i >= tagged_sprite_count) {
 				break;
@@ -717,8 +911,23 @@ void fragment() {
 			vec2 d = px - tagged_sprites[i].xy;
 			if (length(d) < tagged_sprites[i].z) {
 				is_sprite_tag = true;
-				tag_type_id = int(tagged_sprites[i].w);
+				// Sentinels (all negative) identify special tag
+				// paths; normal Frequency type-ids are non-negative
+				// so the sign is a safe in-band flag. Order:
+				//   w ≤ -1.5 → dying enemy (red override)
+				//   -1.5 < w < 0 → coin (gold override)
+				//   w ≥ 0 → normal frequency palette
+				if (tagged_sprites[i].w < -1.5) {
+					is_dying_enemy_tag = true;
+					tag_type_id = 0;
+				} else if (tagged_sprites[i].w < 0.0) {
+					is_coin_tag = true;
+					tag_type_id = 0;
+				} else {
+					tag_type_id = int(tagged_sprites[i].w);
+				}
 				tag_alpha = tagged_sprite_alphas[i];
+				tag_echo_alpha = tagged_sprite_echo_alphas[i];
 				break;
 			}
 		}
@@ -741,45 +950,71 @@ void fragment() {
 			prominence = 1.0;
 		}
 
-		// Don't light up the backdrop clear color. Tagged pixels
-		// (tiles or sprites) always count; other pixels only if
-		// they exceed the luma floor.
-		float has_content = is_tagged
-				? 1.0
-				: step(background_luma_threshold, l0);
+		// Don't light up the backdrop clear color. Terrain tiles
+		// always count (mesh fills the whole cell). Sprite tags —
+		// bugs, enemies, coins — shape their stipple to the actual
+		// sprite art instead of the circular tag halo using three
+		// conditions (must pass all):
+		//   (a) Luma exceeds a higher-than-backdrop threshold,
+		//       which cuts the black gaps between parallax stars
+		//       and also the very dimmest star pixels.
+		//   (b) Saturation exceeds a threshold, which rejects
+		//       white-ish parallax stars while sprite art pixels
+		//       (frequency-colored bug glows, enemy outline rings,
+		//       coin gold) generally pass.
+		//   (c) If the halo crosses over a painted cell, the
+		//       pixel's color must differ from the tile's palette
+		//       (so bare terrain inside the halo does NOT stipple).
+		// Untagged pixels keep the standard luma check so bright-
+		// enough non-tagged scene content can still reveal.
+		float has_content;
+		if (is_sprite_tag) {
+			float luma_above = step(sprite_content_luma_min, l0);
+			float cmax = max(max(c0.r, c0.g), c0.b);
+			float cmin = min(min(c0.r, c0.g), c0.b);
+			float sat = cmax > 0.001 ? (cmax - cmin) / cmax : 0.0;
+			float saturated = step(sprite_content_sat_min, sat);
+			float not_bare_tile = is_bg_tile
+					? step(overlay_sprite_diff_threshold,
+							distance(c0, bg_type_color))
+					: 1.0;
+			has_content = luma_above * saturated * not_bare_tile;
+		} else if (is_bg_tile) {
+			has_content = 1.0;
+		} else {
+			has_content = step(background_luma_threshold, l0);
+		}
 
-		// Near-field reveals EVERYTHING smoothly (background + tiles
-		// + player) with no dither, no frequency gating, no surface
-		// bias. This is the "you always see around you" light.
-		float near_vis = 1.0 - smoothstep(
-				near_radius_px,
-				near_radius_px + near_fade_px,
-				to_player_len);
-
-		// Pulse contribution — dithered, surface-biased, frequency-
-		// gated. Also track whether any active pulse's frequency
-		// matches this cell's type so the cell can be considered
-		// "matching" (and get the full bloom treatment) whenever it
-		// is being damaged by an in-flight pulse, even if the player
-		// has already switched away to a different frequency.
-		float raw_pulse_vis = 0.0;
-		vec3 ring_rgb = vec3(0.0);
-		float ring_alpha = 0.0;
+		// `near_vis`, `raw_pulse_vis`, `ring_rgb`, `ring_alpha` are
+		// hoisted into the early-exit pre-pass at the top of
+		// fragment(). Only `any_matching_pulse_active` (which depends
+		// on `type_id`, classified above) needs to run here.
+		//
+		// We also track the youngest matching pulse's age so the
+		// per-pulse matching emphasis (bloom + bigger dots +
+		// brightness bump) can be capped to a SHORT window
+		// (`matching_emphasis_lifetime_sec`) — much shorter than the
+		// overall pulse lifetime. Without this cap, an old in-flight
+		// pulse keeps emphasizing its matching cells even after the
+		// player has switched to a different frequency.
 		bool any_matching_pulse_active = false;
+		float youngest_matching_age = lifetime_sec;
 		for (int i = 0; i < MAX_PULSES; i++) {
 			if (i >= pulse_count) {
 				break;
 			}
-			float v = pulse_vis(px, pulses[i], pulse_cones[i]);
-			raw_pulse_vis = max(raw_pulse_vis, v);
-			float r = pulse_ring_glow(
-					px, pulses[i], pulse_cones[i])
-					* ring_glow_strength;
-			ring_rgb += pulse_colors[i].rgb * r;
-			ring_alpha = max(ring_alpha, r);
+			if (pulse_cones[i].z > 0.5) {
+				// Ring-only pulses don't participate in matching.
+				continue;
+			}
 			if (type_id != 0 && pulse_freqs[i] == type_id) {
 				any_matching_pulse_active = true;
+				youngest_matching_age = min(
+						youngest_matching_age, pulses[i].z);
 			}
+		}
+		if (youngest_matching_age > matching_emphasis_lifetime_sec) {
+			any_matching_pulse_active = false;
 		}
 
 		// Matching: either the cell's type matches the player's
@@ -794,11 +1029,15 @@ void fragment() {
 		// regardless of the player's currently-selected frequency,
 		// so the selected-frequency bug doesn't pop visually over
 		// others. They still stipple at full density.
-		bool is_matching = is_tagged
+		bool is_matching = (is_tagged
 				&& !is_sprite_tag
 				&& (
 					type_id == current_frequency
-					|| any_matching_pulse_active);
+					|| any_matching_pulse_active))
+				// Coins are always "matching" so they get the bloom
+				// dot path (bigger, softer, brighter) — reads clearly
+				// louder than bug stipples at a glance.
+				|| is_coin_tag;
 		float frequency_match;
 		if (is_sprite_tag) {
 			frequency_match = 1.0;
@@ -819,17 +1058,28 @@ void fragment() {
 				stipple_fade_end_px,
 				to_player_len);
 
-		// Sprite tags stipple unconditionally — substitute a
-		// synthetic pulse-vis for them so the reveal is active even
-		// with no in-flight echo. Capped by `sprite_tag_stipple_max`
-		// so bugs read as faint pointillist silhouettes rather than
-		// solid discs, and scaled by the sprite's own alpha so the
-		// stipple grows in / fades out in lockstep with the sprite's
-		// modulate alpha. Terrain tiles still gate on real pulse
-		// visibility.
+		// Sprite tags stipple unconditionally at `tag_alpha` (the
+		// persistent component) plus a bonus of `tag_echo_alpha *
+		// global_echo_intensity` that fades in and out smoothly
+		// with the temporal envelope of whichever pulse/ping is
+		// currently loudest. Scaling the bonus by a global
+		// temporal factor (rather than the per-fragment
+		// `raw_pulse_vis`) means the whole sprite lights up
+		// together as the echo rings out — not just the slice the
+		// wavefront has already crossed. `sprite_tag_stipple_max`
+		// caps the final value so sprite stipples stay visually
+		// distinct from terrain stipples.
+		float sprite_stipple =
+				tag_alpha + tag_echo_alpha * global_echo_intensity;
 		float effective_pulse_vis = is_sprite_tag
-				? tag_alpha * sprite_tag_stipple_max
+				? sprite_stipple * sprite_tag_stipple_max
 				: raw_pulse_vis;
+		// Game-win kill-switch: force zero pulse visibility so no
+		// stipple dots render anywhere regardless of tagged-alpha
+		// residue or pulse timing.
+		if (disable_stipple) {
+			effective_pulse_vis = 0.0;
+		}
 
 		float pulse_reveal = effective_pulse_vis
 				* prominence
@@ -843,26 +1093,46 @@ void fragment() {
 		// threshold with a smoothstep so dot edges fall off softly
 		// (fake bloom halo). Non-matching pixels keep the tight
 		// single-pixel hard-edge stipple.
-		float bayer_scale_px = is_matching
-				? bayer_tile_px * matching_bloom_size_multiplier
-				: bayer_tile_px;
+		// Matching stipples use larger Bayer cells for the "bigger,
+		// softer dot" bloom look. Coins are also "matching" (via
+		// `is_coin_tag`) but we intentionally skip the size
+		// multiplier for them so each coin dot is tighter — the
+		// density (total lit area) is invariant under Bayer cell
+		// size, so smaller cells just resolve the same total
+		// coverage into more smaller dots, removing the per-dot
+		// size emphasis without thinning coverage.
+		float bayer_scale_px;
+		if (is_coin_tag) {
+			bayer_scale_px = bayer_tile_px;
+		} else if (is_matching) {
+			bayer_scale_px = bayer_tile_px * matching_bloom_size_multiplier;
+		} else {
+			bayer_scale_px = bayer_tile_px;
+		}
 		float bayer = texture(
 				bayer_tex, px / bayer_scale_px / 8.0).r;
 		float threshold = 1.0 - pulse_reveal;
-		float dithered_pulse_reveal;
-		if (is_matching) {
-			dithered_pulse_reveal = smoothstep(
-					threshold - matching_bloom_soft_width,
-					threshold + matching_bloom_soft_width,
-					bayer);
-		} else {
-			dithered_pulse_reveal = step(threshold, bayer);
-		}
-		// Without a pulse, pulse_reveal = 0 → threshold = 1. The
-		// matching-branch smoothstep still returns > 0 for the highest-
-		// threshold Bayer cells (bayer > threshold - soft_width), which
-		// lit up matching-type tiles even with no active echo. Gate the
-		// result so stipples only show during a pulse.
+		// Matching emphasis fade: full strength while pulse_reveal is
+		// healthy, fades smoothly to non-matching look as the stipple
+		// fades. At pulse_reveal = 0 the matching cells render
+		// indistinguishable from non-matching ones — the user
+		// requested the bloom-emphasis characteristics fade out
+		// alongside the overall stipple fade.
+		float matching_strength = is_matching
+				? smoothstep(
+						0.0,
+						matching_emphasis_fade_band,
+						pulse_reveal)
+				: 0.0;
+		float dither_match = smoothstep(
+				threshold - matching_bloom_soft_width,
+				threshold + matching_bloom_soft_width,
+				bayer);
+		float dither_nonmatch = step(threshold, bayer);
+		float dithered_pulse_reveal = mix(
+				dither_nonmatch, dither_match, matching_strength);
+		// Without a pulse, pulse_reveal = 0 → threshold = 1.
+		// Gate the result so stipples only show during a pulse.
 		dithered_pulse_reveal *= step(0.001, pulse_reveal);
 
 		// Combined reveal (smooth near-field OR dithered pulse).
@@ -891,27 +1161,6 @@ void fragment() {
 					density_tex, world_to_density_uv(world_pos)).r;
 		}
 		bool inside_solid_cell = d_here_outer >= 0.99;
-		// Strict cell-containment check for the interior / surface
-		// texture block. `is_bg_tile` uses the half-cell Voronoi halo,
-		// which correctly tags the 1-px mesh-bleed ring for the
-		// bleed-mitigation sample below but also tags unpainted cells
-		// whose corner densities happen to clamp to 255 (e.g., a strip
-		// sandwiched between two painted rows — all 4 corners are 255
-		// so density reads 1 across the whole unpainted cell). Gate
-		// the texture block on the FLOOR-based type sample so the
-		// texture only paints over fragments that are strictly inside
-		// an authored painted cell.
-		int bg_type_id_floor = 0;
-		if (in_world_bbox) {
-			bg_type_id_floor = int(
-					texture(type_tex,
-							world_to_type_uv_floored(world_pos)).r
-							* 255.0 + 0.5);
-		}
-		bool fragment_in_painted_cell = bg_type_id_floor != 0;
-		vec3 bg_type_color_strict = fragment_in_painted_cell
-				? palette_color_for_type(bg_type_id_floor)
-				: vec3(0.0);
 		// Two overlay-sprite checks so type transitions don't get mis-
 		// classified. `overlay_sprite_at_bleed` uses the Voronoi-sampled
 		// palette (so the bleed-mitigation path can tell a 1-px mesh-
@@ -922,19 +1171,21 @@ void fragment() {
 		// half of the cell whose Voronoi neighbour is a different
 		// type — otherwise the type-boundary row gets the interior
 		// block skipped and the raw saturated mesh palette leaks out).
-		bool overlay_sprite_at_bleed = is_bg_tile
-				&& distance(c0, bg_type_color)
+		bool overlay_sprite_at_bleed = is_bg_tile_voronoi
+				&& distance(c0, bg_type_color_voronoi)
 						> overlay_sprite_diff_threshold;
-		bool overlay_sprite_at_fragment = fragment_in_painted_cell
-				&& distance(c0, bg_type_color_strict)
+		bool overlay_sprite_at_fragment = is_bg_tile
+				&& distance(c0, bg_type_color)
 						> overlay_sprite_diff_threshold;
 		// Mesh-rasterization bleed mitigation. Godot's 2D renderer
 		// bleeds the mesh color up to 1 pixel past the authored cell
-		// edge in the backbuffer. Since `is_bg_tile` uses the half-
-		// cell Voronoi halo, it's still true in that bleed ring, so
-		// we can detect "pixel just outside a painted cell" and
-		// sample `c0` 2 pixels further out to skip past the bleed.
-		if (is_bg_tile && !inside_solid_cell
+		// edge in the backbuffer. The Voronoi halo (`is_bg_tile_voronoi`)
+		// extends half a cell outside the authored mesh, so it's still
+		// true in that bleed ring even though the strict-containment
+		// `is_bg_tile` is not. Detect "pixel just outside a painted
+		// cell" via the Voronoi flag and sample `c0` 2 pixels further
+		// out to skip past the bleed.
+		if (is_bg_tile_voronoi && !inside_solid_cell
 				&& !overlay_sprite_at_bleed) {
 			vec2 snap_n;
 			if (abs(surface_normal.x) > abs(surface_normal.y)) {
@@ -945,10 +1196,10 @@ void fragment() {
 			vec2 offset_uv = SCREEN_UV + snap_n * 2.0 / screen_size_px;
 			textured_rgb = texture(screen_tex, offset_uv).rgb;
 		}
-		if (fragment_in_painted_cell && !overlay_sprite_at_fragment
+		if (is_bg_tile && !overlay_sprite_at_fragment
 				&& inside_solid_cell) {
 			float slot_count_f = max(float(atlas_slot_count), 1.0);
-			float u_base = float(bg_type_id_floor) / slot_count_f;
+			float u_base = float(bg_type_id) / slot_count_f;
 			float u_width = 1.0 / slot_count_f;
 
 			// Interior: wrap within a tile-sized cell, then shift
@@ -966,16 +1217,24 @@ void fragment() {
 			// --- Damage-tier crack overlay --------------------------
 			// Look up the cell's current health (R8 texture), map the
 			// damage fraction to a tier index, sample the crack atlas,
-			// and darken the interior art where cracks land. Cells at
-			// full HP (health_norm == 1) skip the overlay entirely;
-			// cells at 20% HP show the heaviest tier, just short of
-			// shattering. Gives progressive visual feedback as cells
-			// chip down over multiple pulses, instead of popping cold.
+			// and darken the interior art where cracks land. Damage
+			// is measured against `health_max_norm` (the default
+			// undamaged starting HP), not against 1.0 — undamaged
+			// cells at starting HP sit at health_max_norm and must
+			// read as 0 damage. LIQUID cells skip the overlay
+			// entirely: water doesn't crack.
 			float health_norm = texture(
 					health_tex,
 					world_to_type_uv_floored(world_pos)).r;
-			float damage_frac = 1.0 - health_norm;
-			if (damage_frac > 0.01 && damage_tier_count > 1) {
+			float damage_frac = clamp(
+					(health_max_norm - health_norm)
+							/ max(health_max_norm, 0.001),
+					0.0,
+					1.0);
+			bool is_liquid_cell = bg_type_id == LIQUID_TYPE_ID;
+			if (!is_liquid_cell
+					&& damage_frac > 0.01
+					&& damage_tier_count > 1) {
 				float tier_f = damage_frac
 						* float(damage_tier_count);
 				int tier = clamp(
@@ -991,13 +1250,25 @@ void fragment() {
 						interior_v);
 				float crack = texture(
 						damage_tier_atlas, crack_uv).r;
-				// Darker "crevice" color under the cracks — keeps the
-				// frequency tint but reads as shadow / fracture.
-				vec3 crack_rgb = interior_rgb * 0.2;
+				// Sample the back-buffer at this pixel and blend
+				// the interior toward it where cracks are authored.
+				// Works in concert with
+				// `terrain_damage_punchthrough.gdshader` running on
+				// the terrain canvas_items: that shader drops the
+				// terrain's alpha at crack pixels, so `screen_tex`
+				// here samples the parallax background behind it
+				// instead of the opaque palette fill. Atlas format:
+				// R channel, black = intact, white = crack. The
+				// smoothstep sharpens anti-aliased atlas values so
+				// the blend lands fully at transparent rather than
+				// reading as a washed-out tint.
+				float crack_mask = smoothstep(0.2, 0.5, crack);
+				vec3 crack_bg = texture(
+						screen_tex, SCREEN_UV).rgb;
 				interior_rgb = mix(
 						interior_rgb,
-						crack_rgb,
-						crack * damage_overlay_strength);
+						crack_bg,
+						crack_mask * damage_overlay_strength);
 			}
 
 			// Surface band — aligned with authored cell boundaries.
@@ -1067,15 +1338,30 @@ void fragment() {
 		// types stay at their base palette color.
 		if (is_matching) {
 			float lum = dot(stipple_rgb, luma);
-			stipple_rgb = mix(
+			vec3 boosted = mix(
 					vec3(lum),
 					stipple_rgb,
 					matching_saturation_boost);
-			stipple_rgb *= matching_brightness_boost;
+			boosted *= matching_brightness_boost;
 			// Additional bloom bump — pushes the color past 1.0 so
 			// the combined pulse + stipple reads as an overbright
 			// glow. Display clamp handles the final output.
-			stipple_rgb *= matching_bloom_brightness_bump;
+			boosted *= matching_bloom_brightness_bump;
+			// Mix in the boost by `matching_strength` so the color
+			// emphasis fades alongside the dither pattern as the
+			// stipple fades.
+			stipple_rgb = mix(stipple_rgb, boosted, matching_strength);
+		}
+		// Coin override: force the stipple to gold (or an occasional
+		// ROYGBV sprinkle) and multiply the brightness so coins pop
+		// visibly louder than bugs. The per-cell hash is keyed off
+		// the Bayer tile so the sprinkle pattern is stable between
+		// frames (no shimmer) without a texture lookup.
+		if (is_coin_tag) {
+			stipple_rgb = coin_stipple_color.rgb * coin_stipple_strength;
+		}
+		if (is_dying_enemy_tag) {
+			stipple_rgb = dying_enemy_stipple_color.rgb;
 		}
 		// Optional debug tint — author stipple_color with alpha > 0
 		// to repaint every dot a loud color for placement checks.
@@ -1103,9 +1389,26 @@ void fragment() {
 		// player's own body and the frequency-outline around enemies,
 		// which otherwise fade into black with distance. Terrain and
 		// empty sky keep the raw near_vis fade.
-		bool is_sprite_pixel = !is_tagged && has_content > 0.5;
+		bool is_sprite_pixel = !is_tagged
+				&& has_content > 0.5;
+		// Shares the same smoothstep as `near_vis` so sprite pixels
+		// and bright-backdrop pixels fade out over the full
+		// `near_fade_px` range instead of holding flat and then
+		// cutting at a sharp 2-px line (which read as an abrupt
+		// aperture edge over the parallax sky). With
+		// `sprite_ambient_vis >= 1.0` the `max` below still keeps
+		// sprite-class pixels at or above the terrain's brightness
+		// profile.
+		float in_near_zone = near_vis;
+		// Sprite pixels are promoted to `sprite_ambient_vis` (capped
+		// by the binary near-zone mask), so the player, enemies,
+		// and their frequency outlines stay at full brightness
+		// across the close-by visibility area and cut cleanly to
+		// black outside it. Everything else (terrain, backdrop-
+		// parallax below the luma threshold) rides the smooth
+		// `near_vis` fade.
 		float effective_near_vis = is_sprite_pixel
-				? max(near_vis, sprite_ambient_vis)
+				? max(near_vis, sprite_ambient_vis * in_near_zone)
 				: near_vis;
 		vec3 near_contribution = textured_rgb * effective_near_vis;
 		vec3 pulse_contribution = stipple_rgb * dithered_pulse_reveal
@@ -1150,8 +1453,15 @@ void fragment() {
 			// Grow / fade phases and overall envelope.
 			float t = clamp(age / ping_lifetime_sec, 0.0, 1.0);
 			float grow_t = clamp(t / ping_grow_duration_frac, 0.0, 1.0);
-			float fade_t = 1.0 - smoothstep(
-					ping_grow_duration_frac, 1.0, t);
+			// Cubic ease-out on the fade: alpha drops steeply at the
+			// start of the fade phase and trails off slowly. Reads as
+			// "the line punches out and then lingers" instead of the
+			// previous symmetric S-curve.
+			float fade_progress = clamp(
+					(t - ping_grow_duration_frac)
+					/ max(1.0 - ping_grow_duration_frac, 1e-3),
+					0.0, 1.0);
+			float fade_t = pow(1.0 - fade_progress, 3.0);
 
 			// Line drift: after the grow phase, the line translates
 			// perpendicular to the surface in the outward-normal
@@ -1164,8 +1474,12 @@ void fragment() {
 					(t - ping_grow_duration_frac)
 					/ max(1.0 - ping_grow_duration_frac, 1e-3),
 					0.0, 1.0);
+			// Cubic ease-out: line shoots away from the surface fast
+			// at first and decelerates as it dissipates.
+			float translate_t_eased = 1.0
+					- pow(1.0 - translate_t, 3.0);
 			vec2 line_offset = normal_dir
-					* translate_t * ping_translate_distance_px;
+					* translate_t_eased * ping_translate_distance_px;
 			vec2 px_local = px - line_offset;
 
 			// Project the pixel onto the segment: `along_hit` is the
@@ -1241,7 +1555,7 @@ void fragment() {
 		// mostly white with a light tint of the tile's palette so the
 		// effect feels like a soft returning echo wash, not a
 		// frequency-colored highlight.
-		vec2 dmg_uv = world_to_type_uv(world_pos);
+		vec2 dmg_uv = world_to_type_uv_floored(world_pos);
 		float dmg_here = texture(damage_age_tex, dmg_uv).r;
 		if (dmg_here > 0.001) {
 			// Ramp-in: brightness stays 0 while stored value is in
@@ -1286,11 +1600,19 @@ void fragment() {
 			if (d >= p_radius) { continue; }
 			float edge = smoothstep(p_radius, p_radius - 1.0, d);
 			if (edge <= 0.0) { continue; }
-			vec3 atlas_color = sample_tile_interior_atlas(
-					world_pos, p_freq);
-			vec3 flat_color = palette_color_for_type(p_freq);
-			if (p_freq == 0 || dot(flat_color, flat_color) < 1e-6) {
-				flat_color = vec3(1.0);
+			vec3 flat_color;
+			vec3 atlas_color;
+			if (p_freq < 0) {
+				flat_color = damage_particle_color.rgb;
+				atlas_color = damage_particle_color.rgb;
+			} else {
+				flat_color = palette_color_for_type(p_freq);
+				atlas_color = sample_tile_interior_atlas(
+						world_pos, p_freq);
+				if (p_freq == 0
+						|| dot(flat_color, flat_color) < 1e-6) {
+					flat_color = vec3(1.0);
+				}
 			}
 			vec3 p_color = mix(flat_color, atlas_color, near_vis);
 			// Slight overbright so a palette-colored disk pops on
@@ -1304,5 +1626,6 @@ void fragment() {
 		out_rgb = max(out_rgb, vec3(0.0));
 
 		COLOR = vec4(out_rgb, 1.0);
+		}  // close `else` of `should_early_exit`
 	}
 }
